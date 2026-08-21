@@ -1,0 +1,83 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { createRepository } from "../repository";
+import type {
+  CalendarEventInsert,
+  CalendarEventRow,
+  CalendarEventUpdate,
+  CustodyBlockInsert,
+  CustodyBlockRow,
+  CustodyBlockUpdate,
+  EventAttendeeInsert,
+  EventAttendeeRow,
+  EventAttendeeUpdate,
+} from "../database.types";
+
+export const calendarEventsRepo = createRepository<
+  CalendarEventRow,
+  CalendarEventInsert,
+  CalendarEventUpdate
+>("calendar_events");
+
+export const eventAttendeesRepo = createRepository<
+  EventAttendeeRow,
+  EventAttendeeInsert,
+  EventAttendeeUpdate
+>("event_attendees");
+
+export const custodyBlocksRepo = createRepository<
+  CustodyBlockRow,
+  CustodyBlockInsert,
+  CustodyBlockUpdate
+>("custody_blocks");
+
+export async function listEventsInRange(
+  client: SupabaseClient,
+  householdId: string,
+  startsAtISO: string,
+  endsAtISO: string
+): Promise<CalendarEventRow[]> {
+  return calendarEventsRepo.list(client, (q) =>
+    q
+      .eq("household_id", householdId)
+      .gte("starts_at", startsAtISO)
+      .lt("starts_at", endsAtISO)
+      .order("starts_at", { ascending: true })
+  );
+}
+
+export async function listAttendeesForEvent(
+  client: SupabaseClient,
+  calendarEventId: string
+): Promise<EventAttendeeRow[]> {
+  return eventAttendeesRepo.list(client, (q) => q.eq("calendar_event_id", calendarEventId));
+}
+
+export async function listCustodyBlocksForChildInRange(
+  client: SupabaseClient,
+  childPersonId: string,
+  startsAtISO: string,
+  endsAtISO: string
+): Promise<CustodyBlockRow[]> {
+  return custodyBlocksRepo.list(client, (q) =>
+    q
+      .eq("child_person_id", childPersonId)
+      .gte("starts_at", startsAtISO)
+      .lt("starts_at", endsAtISO)
+      .order("starts_at", { ascending: true })
+  );
+}
+
+export async function listCustodyBlocksForHouseholdInRange(
+  client: SupabaseClient,
+  householdId: string,
+  startsAtISO: string,
+  endsAtISO: string
+): Promise<CustodyBlockRow[]> {
+  return custodyBlocksRepo.list(client, (q) =>
+    q
+      .eq("household_id", householdId)
+      .gte("starts_at", startsAtISO)
+      .lt("starts_at", endsAtISO)
+      .order("starts_at", { ascending: true })
+  );
+}
