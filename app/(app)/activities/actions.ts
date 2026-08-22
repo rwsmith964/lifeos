@@ -37,8 +37,10 @@ export async function createActivityAction(
     const externalIds: Record<string, string> = {};
     const usgsGauge = String(formData.get("usgsGauge") ?? "").trim();
     const odfwZoneUrl = String(formData.get("odfwZoneUrl") ?? "").trim();
+    const noaaStation = String(formData.get("noaaStation") ?? "").trim();
     if (usgsGauge) externalIds.usgs_gauge = usgsGauge;
     if (odfwZoneUrl) externalIds.odfw_zone_url = odfwZoneUrl;
+    if (noaaStation) externalIds.noaa_station = noaaStation;
 
     const locationParsed = activityLocationInsertSchema.safeParse({
       user_activity_id: activity.id,

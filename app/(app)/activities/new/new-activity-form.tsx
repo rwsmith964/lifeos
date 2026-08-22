@@ -82,6 +82,10 @@ export function NewActivityForm({ possibleCompanions }: { possibleCompanions: Pe
         <Label htmlFor="odfwZoneUrl">ODFW recreation report URL (optional, Oregon fishing spots)</Label>
         <Input id="odfwZoneUrl" name="odfwZoneUrl" type="url" placeholder="https://myodfw.com/recreation-report/..." />
       </div>
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="noaaStation">NOAA tide station ID (optional, coastal spots only)</Label>
+        <Input id="noaaStation" name="noaaStation" placeholder="e.g. 9432780" />
+      </div>
 
       {state.error && <p className="text-sm text-destructive">{state.error}</p>}
       <Button type="submit" disabled={pending}>

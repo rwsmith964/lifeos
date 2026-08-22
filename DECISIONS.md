@@ -140,10 +140,14 @@ Log of non-obvious autonomous decisions made during the LifeOS build, per Sectio
 
 ---
 
-## D-024 | 2026-08-21 | Fixed two more integration gaps found by auditing Section 9 against what actually got wired up
-**Context:** Phase 4 built and unit-tested the ODFW adapter (`lib/external/odfw.ts`) and Section 9.5's companion layer depends on `user_activities.preferred_companions`, but a grep turned up that neither ever actually got connected end-to-end: `lib/planner/generate.ts` never called `getOdfwReport()` at all (USGS was wired, ODFW wasn't), and the `/activities/new` form had no field to set `preferred_companions` — meaning Section 9.5 ("the entire product thesis in one feature... do not treat it as optional polish") could only ever be exercised by directly editing seed data, never through the app.
-**Decision:** Wired `getOdfwReport()` into the weekend-plan scoring loop (only for locations with an `odfw_zone_url` in `external_ids`, report text truncated to 400 chars before it enters the AI prompt — the scraped page can run to thousands). Added a companion multi-select (checkboxes over the household's people) and `usgsGauge`/`odfwZoneUrl` fields to the activity form, wired through to `activity_locations.external_ids`.
-**Rationale:** Same category as [[D-023]] — built-and-tested components that never got connected to the feature that was supposed to use them. Worth its own entry because Section 9.5 explicitly flags the companion layer as core to the product thesis, not incidental.
+## D-024 | 2026-08-21 | Fixed four integration gaps found by auditing Section 9 against what actually got wired up
+**Context:** Phase 4 built and unit-tested all five weekend-planner external adapters (NWS, USGS, NOAA tides, ODFW, solunar) and Section 9.5's companion layer depends on `user_activities.preferred_companions`, but grepping `lib/planner/generate.ts` turned up that only NWS and USGS ever actually got connected. ODFW, NOAA tides, and solunar were built and tested in isolation but never called from the orchestration; the `/activities/new` form had no field to set `preferred_companions` at all — meaning Section 9.5 ("the entire product thesis in one feature... do not treat it as optional polish") could only ever be exercised by directly editing seed data, never through the app.
+**Decision:**
+  - Wired `getOdfwReport()` in for locations with an `odfw_zone_url` in `external_ids` (report text truncated to 400 chars before it enters the AI prompt — the scraped page can run to thousands).
+  - Wired `getNoaaTidePredictions()` in for locations with a `noaa_station` id.
+  - Wired `computeSolunarPeriods()` in, but *gated* on the location already being fishing-relevant (having a `usgs_gauge` or `odfw_zone_url` set) — major/minor feeding periods are meaningless noise on a golf or gym recommendation, so it doesn't run unconditionally just because it's a free local computation.
+  - Added a companion multi-select (checkboxes over the household's people) and `usgsGauge`/`odfwZoneUrl`/`noaaStation` fields to the activity form, wired through to `activity_locations.external_ids`.
+**Rationale:** Same category as [[D-023]] — built-and-tested components that never got connected to the feature that was supposed to use them. Worth its own entry because Section 9.5 explicitly flags the companion layer as core to the product thesis, not incidental, and because five adapters existing but only two being reachable is exactly the kind of gap that's invisible to a code review focused on any single file.
 **Reversibility:** N/A — bug fixes / completing existing wiring, not new design decisions.
 
 ---

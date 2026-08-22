@@ -21,8 +21,10 @@ import { listActiveCadencesForHousehold } from "../db/repositories/contact";
 import { householdsRepo, usersRepo } from "../db/repositories/households";
 import { listPeopleForHousehold, peopleRepo } from "../db/repositories/people";
 import { getWeekendPlanForDate, weekendPlansRepo } from "../db/repositories/system";
+import { getNoaaTidePredictions } from "../external/noaa-tides";
 import { getNwsForecast } from "../external/nws";
 import { getOdfwReport } from "../external/odfw";
+import { computeSolunarPeriods } from "../external/solunar";
 import { getTravelTime } from "../external/travel";
 import { getUsgsGaugeReading } from "../external/usgs";
 import { findOpenBlocks, largestOpenBlock } from "./available-blocks";
@@ -101,7 +103,7 @@ export async function generateWeekendPlan(
     const location = activity.locations[0];
     const point = location?.lat != null && location.lng != null ? { lat: location.lat, lng: location.lng } : home;
 
-    const [forecast, travel, usgs, odfw] = await Promise.all([
+    const [forecast, travel, usgs, odfw, tides] = await Promise.all([
       getNwsForecast(client, point.lat, point.lng),
       getTravelTime(home, point, {}),
       location?.external_ids?.usgs_gauge
@@ -110,7 +112,20 @@ export async function generateWeekendPlan(
       location?.external_ids?.odfw_zone_url
         ? getOdfwReport(client, location.external_ids.odfw_zone_url)
         : Promise.resolve(null),
+      location?.external_ids?.noaa_station
+        ? getNoaaTidePredictions(client, location.external_ids.noaa_station, saturday)
+        : Promise.resolve(null),
     ]);
+    // Solunar is a pure local computation (no external call needed), but
+    // major/minor "feeding periods" are only meaningful for fishing/hunting
+    // — surfacing them on a golf or gym recommendation would just be
+    // confusing noise the AI has no reason to mention. Gate it on the same
+    // signal as USGS/ODFW: a location configured with fishing-relevant
+    // external_ids.
+    const isFishingRelevantLocation = Boolean(
+      location?.external_ids?.usgs_gauge || location?.external_ids?.odfw_zone_url
+    );
+    const solunar = isFishingRelevantLocation ? computeSolunarPeriods(saturday, point.lat, point.lng) : null;
 
     const todayPeriod = forecast.data?.periods[0] ?? null;
     const weatherScore = scoreWeatherSuitability({
@@ -157,6 +172,19 @@ export async function generateWeekendPlan(
       // dominate token usage across the whole weekend-plan call.
       const ODFW_PROMPT_EXCERPT_LENGTH = 400;
       conditionParts.push(`ODFW report: ${odfw.data.reportText.slice(0, ODFW_PROMPT_EXCERPT_LENGTH)}`);
+    }
+    if (tides?.data && tides.data.predictions.length > 0) {
+      const tideSummary = tides.data.predictions
+        .map((p) => `${p.type} ${p.heightFt}ft at ${p.time}`)
+        .join(", ");
+      conditionParts.push(`Tides: ${tideSummary}`);
+    }
+    const majorSolunarPeriods = solunar?.periods
+      .filter((p) => p.type === "major")
+      .map((p) => `${format(p.start, "h:mm a")}-${format(p.end, "h:mm a")}`)
+      .join(", ");
+    if (majorSolunarPeriods) {
+      conditionParts.push(`Solunar major feeding periods: ${majorSolunarPeriods}`);
     }
 
     scored.push({
