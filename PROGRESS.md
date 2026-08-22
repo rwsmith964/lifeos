@@ -104,8 +104,10 @@ Auth (password + magic link), onboarding, the mobile-first app shell with
 bottom nav, and six screens: brief (renders the AI's structured content
 into cards), people list + detail + "add person," gifts (suggestion list
 with save/dismiss), calendar (14-day agenda list, not a month grid — see
-that page's own comment for why), activities (feeds the weekend planner's
-scoring), settings (household budget defaults, brief time, timezone). A
+that page's own comment for why — plus a "this weekend" card that renders
+the weekend planner's own output and can generate one on demand),
+activities (feeds the weekend planner's scoring), settings (household
+budget defaults, brief time, timezone). A
 fresh signup can now build out a real household entirely through the UI:
 add people, add interests/budgets/gift history/contact cadence per person
 (all on the person detail screen), add activities with a location, add

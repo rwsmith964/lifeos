@@ -3,10 +3,12 @@ import { Plus } from "lucide-react";
 import { addDays, format, startOfDay } from "date-fns";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { listCustodyBlocksForHouseholdInRange, listEventsInRange } from "@/lib/db/repositories/calendar";
-import { Card, CardContent } from "@/components/ui/card";
+import { getWeekendPlanForDate } from "@/lib/db/repositories/system";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DeleteCalendarItemButton } from "./delete-item-button";
+import { GenerateWeekendPlanButton } from "./generate-weekend-plan-button";
 
 // Section 12.11 / 12.12: mobile-first single column favors an agenda list
 // over a month grid — a full calendar-grid component is a reasonable v1
@@ -49,6 +51,10 @@ export default async function CalendarPage() {
     byDay.set(key, [...(byDay.get(key) ?? []), item]);
   }
 
+  const daysUntilSaturday = (6 - start.getDay() + 7) % 7;
+  const upcomingSaturday = format(addDays(start, daysUntilSaturday === 0 ? 7 : daysUntilSaturday), "yyyy-MM-dd");
+  const weekendPlan = await getWeekendPlanForDate(supabase, household.id, upcomingSaturday);
+
   return (
     <div className="flex flex-col gap-4 p-4">
       <div className="flex items-center justify-between">
@@ -64,6 +70,22 @@ export default async function CalendarPage() {
           </Button>
         </div>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">This weekend ({format(new Date(upcomingSaturday), "MMM d")})</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-2">
+          {weekendPlan ? (
+            <div className="whitespace-pre-line text-sm text-muted-foreground">{weekendPlan.content_markdown}</div>
+          ) : (
+            <>
+              <p className="text-sm text-muted-foreground">No plan generated yet.</p>
+              <GenerateWeekendPlanButton />
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       {items.length === 0 ? (
         <Card>
