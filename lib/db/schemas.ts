@@ -230,6 +230,7 @@ export const calendarEventInsertSchema = z
     visibility: eventVisibilitySchema.optional(),
     external_source: z.string().nullable().optional(),
     external_id: z.string().nullable().optional(),
+    related_activity_id: uuid.nullable().optional(),
   })
   .refine((v) => new Date(v.ends_at) >= new Date(v.starts_at), {
     message: "ends_at must be >= starts_at",

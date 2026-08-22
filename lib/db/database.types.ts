@@ -395,6 +395,8 @@ export interface CalendarEventRow {
   visibility: EventVisibility;
   external_source: string | null;
   external_id: string | null;
+  /** The user_activity this event is an instance of, if any (Section 8.5 prep-event generation). */
+  related_activity_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -412,6 +414,7 @@ export type CalendarEventInsert = Insert<
   | "visibility"
   | "external_source"
   | "external_id"
+  | "related_activity_id"
   | "created_at"
   | "updated_at"
 >;
@@ -524,6 +527,19 @@ export type NotificationInsert = Insert<
   "id" | "link_path" | "channels" | "read_at" | "created_at"
 >;
 export type NotificationUpdate = Update<NotificationRow>;
+
+// weekend_plans -----------------------------------------------------------
+
+export interface WeekendPlanRow {
+  id: string;
+  household_id: string;
+  for_date: string;
+  content_json: unknown;
+  content_markdown: string;
+  generated_at: string;
+  model_version: string;
+}
+export type WeekendPlanInsert = Insert<WeekendPlanRow, "id" | "generated_at">;
 
 // gift_shipping_windows -------------------------------------------------
 

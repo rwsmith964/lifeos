@@ -137,3 +137,26 @@ Log of non-obvious autonomous decisions made during the LifeOS build, per Sectio
 **Decision:** `lib/external/solunar.ts` samples moon altitude every 10 minutes across the day to find moon transit (max altitude, "overhead") and moon underfoot (min altitude, opposite) for the two major periods (2h windows, centered), and uses `suncalc`'s moonrise/moonset directly for the two minor periods (1h windows, centered) — standard solunar-theory window widths.
 **Rationale:** Sampling for transit/underfoot is more robust than assuming a fixed offset from solar noon (the moon's transit time shifts day to day relative to the sun), and gives a deterministic, testable result from `suncalc` primitives alone, matching the spec's "use suncalc, no external call" instruction. This is an approximation of a folk-astronomy heuristic feeding one input into weekend-planner activity scoring (Section 9.4) — not a component where a published-calendar mismatch has real product risk.
 **Reversibility:** Cheap — isolated in one function; swappable for a different window-width convention or precision without touching callers.
+
+---
+
+## D-018 | 2026-08-20 | Added `calendar_events.related_activity_id` (migration `20260820000016`)
+**Context:** Section 8.5's concrete requirement is that a `user_activity` with `requires_prep = true` gets a generated prep event before the real one ("pack fishing gear on Friday evening" ahead of a Saturday fishing block). But nothing in Section 4.2 links a `calendar_events` row to the `user_activities` row it's an instance of — `interactions.activity_id` exists for logging *past* contact, but there's no forward equivalent for *scheduled* events.
+**Decision:** Added a nullable `related_activity_id` FK from `calendar_events` to `user_activities`, set when an event is created from/for a known activity (e.g. via the weekend planner, or manually in the UI). Prep-event generation (`lib/brief/prep.ts`, Phase 5) only fires for events that carry this link — it does not try to infer the connection from title text matching, which would be unreliable.
+**Rationale:** Same category as [[D-008]] and [[D-015]] — a later section's concrete requirement needs a link the table list didn't include. Explicit FK over fuzzy matching because prep reminders are exactly the kind of feature that erodes trust in the brief (Section 8.4: "a brief that manufactures content trains the user to ignore it") if it fires on the wrong event or misses the right one.
+**Reversibility:** Cheap — additive nullable column; UI/weekend-planner code sets it explicitly when creating an event from an activity.
+
+---
+
+## D-019 | 2026-08-20 | Added a `weekend_plans` table (migration `20260820000017`)
+**Context:** Section 4.2's table list has no persistence for weekend planner output, but Section 11.3 lists `weekend_plan` as a first-class AI feature alongside `gift_suggestion` (-> `gift_suggestions`) and `daily_brief` (-> `briefs`) — both of which persist. The brief engine (Section 8.2) also needs to read "weekend planning output if today is Wednesday-Friday," which requires the plan to exist somewhere queryable, not be recomputed inline during brief generation.
+**Decision:** Added `weekend_plans` (household_id, for_date [the covered Saturday], content_json, content_markdown, generated_at, model_version) — same shape convention as `briefs`. Unique on `(household_id, for_date)` so re-running the job for an already-planned weekend updates rather than duplicates.
+**Rationale:** Same pattern as [[D-008]], [[D-015]], [[D-018]]. Without persistence, every Wed/Thu/Fri brief would re-invoke the weekend-plan AI call, multiplying cost against the very ceiling Section 11.3 asks for and making the "once a week" cost projection in Section 11.3 ("roughly... one weekend plan per week") impossible to actually hit.
+**Reversibility:** Cheap — additive table, no other table depends on it.
+
+---
+
+## D-020 | 2026-08-20 | Condition-data activity score is left neutral (null) — no fishing-condition thresholds fabricated
+**Context:** Section 9.4 weights "condition data (flow/temp/tide/solunar where applicable)" as one of five scoring components. Judging whether a given river flow/gauge-height/tide is actually *good* for an activity (e.g. "245 cfs is decent for fly fishing at Dexter Reservoir") requires domain-expert thresholds this build has no verified source for — this isn't in the spec, and guessing a plausible-looking range would be exactly the kind of unsupported claim Section 9.2 explicitly warns against ("never assert a condition it did not retrieve from a named source").
+**Decision:** `lib/planner/generate.ts` fetches and displays real USGS/NWS condition data (so the narration can cite it), but `conditionDataScore` is always `null`, which `scoreActivity()` already treats as neutral (50) by design (see `lib/planner/scoring.ts`).
+**Reversibility:** Cheap — swap in a real scorer per activity type later without touching the aggregation contract; likely a QUESTIONS.md-worthy follow-up once Richard can supply his own "good conditions" thresholds per spot.

@@ -13,6 +13,8 @@ import type {
   NotificationInsert,
   NotificationRow,
   NotificationUpdate,
+  WeekendPlanInsert,
+  WeekendPlanRow,
 } from "../database.types";
 
 export const briefsRepo = createRepository<BriefRow, BriefInsert, BriefUpdate>("briefs");
@@ -36,6 +38,21 @@ export const notificationsRepo = createRepository<
   NotificationInsert,
   NotificationUpdate
 >("notifications");
+
+export const weekendPlansRepo = createRepository<WeekendPlanRow, WeekendPlanInsert, never>(
+  "weekend_plans"
+);
+
+export async function getWeekendPlanForDate(
+  client: SupabaseClient,
+  householdId: string,
+  forDate: string
+): Promise<WeekendPlanRow | null> {
+  const rows = await weekendPlansRepo.list(client, (q) =>
+    q.eq("household_id", householdId).eq("for_date", forDate).limit(1)
+  );
+  return rows[0] ?? null;
+}
 
 export async function getBriefForPersonAndDate(
   client: SupabaseClient,
