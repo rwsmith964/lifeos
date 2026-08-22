@@ -35,7 +35,12 @@ export function AddInterestForm({ personId }: { personId: string }) {
         </Label>
         <Input id={`interest-${personId}`} name="interest" placeholder="fly fishing" required className="h-8 w-40" />
       </div>
-      <select name="strength" defaultValue="casual" className="border-input h-8 rounded-md border bg-transparent px-2 text-sm">
+      <select
+        name="strength"
+        defaultValue="casual"
+        aria-label="Interest strength"
+        className="border-input h-8 rounded-md border bg-transparent px-2 text-sm"
+      >
         {STRENGTH_OPTIONS.map((s) => (
           <option key={s} value={s}>
             {s}
@@ -56,7 +61,12 @@ export function AddBudgetForm({ personId }: { personId: string }) {
 
   return (
     <form action={formAction} className="flex flex-wrap items-end gap-2">
-      <select name="occasionType" defaultValue="default" className="border-input h-8 rounded-md border bg-transparent px-2 text-sm">
+      <select
+        name="occasionType"
+        defaultValue="default"
+        aria-label="Occasion"
+        className="border-input h-8 rounded-md border bg-transparent px-2 text-sm"
+      >
         {OCCASION_OPTIONS.map((o) => (
           <option key={o} value={o}>
             {o}
@@ -81,18 +91,28 @@ export function RecordGiftForm({ personId }: { personId: string }) {
     <form action={formAction} className="flex flex-col gap-2">
       <Input name="description" placeholder="What did you give them?" required />
       <div className="flex gap-2">
-        <select name="occasionType" defaultValue="just_because" className="border-input h-8 flex-1 rounded-md border bg-transparent px-2 text-sm">
+        <select
+          name="occasionType"
+          defaultValue="just_because"
+          aria-label="Occasion"
+          className="border-input h-8 flex-1 rounded-md border bg-transparent px-2 text-sm"
+        >
           {OCCASION_OPTIONS.map((o) => (
             <option key={o} value={o}>
               {o}
             </option>
           ))}
         </select>
-        <Input name="occasionDate" type="date" required className="h-8" />
+        <Input name="occasionDate" type="date" required className="h-8" aria-label="Occasion date" />
       </div>
       <div className="flex gap-2">
         <Input name="costDollars" type="number" min={0} placeholder="Cost $" className="h-8" />
-        <select name="reaction" defaultValue="" className="border-input h-8 flex-1 rounded-md border bg-transparent px-2 text-sm">
+        <select
+          name="reaction"
+          defaultValue=""
+          aria-label="Their reaction"
+          className="border-input h-8 flex-1 rounded-md border bg-transparent px-2 text-sm"
+        >
           {REACTION_OPTIONS.map((r) => (
             <option key={r} value={r}>
               {r ? r.replace("_", " ") : "reaction (optional)"}

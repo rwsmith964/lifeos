@@ -28,7 +28,11 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           <p className="text-xs text-muted-foreground">{household.name}</p>
         </div>
         <div className="flex items-center gap-1">
-          <Link href="/notifications" className="relative inline-flex p-2 text-muted-foreground hover:text-foreground">
+          <Link
+            href="/notifications"
+            aria-label={unread.length > 0 ? `Notifications (${unread.length} unread)` : "Notifications"}
+            className="relative inline-flex p-2 text-muted-foreground hover:text-foreground"
+          >
             <Bell className="size-5" />
             {unread.length > 0 && (
               <Badge className="absolute -top-1 -right-1 h-4 min-w-4 justify-center rounded-full px-1 text-[10px]">
