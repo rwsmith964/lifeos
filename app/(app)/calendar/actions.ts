@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireHouseholdContext } from "@/lib/auth/session";
-import { calendarEventsRepo, custodyBlocksRepo } from "@/lib/db/repositories/calendar";
+import { calendarEventsRepo, custodyBlocksRepo, eventAttendeesRepo } from "@/lib/db/repositories/calendar";
 import { calendarEventInsertSchema, custodyBlockInsertSchema } from "@/lib/db/schemas";
 import { generateWeekendPlan } from "@/lib/planner/generate";
 
@@ -38,7 +38,15 @@ export async function createCalendarEventAction(
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
 
-  await calendarEventsRepo.create(supabase, parsed.data);
+  const event = await calendarEventsRepo.create(supabase, parsed.data);
+
+  const attendeeIds = formData.getAll("attendeePersonIds").map(String).filter(Boolean);
+  await Promise.all(
+    attendeeIds.map((personId) =>
+      eventAttendeesRepo.create(supabase, { calendar_event_id: event.id, person_id: personId })
+    )
+  );
+
   revalidatePath("/calendar");
   redirect("/calendar");
 }

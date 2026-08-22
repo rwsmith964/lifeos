@@ -52,6 +52,31 @@ export async function listAttendeesForEvent(
   return eventAttendeesRepo.list(client, (q) => q.eq("calendar_event_id", calendarEventId));
 }
 
+/** Batch fetch, grouped by calendar_event_id, for rendering an agenda list without one query per event. */
+export async function listAttendeeNamesForEvents(
+  client: SupabaseClient,
+  calendarEventIds: string[]
+): Promise<Map<string, string[]>> {
+  const byEvent = new Map<string, string[]>();
+  if (calendarEventIds.length === 0) return byEvent;
+
+  const { data, error } = await client
+    .from("event_attendees")
+    .select("calendar_event_id, person:people(full_name)")
+    .in("calendar_event_id", calendarEventIds);
+  if (error) throw error;
+
+  type AttendeeRow = { calendar_event_id: string; person: { full_name: string } | { full_name: string }[] | null };
+  for (const row of (data ?? []) as unknown as AttendeeRow[]) {
+    const person = Array.isArray(row.person) ? row.person[0] : row.person;
+    if (!person) continue;
+    const names = byEvent.get(row.calendar_event_id) ?? [];
+    names.push(person.full_name);
+    byEvent.set(row.calendar_event_id, names);
+  }
+  return byEvent;
+}
+
 export async function listCustodyBlocksForChildInRange(
   client: SupabaseClient,
   childPersonId: string,

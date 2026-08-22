@@ -2,7 +2,11 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { addDays, format, startOfDay } from "date-fns";
 import { requireHouseholdContext } from "@/lib/auth/session";
-import { listCustodyBlocksForHouseholdInRange, listEventsInRange } from "@/lib/db/repositories/calendar";
+import {
+  listAttendeeNamesForEvents,
+  listCustodyBlocksForHouseholdInRange,
+  listEventsInRange,
+} from "@/lib/db/repositories/calendar";
 import { getWeekendPlanForDate } from "@/lib/db/repositories/system";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +29,10 @@ export default async function CalendarPage() {
     listEventsInRange(supabase, household.id, start.toISOString(), end.toISOString()),
     listCustodyBlocksForHouseholdInRange(supabase, household.id, start.toISOString(), end.toISOString()),
   ]);
+  const attendeesByEvent = await listAttendeeNamesForEvents(
+    supabase,
+    events.map((e) => e.id)
+  );
 
   const items = [
     ...events.map((e) => ({
@@ -34,6 +42,7 @@ export default async function CalendarPage() {
       title: e.title,
       subtitle: e.event_type,
       allDay: e.all_day,
+      attendees: attendeesByEvent.get(e.id) ?? [],
     })),
     ...custodyBlocks.map((c) => ({
       id: c.id,
@@ -42,6 +51,7 @@ export default async function CalendarPage() {
       title: `Custody: ${c.block_type}`,
       subtitle: "custody",
       allDay: false,
+      attendees: [] as string[],
     })),
   ].sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
 
@@ -102,6 +112,7 @@ export default async function CalendarPage() {
                     <p className="text-sm font-medium">{item.title}</p>
                     <p className="text-xs text-muted-foreground">
                       {item.allDay ? "All day" : format(item.startsAt, "h:mm a")}
+                      {item.attendees.length > 0 && ` · ${item.attendees.join(", ")}`}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
