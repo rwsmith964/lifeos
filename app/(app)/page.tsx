@@ -2,6 +2,7 @@ import { format } from "date-fns";
 import { CalendarClock, Cloud, Gift, Sparkles, Users } from "lucide-react";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { generateDailyBrief } from "@/lib/brief/generate";
+import { createSupabaseServiceRoleClient } from "@/lib/db/client-service-role";
 import { briefsRepo, getBriefForPersonAndDate } from "@/lib/db/repositories/system";
 import type { BriefContent } from "@/lib/brief/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,7 +16,13 @@ export default async function BriefPage() {
 
   let brief = await getBriefForPersonAndDate(supabase, selfPerson.id, todayDateStr);
   if (!brief) {
-    const result = await generateDailyBrief(supabase, household.id, selfPerson.id, today);
+    // briefs has no insert policy for regular users by design (only the
+    // service role — the cron job — is allowed to write brief rows; see
+    // migration 20260820000012). This on-demand fallback (for a user who
+    // opens the app before their household's brief_time has fired) needs
+    // the same elevated client to perform that first insert.
+    const serviceRoleClient = createSupabaseServiceRoleClient();
+    const result = await generateDailyBrief(serviceRoleClient, household.id, selfPerson.id, today);
     brief = await briefsRepo.getById(supabase, result.briefId);
   }
 
