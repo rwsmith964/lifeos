@@ -97,3 +97,35 @@ Log of non-obvious autonomous decisions made during the LifeOS build, per Sectio
 **Decision:** `supabase/seed.sql` computes birthdates, gift `occasion_date`s, and cadence `last_contact_date`s as offsets from `current_date` (e.g. Dave's birthday month/day is always `current_date + 18 days`) rather than fixed 2026 dates.
 **Rationale:** A hardcoded "upcoming" birthday goes stale the moment the seed is loaded on a different day — which defeats the point of seed data meant to demonstrate the product on demand. Relative dates keep the demo scenarios (upcoming birthday within the 60-day gift-scan horizon, an overdue golf buddy) true regardless of when `supabase db reset` runs.
 **Reversibility:** Cheap — purely a seed-file authoring choice, no schema impact.
+
+---
+
+## D-013 | 2026-08-20 | Supabase is not behind a "runs with zero keys" stub; other integrations are
+**Context:** Section 12.9 says every external integration is behind an interface with a working stub, and `pnpm dev` must run with zero third-party keys configured. Section 3 also lists Supabase as the mandatory database with RLS "not optional."
+**Decision:** Read 12.9 as covering the *optional* integrations it lists elsewhere by name (Anthropic, Resend, Google Maps/Mapbox, NWS/USGS/NOAA/ODFW, push, SMS) — all of which get a real stub/fallback path. Supabase itself is the persistence layer, not stubbed; `pnpm dev` requires a reachable Supabase instance (local via `supabase start`, or a hosted project's URL/keys in `.env.local`), but needs none of the other API keys.
+**Rationale:** There's no such thing as "the app, but with an in-memory fake Postgres with real RLS semantics" — building that would be a bigger, riskier piece of throwaway infrastructure than the thing it's meant to unblock, and Section 3 calls RLS mandatory. The stub requirement reads as being about the *optional* integrations layered on top of the DB, not the DB itself.
+**Reversibility:** N/A — a reading of intent, not a design choice with an alternative to revert to.
+
+---
+
+## D-014 | 2026-08-20 | AI cost-per-token rates in `lib/ai/pricing.ts` are a documented estimate
+**Context:** Section 11.3 requires `ai_usage_log.estimated_cost_cents` and a per-household daily spend ceiling; Section 3 names the model as `claude-sonnet-4-6`, a model id newer than my training data, so I have no verified current pricing for it to hardcode with confidence.
+**Decision:** Used `$3/MTok` input, `$15/MTok` output as placeholder rates (in line with recent Claude Sonnet-tier pricing), clearly commented as an estimate in `lib/ai/pricing.ts`, to be checked against Anthropic's actual pricing page when `docs/ai-costs.md` is written in Phase 8.
+**Rationale:** The spend-ceiling *mechanism* (compare today's summed cost against `households.ai_daily_spend_ceiling_cents`, degrade gracefully) is correct and testable regardless of the exact rate; getting the rate itself right just needs a pricing-page check, not a design decision.
+**Reversibility:** Cheap — one constant to update once real pricing is confirmed.
+
+---
+
+## D-015 | 2026-08-20 | Added `gift_suggestions.category` (migration `20260820000015`)
+**Context:** Section 7.3's output requirement explicitly lists "category (used to look up shipping window)" as one of the three required fields per suggestion, but Section 4.2's `gift_suggestions` table list has no `category` column (unlike `gifts`, which has one).
+**Decision:** Added it via a new migration rather than editing the already-committed `20260820000008_gifts_and_suggestions.sql` (Section 5: never edit a committed migration).
+**Rationale:** 7.3's requirement is specific and functional (the category drives `order_by_date` math); losing it after generation would mean losing the ability to explain why an order-by date is what it is, or to carry the category over when a suggestion converts to a `gifts` row. Same category of gap as [[D-008]] (notifications table) — filled because a later, more specific section requires it.
+**Reversibility:** Cheap — additive nullable column.
+
+---
+
+## D-016 | 2026-08-20 | Gift-feedback interest matching uses word-overlap between the gift description and existing interest text
+**Context:** Section 7.7 requires "an explicit function" that feeds a gift's `reaction` back into interest strength, with the example "a `loved_it` on a fly-fishing item should raise the strength of the 'fly fishing' interest." Nothing in the schema directly links a `gifts` row to a `person_interests` row, and `gifts.category` (per the seed data and D-015-adjacent reasoning) holds a *shipping* category like "standard"/"handmade" — not a topical category like "fly fishing" — so it can't be used as the match key.
+**Decision:** `lib/gifts/feedback.ts` matches a gift to existing interests by lowercased, stopword-filtered word overlap between `gift.description` and each `person_interests.interest` string (e.g. "Orvis fly rod combo" and "fly fishing" share the word "fly"). On `loved_it`, matched interests move up one strength tier (`casual`→`regular`→`passionate`); on `missed`, down one tier; `liked_it`/`neutral` leave strength unchanged. It does not auto-create a brand-new interest from an unmatched gift — that would need real extraction (a job for the AI layer, not a pure function) and is out of scope for this pass.
+**Rationale:** This is the smallest deterministic, testable heuristic that satisfies the spec's literal example. A pure function can't reliably invent a new interest from free text; strengthening an *existing* interest on a match is the well-defined 80% case and is exactly what the spec's example describes.
+**Reversibility:** Medium — the matching heuristic is isolated in one function (`interestsMatchingGift`) and easy to swap for an AI-assisted version later without touching callers.

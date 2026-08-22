@@ -165,6 +165,7 @@ export const giftSuggestionInsertSchema = z.object({
   reasoning: z.string().min(1),
   price_tier: priceTierSchema,
   estimated_cost_cents: cents,
+  category: z.string().nullable().optional(),
   product_url: z.url().nullable().optional(),
   retailer: z.string().nullable().optional(),
   order_by_date: isoDate,

@@ -263,6 +263,8 @@ export interface GiftSuggestionRow {
   reasoning: string;
   price_tier: PriceTier;
   estimated_cost_cents: number;
+  /** Shipping-window category (Section 7.3/7.4) — see migration 20260820000015. */
+  category: string | null;
   product_url: string | null;
   retailer: string | null;
   order_by_date: string;
@@ -272,7 +274,7 @@ export interface GiftSuggestionRow {
 }
 export type GiftSuggestionInsert = Insert<
   GiftSuggestionRow,
-  "id" | "product_url" | "retailer" | "status" | "generated_at"
+  "id" | "category" | "product_url" | "retailer" | "status" | "generated_at"
 >;
 export type GiftSuggestionUpdate = Update<GiftSuggestionRow>;
 
