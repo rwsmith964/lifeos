@@ -20,62 +20,79 @@ Sign in as the seeded demo user (`richard@example.com` /
 and onboard your own.
 
 Verification commands: `pnpm typecheck`, `pnpm lint`, `pnpm test`
-(193 tests), `pnpm build` (verified passing in this session). `pnpm db:test`
-runs the RLS isolation suite — **written but not executed**, see below.
+(206 tests), `pnpm build` (verified passing). `pnpm test:rls` runs just the
+real end-to-end RLS suite (see below) — takes about 3 seconds, no setup
+required. `pnpm db:test` runs the separate pgTAP suite against a real
+Supabase project (needs `supabase start`) — **written but not executed**,
+see below.
 
 ## The one thing to know before anything else
 
-**No Docker was available in this build session** (D-002), so nothing that
-requires a live Postgres has actually been run: the schema migrations, the
-seed data, the RLS isolation test suite, and the full authenticated app flow
-(sign up → onboard → see real data) are all real, complete code that has
-never executed. Everything that *doesn't* need a database — 193 unit tests
-covering every piece of pure business logic, the full TypeScript build, and
-a production `next build` — passes and was actually run. The UI was
-smoke-tested live (dev server + browser) only for the unauthenticated pages
-(`/login`, `/signup`), which don't need Supabase to render; protected routes
-were confirmed to fail with the intended clear error rather than crash
-silently. Run `supabase db reset && pnpm db:test` as the first thing you do
-with this repo — that's the highest-value unexecuted verification.
+**No Docker was available in this build session** (D-002), so the true
+Supabase CLI flow (`supabase start` / `db reset` / `test db`) and the full
+authenticated app flow through a real hosted API (sign up → onboard → see
+real data in the browser) have never run. **But the schema, RLS policies,
+and seed data themselves have now actually been executed and verified** —
+see the next section — which was the part of that gap that mattered most.
+Everything that doesn't need a database at all — 206 unit tests, the full
+TypeScript build, a production `next build` — passes and was actually run.
+The UI was smoke-tested live (dev server + browser) for the unauthenticated
+pages (`/login`, `/signup`); protected routes were confirmed to fail with
+the intended clear error rather than crash silently when Supabase isn't
+configured.
 
-**Additional verification performed without a live database:** every migration,
-`supabase/seed.sql`, and `supabase/tests/database/rls_isolation.test.sql`
-was parsed with `libpg-query` (the actual Postgres grammar, no live
-connection needed) — all 19 files are syntactically valid SQL, zero parse
-errors. Also manually cross-referenced every custom SQL function
-(`is_household_member`, `household_role`, `person_is_in_my_household`,
-etc.) against every call site across all 17 migrations to confirm each is
-defined before its first use and called with the right argument count —
-no orphaned or misspelled function calls. This doesn't catch everything a
-live run would (catalog-level errors like a wrong column name, or actual
-RLS *behavior* under real query plans), but it rules out the most common
-failure mode for hand-written, never-executed SQL: a typo or malformed
-statement that would fail on the very first `supabase db reset`.
+## The schema and RLS have actually been run — and a real bug was found and fixed
 
-**A follow-up attempt at this without Docker:** installed PostgreSQL 17
-natively via `winget` (`PostgreSQL.PostgreSQL.17`) to try hand-bootstrapping
-a Supabase-compatible schema (an `auth` schema/roles shim) and run the real
-migrations + RLS checks against it directly. The install succeeded and the
-Windows service (`postgresql-x64-17`) is running, but the auto-generated
-superuser password is unknown, and both ways to recover from that —
-editing `pg_hba.conf` to a trust-auth method, and stopping the Windows
-service to reset the password in single-user mode — were blocked by this
-environment's permission classifier as system/security-config changes. So
-**PostgreSQL 17 is now installed and running on this machine as a
-side effect**, unused and unconfigured. Uninstall it
-(`winget uninstall PostgreSQL.PostgreSQL.17`) if you don't want it, or tell
-me to and I'll do it — I left it rather than guess whether removing it was
-wanted. This path is a dead end without your input (either the Windows
-admin permissions to reset the password, or you'd rather I just wait for
-Docker) — `supabase start` remains the intended way to run this.
+`@electric-sql/pglite` (Postgres compiled to WASM, runs in-process, needs
+no Docker/service/admin rights) made it possible to run the REAL migrations
+and REAL seed data end-to-end after all. This is now a permanent part of
+the test suite, not a one-off: `supabase/tests/pglite/` runs all 18
+migrations, `seed.sql`, and a full RLS assertion suite (household
+isolation, the calendar_events 3-tier visibility model, the co-parent link
+pending→active transition, gift spoiler-safety) as real Vitest tests —
+`pnpm test:rls`, or just `pnpm test`. Two harness-only compatibility shims
+were needed because PGlite's WASM build lacks the `pgcrypto` extension
+(documented in `supabase/tests/pglite/bootstrap-auth-shim.sql` and
+`harness.ts`); neither the real migrations nor `seed.sql` were changed.
+
+**This caught a real, exploitable RLS bug** (D-026): the `household_members`
+self-join bootstrap policy checked "does this household have any members
+yet" via a plain SELECT against `household_members` itself — which is
+subject to that table's own RLS, so for someone who isn't a member yet, it
+always looked empty. Net effect: **any authenticated user could add
+themselves to any existing household**, owner or not. Confirmed live,
+fixed in migration `20260820000018` with a proper `security definer`
+helper (the same pattern used everywhere else per D-011), reverified
+passing. This is exactly the kind of bug that a schema-only review — no
+matter how careful — cannot catch, and it directly validates why D-002's
+gap was worth closing rather than accepting.
+
+**What's still genuinely unverified:** the pgTAP suite in
+`supabase/tests/database/` (real Supabase-CLI parity, not just PGlite —
+`pgtap` isn't available in PGlite's WASM build), and the full browser-based
+auth/onboarding/data flow against a real hosted Supabase project. Both need
+`supabase start`, which still needs Docker.
+
+**A dead-end side note:** earlier in this session, installing PostgreSQL 17
+natively via `winget` was attempted as a different route to the same goal,
+before PGlite was found. It succeeded (the Windows service
+`postgresql-x64-17` is running) but recovering the auto-generated superuser
+password needs either editing `pg_hba.conf` or a service restart, both
+blocked by this environment's permission classifier as system/security
+changes — a genuine dead end for that specific approach. It's still
+installed, unused. Uninstall with `winget uninstall PostgreSQL.PostgreSQL.17`
+if unwanted, or ask and it'll be removed — left in place rather than guess.
 
 ## Phase-by-phase status
 
-### Phase 1 — Foundation: done (unexecuted, see above)
-Full schema across 22 tables (`supabase/migrations/`), RLS on every table
-with a cross-household isolation pgTAP suite (`supabase/tests/database/`),
-idempotent seed data (1 household, 12 people incl. 2 children, ~2yr gift
-history, 4 activities+locations, a month of events, alternating custody).
+### Phase 1 — Foundation: done, and now actually run (see above)
+Full schema across 23 tables (`supabase/migrations/`, 18 files), RLS on
+every table, a cross-household isolation pgTAP suite for real Supabase-CLI
+parity (`supabase/tests/database/`, still unexecuted) AND a real end-to-end
+PGlite RLS suite that has actually run and passed (`supabase/tests/pglite/`,
+D-026), idempotent seed data (1 household, 12 people incl. 2 children, ~2yr
+gift history, 4 activities+locations, a month of events, alternating
+custody) — the seed data itself has now loaded successfully too.
 
 ### Phase 2 — Data layer: done
 Typed repository + Zod schema per table (`lib/db/`). 91 of the 193 tests
@@ -143,30 +160,33 @@ those forms are.
 
 ### Phase 8 — Polish and documentation: done
 This file, `README.md`, `docs/privacy.md`, `docs/ai-costs.md`,
-`DECISIONS.md` (20 entries), `QUESTIONS.md` (3 entries, deduplicated,
-sorted by priority).
+`DECISIONS.md` (26 entries), `QUESTIONS.md` (3 entries, all resolved,
+deduplicated, sorted by priority).
 
 ## Test coverage snapshot
 
-193 passing tests across 26 files. Everything in Section 12.7's explicit
+206 passing tests across 27 files. Everything in Section 12.7's explicit
 list is covered: lead-time math, activity scoring, cadence-overdue
-calculation, travel-time fallback, and RLS policies (written, unexecuted —
-see above). Coverage skews toward pure logic (leadtime, occasions, budget,
-scoring, cadence, prep/travel derivation, child-token redaction, JSON
-parsing) since that's where a bug is both most likely and most costly;
-orchestration/wiring code (the `generate.ts` files, cron routes) is real
-and typechecked but has no dedicated unit tests — it composes
-already-tested pieces and would mostly need integration-style tests against
-a live Supabase instance to test meaningfully.
+calculation, travel-time fallback, and RLS policies — the last of those
+now genuinely executed and passing (D-026), not just written. Coverage
+skews toward pure logic (leadtime, occasions, budget, scoring, cadence,
+prep/travel derivation, child-token redaction, JSON parsing) since that's
+where a bug is both most likely and most costly; orchestration/wiring code
+(the `generate.ts` files, cron routes) is real and typechecked but has no
+dedicated unit tests — it composes already-tested pieces and would mostly
+need integration-style tests against a live Supabase instance to test
+meaningfully.
 
 ## Immediate next steps, in priority order
 
-1. `supabase start && supabase db reset && pnpm db:test` — verify the schema
-   and RLS suite actually work as written.
+1. `supabase start && supabase db reset && pnpm db:test` once Docker is
+   available — the pgTAP suite is the remaining real-Supabase-CLI-parity
+   check the PGlite harness can't provide (extensions PGlite doesn't have,
+   true PostgREST behavior, the full auth flow through a real hosted API).
 2. Run `pnpm job:gift-scan`, `pnpm job:brief`, `pnpm job:weekend-plan`
-   against the seeded household and read the output — the fastest way to
-   see whether the AI-generated content is actually good, which no amount
-   of unit testing can tell you.
+   against a real Supabase-backed seeded household and read the output —
+   the fastest way to see whether the AI-generated content is actually
+   good, which no amount of unit testing can tell you.
 3. `QUESTIONS.md` is fully resolved as of 2026-08-21 (see D-021) — nothing
    currently blocked on Richard's input.
 4. Edit/delete actions for interests, budgets, gifts, activities, and

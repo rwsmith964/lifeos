@@ -5,6 +5,6 @@ export default defineConfig({
   plugins: [tsconfigPaths()],
   test: {
     environment: "node",
-    include: ["**/__tests__/**/*.test.ts", "lib/**/*.test.ts"],
+    include: ["**/__tests__/**/*.test.ts", "lib/**/*.test.ts", "supabase/tests/pglite/**/*.test.ts"],
   },
 });

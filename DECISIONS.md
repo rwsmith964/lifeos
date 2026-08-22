@@ -162,6 +162,22 @@ Log of non-obvious autonomous decisions made during the LifeOS build, per Sectio
 
 ---
 
+## D-026 | 2026-08-21 | Ran the real migrations + seed + RLS end-to-end via PGlite; found and fixed a real cross-household privilege-escalation bug
+**Context:** D-025's parser-based check proved every migration is syntactically valid and schema-consistent, but couldn't prove the RLS *policies* actually do what they're supposed to — that needs a real Postgres executing real queries as different simulated users. Went looking for a way to do that without Docker (still blocked per D-022) and found `@electric-sql/pglite` — Postgres compiled to WASM, running in-process, no system service, no admin permissions. Verified it supports custom schemas, roles, RLS policies, and `SET ROLE` + `set_config('request.jwt.claims', ...)` (the exact mechanism Supabase's PostgREST layer uses per-request) — everything needed to run the actual migrations and actual RLS policies for real.
+**Decision:** Built a permanent harness (`supabase/tests/pglite/`) that runs all 18 migrations, the real `seed.sql`, and a suite of `authenticated`/`service_role` role-switching assertions against an in-memory PGlite database, wired into `pnpm test` as real Vitest tests (`pnpm test:rls` to run just this file). Two harness-only compatibility shims were needed (documented in `bootstrap-auth-shim.sql` and `harness.ts`): PGlite's WASM build lacks the `pgcrypto` extension, so the extension-creation line is stripped before running migration 0001 (`gen_random_uuid()` is core in PG13+ regardless, so nothing depends on the extension itself), and `crypt()`/`gen_salt()` are stubbed as no-op functions so `seed.sql` runs completely unmodified. Neither the real migrations nor `seed.sql` in the repo were changed for this.
+
+**What it found:** the `household_members` INSERT policy's self-join bootstrap check —
+```sql
+not exists (select 1 from household_members existing where existing.household_id = household_members.household_id)
+```
+— is itself a plain SELECT against `household_members`, so it's subject to that table's own SELECT policy (visible only to existing members of that household). For a user who is NOT yet a member of the target household, that subquery always returns zero rows *regardless of whether the household already has an owner*, so the emptiness check was always true for an outsider. Net effect: **any authenticated user could add themselves as a member of any existing household**, including one that already had an owner — confirmed live against the seeded household before the fix, blocked after it. This is the exact self-referential-RLS trap D-011 already named and solved everywhere else with `security definer` helper functions; this one policy queried the table directly instead and was missed. Fixed in migration `20260820000018` with a new `household_member_count()` helper function, matching the pattern used everywhere else. Grepped for the same `not exists`-against-self pattern across all other policies — this was the only instance.
+
+Also verified (all passing): full household isolation across every household-scoped table, the three-tier `calendar_events` visibility model (private/household/shared_with_coparent) including the pending-vs-active `household_links` transition, and the gift/gift_suggestions spoiler-safety rule (D-007) holding even for a same-household child-role member and across an active co-parent link.
+**Rationale:** This is the single most valuable thing done in this follow-up pass — a real, confirmed, exploitable authorization bug, found and fixed before any live deployment, entirely because the never-executed SQL got executed. It directly validates the core premise of D-002/D-025: unexecuted SQL is a real risk, not a formality.
+**Reversibility:** The bug fix is not optional — it closes a real hole. The PGlite harness itself is purely additive tooling; removing it would just mean losing this coverage, not breaking anything.
+
+---
+
 ## D-015 | 2026-08-20 | Added `gift_suggestions.category` (migration `20260820000015`)
 **Context:** Section 7.3's output requirement explicitly lists "category (used to look up shipping window)" as one of the three required fields per suggestion, but Section 4.2's `gift_suggestions` table list has no `category` column (unlike `gifts`, which has one).
 **Decision:** Added it via a new migration rather than editing the already-committed `20260820000008_gifts_and_suggestions.sql` (Section 5: never edit a committed migration).

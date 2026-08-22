@@ -72,10 +72,11 @@ seeded user instead (`richard@example.com` / `lifeos-dev-password`, from
 | `pnpm dev` | Start the dev server |
 | `pnpm build` | Production build |
 | `pnpm test` | Run the unit test suite (Vitest) |
+| `pnpm test:rls` | Just the real end-to-end RLS suite (`supabase/tests/pglite/`) — runs the actual migrations + seed data against an in-process Postgres (PGlite), no setup needed |
 | `pnpm typecheck` | `next typegen` + `tsc --noEmit` |
 | `pnpm lint` | ESLint |
 | `pnpm db:start` / `db:reset` | Supabase CLI passthroughs |
-| `pnpm db:test` | Run the RLS pgTAP suite (`supabase/tests/database/`) |
+| `pnpm db:test` | Run the RLS pgTAP suite against a real Supabase project (`supabase/tests/database/`) — needs `supabase start` |
 | `pnpm job:brief` / `job:gift-scan` / `job:weekend-plan` | Manually trigger a cron job locally (Section 10.5) |
 
 ## Architecture in one paragraph
