@@ -12,7 +12,16 @@ import { estimateAgeYears } from "@/lib/ai/prompts/gift-suggestion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { AddBudgetForm, AddInterestForm, CadenceForm, LogInteractionButton, RecordGiftForm } from "./person-forms";
+import {
+  AddBudgetForm,
+  AddInterestForm,
+  CadenceForm,
+  DeleteBudgetButton,
+  DeleteGiftButton,
+  DeleteInterestButton,
+  LogInteractionButton,
+  RecordGiftForm,
+} from "./person-forms";
 
 export default async function PersonDetailPage({ params }: PageProps<"/people/[id]">) {
   const { id } = await params;
@@ -89,6 +98,7 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
               {interests.map((interest) => (
                 <Badge key={interest.id} variant={interest.strength === "passionate" ? "default" : "secondary"}>
                   {interest.interest}
+                  <DeleteInterestButton personId={id} interestId={interest.id} />
                 </Badge>
               ))}
             </div>
@@ -105,10 +115,13 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
           {budgets.length > 0 && (
             <div className="flex flex-col gap-1">
               {budgets.map((budget) => (
-                <p key={budget.id} className="text-sm">
-                  <span className="font-medium">{budget.occasion_type}:</span> ${(budget.min_cents / 100).toFixed(0)}–$
-                  {(budget.max_cents / 100).toFixed(0)}
-                </p>
+                <div key={budget.id} className="flex items-center justify-between text-sm">
+                  <p>
+                    <span className="font-medium">{budget.occasion_type}:</span> ${(budget.min_cents / 100).toFixed(0)}
+                    –${(budget.max_cents / 100).toFixed(0)}
+                  </p>
+                  <DeleteBudgetButton personId={id} budgetId={budget.id} />
+                </div>
               ))}
             </div>
           )}
@@ -124,12 +137,15 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
           {gifts.length > 0 && (
             <div className="flex flex-col gap-2">
               {gifts.map((gift) => (
-                <div key={gift.id} className="text-sm">
-                  <p className="font-medium">{gift.description}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {gift.occasion_type} · {gift.occasion_date}
-                    {gift.reaction && ` · ${gift.reaction.replace("_", " ")}`}
-                  </p>
+                <div key={gift.id} className="flex items-start justify-between gap-2 text-sm">
+                  <div>
+                    <p className="font-medium">{gift.description}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {gift.occasion_type} · {gift.occasion_date}
+                      {gift.reaction && ` · ${gift.reaction.replace("_", " ")}`}
+                    </p>
+                  </div>
+                  <DeleteGiftButton personId={id} giftId={gift.id} />
                 </div>
               ))}
             </div>

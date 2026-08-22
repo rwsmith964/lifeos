@@ -6,6 +6,7 @@ import { listCustodyBlocksForHouseholdInRange, listEventsInRange } from "@/lib/d
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { DeleteCalendarItemButton } from "./delete-item-button";
 
 // Section 12.11 / 12.12: mobile-first single column favors an agenda list
 // over a month grid — a full calendar-grid component is a reasonable v1
@@ -26,6 +27,7 @@ export default async function CalendarPage() {
   const items = [
     ...events.map((e) => ({
       id: e.id,
+      kind: "event" as const,
       startsAt: new Date(e.starts_at),
       title: e.title,
       subtitle: e.event_type,
@@ -33,6 +35,7 @@ export default async function CalendarPage() {
     })),
     ...custodyBlocks.map((c) => ({
       id: c.id,
+      kind: "custody" as const,
       startsAt: new Date(c.starts_at),
       title: `Custody: ${c.block_type}`,
       subtitle: "custody",
@@ -79,7 +82,10 @@ export default async function CalendarPage() {
                       {item.allDay ? "All day" : format(item.startsAt, "h:mm a")}
                     </p>
                   </div>
-                  <Badge variant="outline">{item.subtitle}</Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline">{item.subtitle}</Badge>
+                    <DeleteCalendarItemButton id={item.id} kind={item.kind} />
+                  </div>
                 </CardContent>
               </Card>
             ))}

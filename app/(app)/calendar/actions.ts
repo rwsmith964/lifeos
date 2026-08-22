@@ -66,3 +66,15 @@ export async function createCustodyBlockAction(
   revalidatePath("/calendar");
   redirect("/calendar");
 }
+
+export async function deleteCalendarEventAction(eventId: string): Promise<void> {
+  const { supabase } = await requireHouseholdContext();
+  await calendarEventsRepo.remove(supabase, eventId);
+  revalidatePath("/calendar");
+}
+
+export async function deleteCustodyBlockAction(blockId: string): Promise<void> {
+  const { supabase } = await requireHouseholdContext();
+  await custodyBlocksRepo.remove(supabase, blockId);
+  revalidatePath("/calendar");
+}

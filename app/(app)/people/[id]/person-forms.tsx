@@ -1,12 +1,16 @@
 "use client";
 
 import { useActionState, useTransition } from "react";
+import { X } from "lucide-react";
 import {
   addInterestAction,
   addBudgetAction,
   recordGiftAction,
   setCadenceAction,
   logInteractionAction,
+  deleteInterestAction,
+  deleteBudgetAction,
+  deleteGiftAction,
   type SimpleFormState,
 } from "./actions";
 import { Button } from "@/components/ui/button";
@@ -141,6 +145,51 @@ export function LogInteractionButton({ personId }: { personId: string }) {
       onClick={() => startTransition(() => logInteractionAction(personId))}
     >
       Log contact today
+    </Button>
+  );
+}
+
+export function DeleteInterestButton({ personId, interestId }: { personId: string; interestId: string }) {
+  const [pending, startTransition] = useTransition();
+  return (
+    <button
+      type="button"
+      aria-label="Remove interest"
+      disabled={pending}
+      className="ml-1 inline-flex items-center align-middle text-muted-foreground hover:text-destructive disabled:opacity-50"
+      onClick={() => startTransition(() => deleteInterestAction(personId, interestId))}
+    >
+      <X className="size-3" />
+    </button>
+  );
+}
+
+export function DeleteBudgetButton({ personId, budgetId }: { personId: string; budgetId: string }) {
+  const [pending, startTransition] = useTransition();
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="ghost"
+      disabled={pending}
+      onClick={() => startTransition(() => deleteBudgetAction(personId, budgetId))}
+    >
+      Remove
+    </Button>
+  );
+}
+
+export function DeleteGiftButton({ personId, giftId }: { personId: string; giftId: string }) {
+  const [pending, startTransition] = useTransition();
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="ghost"
+      disabled={pending}
+      onClick={() => startTransition(() => deleteGiftAction(personId, giftId))}
+    >
+      Remove
     </Button>
   );
 }

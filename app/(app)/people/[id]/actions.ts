@@ -154,6 +154,24 @@ export async function updatePersonAction(
   redirect(`/people/${personId}`);
 }
 
+export async function deleteInterestAction(personId: string, interestId: string): Promise<void> {
+  const { supabase } = await requireHouseholdContext();
+  await personInterestsRepo.remove(supabase, interestId);
+  revalidatePath(`/people/${personId}`);
+}
+
+export async function deleteBudgetAction(personId: string, budgetId: string): Promise<void> {
+  const { supabase } = await requireHouseholdContext();
+  await personGiftBudgetsRepo.remove(supabase, budgetId);
+  revalidatePath(`/people/${personId}`);
+}
+
+export async function deleteGiftAction(personId: string, giftId: string): Promise<void> {
+  const { supabase } = await requireHouseholdContext();
+  await giftsRepo.remove(supabase, giftId);
+  revalidatePath(`/people/${personId}`);
+}
+
 export async function archivePersonAction(personId: string): Promise<void> {
   const { supabase, household } = await requireHouseholdContext();
 
