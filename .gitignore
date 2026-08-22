@@ -44,3 +44,5 @@ next-env.d.ts
 # supabase local dev
 /supabase/.branches
 /supabase/.temp
+
+.vercel

@@ -132,6 +132,14 @@ Log of non-obvious autonomous decisions made during the LifeOS build, per Sectio
 
 ---
 
+## D-027 | 2026-08-22 | Brief cron downgraded from hourly to once-daily for Vercel Hobby-tier deployment
+**Context:** Deploying to Vercel (Richard's free Hobby-tier account) failed outright: `vercel.json`'s brief cron was `0 * * * *` (hourly, by design — see the route's own comment, D-013-adjacent reasoning about per-household timezone precision), and Hobby accounts are restricted to at most one cron firing per day per job.
+**Decision:** Changed the brief cron to `0 13 * * *` (once daily, ~6am Pacific during daylight saving). The route handler's per-household timezone-matching logic is unchanged — it still only generates a brief when it's that household's configured `brief_time` in their own timezone — it just gets one chance a day to catch that instead of 24. Documented the resulting precision loss (up to ~1 hour of drift across DST, and imprecise for households outside Pacific time) directly in the route's comment, along with the one-line fix (`0 * * * *`) for whenever the project is on Vercel Pro.
+**Rationale:** This is a hosting-platform constraint discovered only at actual deploy time — exactly the kind of thing no amount of code review would surface. Downgrading the cron frequency is the correct fix for a free-tier deployment; the alternative (asking Richard to pay for Pro before ever seeing the app live) is a worse trade for a first look at a v1 product.
+**Reversibility:** Cheap — one line in `vercel.json`, no application code changes.
+
+---
+
 ## D-023 | 2026-08-21 | Fixed a real privacy bug: weekend planner wasn't redacting child names before the AI call
 **Context:** While auditing the codebase for more unblocked work, grepped every use of `person.full_name` in `lib/` against docs/privacy.md's rule that every AI feature must build its person-facing context through `lib/ai/context.ts`'s child-token map. `lib/planner/generate.ts`'s `labelPeople()` helper — used to label `overdueCompanionLabels` fed into the weekend-plan AI prompt — used `person.full_name` directly, with no token substitution. `user_activities.preferred_companions` has no constraint against listing a child (a parent's own kid is a perfectly normal fishing/hiking companion), so this was a real path for a child's real name to reach the Anthropic API when the gift-suggestion and brief engines both correctly redact it.
 **Decision:** Fixed: `generate.ts` now builds a `ChildTokenMap` from the full household roster once per call, `labelPeople()` takes and uses it, and the AI response (or the template-fallback content, which was built from the same tokenized labels) is restored to real names before rendering/storing — the same pattern already used in `lib/gifts/suggest.ts` and `lib/brief/generate.ts`.

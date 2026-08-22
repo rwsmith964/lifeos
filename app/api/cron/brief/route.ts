@@ -1,10 +1,18 @@
-// Daily brief cron (Section 10.5). Scheduled hourly rather than once at a
-// fixed UTC time — households.brief_time + the owner's users.timezone are
-// per-household, and Vercel Cron schedules are UTC-only, so an hourly tick
-// that checks "is it this household's brief_time right now, in their own
-// timezone" is what actually makes "default 6:00 AM in the user's
-// timezone" correct once this is multi-tenant (Section 2.4), not just
-// correct for one hardcoded UTC offset today.
+// Daily brief cron (Section 10.5). The route logic checks "is it this
+// household's brief_time right now, in their own timezone" — designed to
+// run hourly (`0 * * * *`) so households.brief_time + the owner's
+// users.timezone are honored per-household once this is multi-tenant
+// (Section 2.4), not just correct for one hardcoded UTC offset.
+//
+// vercel.json currently schedules this once daily instead: Vercel's free
+// Hobby tier only allows daily cron jobs, and deploying with an hourly
+// schedule is rejected outright at deploy time. A single fixed-UTC-hour
+// trigger can only approximate one timezone's local morning (off by up to
+// an hour across daylight saving, and wrong for any household outside
+// that timezone) — the per-household check below still runs correctly
+// each time it fires, it just fires less often. Upgrading to Vercel Pro
+// and changing vercel.json's brief schedule back to `0 * * * *` restores
+// full precision without touching this file.
 import { NextResponse } from "next/server";
 import { formatInTimeZone } from "date-fns-tz";
 import { generateDailyBrief } from "@/lib/brief/generate";
