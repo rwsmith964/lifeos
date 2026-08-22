@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CalendarDays, Gift, Home, Settings, Users } from "lucide-react";
+import { CalendarDays, Compass, Gift, Home, Settings, Users } from "lucide-react";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { signOut } from "../(auth)/actions";
 import { APP_NAME } from "@/lib/constants";
@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { href: "/people", label: "People", icon: Users },
   { href: "/gifts", label: "Gifts", icon: Gift },
   { href: "/calendar", label: "Calendar", icon: CalendarDays },
+  { href: "/activities", label: "Activities", icon: Compass },
   { href: "/settings", label: "Settings", icon: Settings },
 ] as const;
 

@@ -1,0 +1,123 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { requireHouseholdContext } from "@/lib/auth/session";
+import { personInterestsRepo, personGiftBudgetsRepo } from "@/lib/db/repositories/people";
+import { giftsRepo } from "@/lib/db/repositories/gifts";
+import { contactCadencesRepo, interactionsRepo, getCadenceForPerson } from "@/lib/db/repositories/contact";
+import {
+  personInterestInsertSchema,
+  personGiftBudgetInsertSchema,
+  giftInsertSchema,
+  contactCadenceInsertSchema,
+  interactionInsertSchema,
+} from "@/lib/db/schemas";
+import { applyGiftFeedback } from "@/lib/gifts/feedback";
+
+export interface SimpleFormState {
+  error: string | null;
+}
+
+export async function addInterestAction(
+  personId: string,
+  _prevState: SimpleFormState,
+  formData: FormData
+): Promise<SimpleFormState> {
+  const { supabase } = await requireHouseholdContext();
+
+  const parsed = personInterestInsertSchema.safeParse({
+    person_id: personId,
+    interest: String(formData.get("interest") ?? ""),
+    category: String(formData.get("category") ?? "").trim() || null,
+    strength: String(formData.get("strength") ?? "casual"),
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
+
+  await personInterestsRepo.create(supabase, parsed.data);
+  revalidatePath(`/people/${personId}`);
+  return { error: null };
+}
+
+export async function addBudgetAction(
+  personId: string,
+  _prevState: SimpleFormState,
+  formData: FormData
+): Promise<SimpleFormState> {
+  const { supabase } = await requireHouseholdContext();
+
+  const parsed = personGiftBudgetInsertSchema.safeParse({
+    person_id: personId,
+    occasion_type: String(formData.get("occasionType") ?? "default"),
+    min_cents: Math.round(Number(formData.get("minDollars") ?? 0) * 100),
+    max_cents: Math.round(Number(formData.get("maxDollars") ?? 0) * 100),
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
+
+  await personGiftBudgetsRepo.create(supabase, parsed.data);
+  revalidatePath(`/people/${personId}`);
+  return { error: null };
+}
+
+export async function recordGiftAction(
+  personId: string,
+  _prevState: SimpleFormState,
+  formData: FormData
+): Promise<SimpleFormState> {
+  const { supabase } = await requireHouseholdContext();
+
+  const reaction = String(formData.get("reaction") ?? "");
+  const parsed = giftInsertSchema.safeParse({
+    person_id: personId,
+    occasion_type: String(formData.get("occasionType") ?? "just_because"),
+    occasion_date: String(formData.get("occasionDate") ?? ""),
+    description: String(formData.get("description") ?? "").trim(),
+    category: String(formData.get("category") ?? "").trim() || null,
+    cost_cents: formData.get("costDollars") ? Math.round(Number(formData.get("costDollars")) * 100) : null,
+    status: "given",
+    reaction: reaction || null,
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
+
+  const gift = await giftsRepo.create(supabase, parsed.data);
+  if (gift.reaction) {
+    await applyGiftFeedback(supabase, gift.id);
+  }
+  revalidatePath(`/people/${personId}`);
+  return { error: null };
+}
+
+export async function setCadenceAction(
+  personId: string,
+  _prevState: SimpleFormState,
+  formData: FormData
+): Promise<SimpleFormState> {
+  const { supabase } = await requireHouseholdContext();
+
+  const targetDays = Number(formData.get("targetIntervalDays") ?? 30);
+  const parsed = contactCadenceInsertSchema.safeParse({
+    person_id: personId,
+    target_interval_days: targetDays,
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
+
+  const existing = await getCadenceForPerson(supabase, personId);
+  if (existing) {
+    await contactCadencesRepo.update(supabase, existing.id, { target_interval_days: targetDays });
+  } else {
+    await contactCadencesRepo.create(supabase, parsed.data);
+  }
+  revalidatePath(`/people/${personId}`);
+  return { error: null };
+}
+
+export async function logInteractionAction(personId: string): Promise<void> {
+  const { supabase } = await requireHouseholdContext();
+
+  const parsed = interactionInsertSchema.parse({
+    person_id: personId,
+    interaction_type: "in_person",
+    occurred_on: new Date().toISOString().slice(0, 10),
+  });
+  await interactionsRepo.create(supabase, parsed);
+  revalidatePath(`/people/${personId}`);
+}

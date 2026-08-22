@@ -9,6 +9,7 @@ import { evaluateCadence } from "@/lib/contact/cadence";
 import { estimateAgeYears } from "@/lib/ai/prompts/gift-suggestion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { AddBudgetForm, AddInterestForm, CadenceForm, LogInteractionButton, RecordGiftForm } from "./person-forms";
 
 export default async function PersonDetailPage({ params }: PageProps<"/people/[id]">) {
   const { id } = await params;
@@ -38,74 +39,94 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
         </p>
       </div>
 
-      {cadenceStatus && (
+      {person.relationship_type !== "self" && (
         <Card>
-          <CardContent className="text-sm">
-            {cadenceStatus.isOverdue ? (
-              <span className="text-destructive">
-                Overdue —{" "}
-                {cadenceStatus.daysSinceLastContact != null
-                  ? `${cadenceStatus.daysSinceLastContact} days since last contact`
-                  : "no contact on record"}
-              </span>
+          <CardHeader>
+            <CardTitle className="text-sm">Contact cadence</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            {cadenceStatus ? (
+              cadenceStatus.isOverdue ? (
+                <span className="text-sm text-destructive">
+                  Overdue —{" "}
+                  {cadenceStatus.daysSinceLastContact != null
+                    ? `${cadenceStatus.daysSinceLastContact} days since last contact`
+                    : "no contact on record"}
+                </span>
+              ) : (
+                <span className="text-sm text-muted-foreground">
+                  In touch — {cadenceStatus.daysSinceLastContact} days since last contact
+                </span>
+              )
             ) : (
-              <span className="text-muted-foreground">
-                In touch — {cadenceStatus.daysSinceLastContact} days since last contact
-              </span>
+              <span className="text-sm text-muted-foreground">No cadence tracked yet.</span>
             )}
+            <div className="flex flex-wrap items-center gap-2">
+              <CadenceForm personId={id} currentDays={cadence?.target_interval_days ?? null} />
+              <LogInteractionButton personId={id} />
+            </div>
           </CardContent>
         </Card>
       )}
 
-      {interests.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Interests</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-wrap gap-2">
-            {interests.map((interest) => (
-              <Badge key={interest.id} variant={interest.strength === "passionate" ? "default" : "secondary"}>
-                {interest.interest}
-              </Badge>
-            ))}
-          </CardContent>
-        </Card>
-      )}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">Interests</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          {interests.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {interests.map((interest) => (
+                <Badge key={interest.id} variant={interest.strength === "passionate" ? "default" : "secondary"}>
+                  {interest.interest}
+                </Badge>
+              ))}
+            </div>
+          )}
+          <AddInterestForm personId={id} />
+        </CardContent>
+      </Card>
 
-      {budgets.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Gift budgets</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-1">
-            {budgets.map((budget) => (
-              <p key={budget.id} className="text-sm">
-                <span className="font-medium">{budget.occasion_type}:</span> ${(budget.min_cents / 100).toFixed(0)}–$
-                {(budget.max_cents / 100).toFixed(0)}
-              </p>
-            ))}
-          </CardContent>
-        </Card>
-      )}
-
-      {gifts.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Gift history</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2">
-            {gifts.map((gift) => (
-              <div key={gift.id} className="text-sm">
-                <p className="font-medium">{gift.description}</p>
-                <p className="text-xs text-muted-foreground">
-                  {gift.occasion_type} · {gift.occasion_date}
-                  {gift.reaction && ` · ${gift.reaction.replace("_", " ")}`}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">Gift budgets</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          {budgets.length > 0 && (
+            <div className="flex flex-col gap-1">
+              {budgets.map((budget) => (
+                <p key={budget.id} className="text-sm">
+                  <span className="font-medium">{budget.occasion_type}:</span> ${(budget.min_cents / 100).toFixed(0)}–$
+                  {(budget.max_cents / 100).toFixed(0)}
                 </p>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
+              ))}
+            </div>
+          )}
+          <AddBudgetForm personId={id} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">Gift history</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          {gifts.length > 0 && (
+            <div className="flex flex-col gap-2">
+              {gifts.map((gift) => (
+                <div key={gift.id} className="text-sm">
+                  <p className="font-medium">{gift.description}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {gift.occasion_type} · {gift.occasion_date}
+                    {gift.reaction && ` · ${gift.reaction.replace("_", " ")}`}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+          <RecordGiftForm personId={id} />
+        </CardContent>
+      </Card>
 
       {person.notes && (
         <Card>

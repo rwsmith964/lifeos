@@ -82,25 +82,29 @@ same interface (Sections 10.3/10.4 — intentionally not built further; SMS
 timing is Q-003). Cron routes for brief/gift-scan/weekend-plan, `CRON_SECRET`
 protected, plus `pnpm job:*` scripts for local manual triggering.
 
-### Phase 7 — UI: mostly done — see the gap below
+### Phase 7 — UI: done — see the remaining gap below
 Auth (password + magic link), onboarding, the mobile-first app shell with
-bottom nav, and five screens: brief (renders the AI's structured content
+bottom nav, and six screens: brief (renders the AI's structured content
 into cards), people list + detail + "add person," gifts (suggestion list
 with save/dismiss), calendar (14-day agenda list, not a month grid — see
-that page's own comment for why), settings (household budget defaults,
-brief time, timezone).
+that page's own comment for why), activities (feeds the weekend planner's
+scoring), settings (household budget defaults, brief time, timezone). A
+fresh signup can now build out a real household entirely through the UI:
+add people, add interests/budgets/gift history/contact cadence per person
+(all on the person detail screen), add activities with a location, add
+calendar events. This closes what was originally a gap noted after the
+first UI pass (person detail was read-only) — see the commit history if
+you want the before/after.
 
-**Gap:** the person detail screen is read-only for interests, gift budgets,
-gift history, and contact cadence — there's no UI to *add or edit* an
-interest, a budget, a gift, an activity, a calendar event, or a custody
-block. Everything the UI can't create yet is fully supported by the
-repository/Zod layer underneath (`lib/db/repositories/*.ts`,
-`lib/db/schemas.ts`) — it's specifically the form screens that ran out of
-session time, not the data layer. The seeded demo household is the only
-way to see these populated right now; a fresh signup gets a household with
-just yourself in it and no way yet to add anyone else's interests, gifts,
-or activities beyond the bare person record. This is the single biggest
-thing to build next if picking this project back up.
+**Remaining gap:** no UI to create or edit a `custody_blocks` row. The data
+model and RLS are fully built (Section 6.4/9), and seed data demonstrates
+the alternating-weekend pattern, but there's no form for it — custody
+scheduling is inherently a co-parent-coordination feature and v1 has no
+co-parent login (Section 6.4, by design), so building a solo-parent-facing
+custody CRUD form felt lower-value than the forms above. Also not built:
+editing an existing person's fields (only create), and no in-UI archive
+action for a person (the repository supports `is_archived`, no button
+calls it yet).
 
 ### Phase 8 — Polish and documentation: done
 This file, `README.md`, `docs/privacy.md`, `docs/ai-costs.md`,
@@ -124,11 +128,11 @@ a live Supabase instance to test meaningfully.
 
 1. `supabase start && supabase db reset && pnpm db:test` — verify the schema
    and RLS suite actually work as written.
-2. Build the missing create/edit forms (interests, budgets, activities +
-   locations, manual calendar events, custody blocks) — the Phase 7 gap
-   above.
-3. Work through `QUESTIONS.md`, highest priority first.
-4. Run `pnpm job:gift-scan`, `pnpm job:brief`, `pnpm job:weekend-plan`
+2. Run `pnpm job:gift-scan`, `pnpm job:brief`, `pnpm job:weekend-plan`
    against the seeded household and read the output — the fastest way to
    see whether the AI-generated content is actually good, which no amount
    of unit testing can tell you.
+3. Work through `QUESTIONS.md`, highest priority first.
+4. Person editing (only create exists), an archive-person action, and a
+   custody-block form if/when co-parent coordination becomes a real v1
+   need — the smaller items noted in the Phase 7 gap above.

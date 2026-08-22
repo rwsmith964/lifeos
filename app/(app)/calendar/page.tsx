@@ -1,8 +1,11 @@
+import Link from "next/link";
+import { Plus } from "lucide-react";
 import { addDays, format, startOfDay } from "date-fns";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { listCustodyBlocksForHouseholdInRange, listEventsInRange } from "@/lib/db/repositories/calendar";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
 // Section 12.11 / 12.12: mobile-first single column favors an agenda list
 // over a month grid — a full calendar-grid component is a reasonable v1
@@ -45,7 +48,14 @@ export default async function CalendarPage() {
 
   return (
     <div className="flex flex-col gap-4 p-4">
-      <h1 className="text-xl font-semibold">Next {LOOKAHEAD_DAYS} days</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-semibold">Next {LOOKAHEAD_DAYS} days</h1>
+        <Button asChild size="sm">
+          <Link href="/calendar/new">
+            <Plus className="size-4" /> Add
+          </Link>
+        </Button>
+      </div>
 
       {items.length === 0 ? (
         <Card>
