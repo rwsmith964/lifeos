@@ -20,7 +20,7 @@ Sign in as the seeded demo user (`richard@example.com` /
 and onboard your own.
 
 Verification commands: `pnpm typecheck`, `pnpm lint`, `pnpm test`
-(206 tests), `pnpm build` (verified passing). `pnpm test:rls` runs just the
+(212 tests), `pnpm build` (verified passing). `pnpm test:rls` runs just the
 real end-to-end RLS suite (see below) — takes about 3 seconds, no setup
 required. `pnpm db:test` runs the separate pgTAP suite against a real
 Supabase project (needs `supabase start`) — **written but not executed**,
@@ -34,7 +34,7 @@ authenticated app flow through a real hosted API (sign up → onboard → see
 real data in the browser) have never run. **But the schema, RLS policies,
 and seed data themselves have now actually been executed and verified** —
 see the next section — which was the part of that gap that mattered most.
-Everything that doesn't need a database at all — 206 unit tests, the full
+Everything that doesn't need a database at all — 212 unit tests, the full
 TypeScript build, a production `next build` — passes and was actually run.
 The UI was smoke-tested live (dev server + browser) for the unauthenticated
 pages (`/login`, `/signup`); protected routes were confirmed to fail with
@@ -89,14 +89,16 @@ if unwanted, or ask and it'll be removed — left in place rather than guess.
 Full schema across 23 tables (`supabase/migrations/`, 18 files), RLS on
 every table, a cross-household isolation pgTAP suite for real Supabase-CLI
 parity (`supabase/tests/database/`, still unexecuted) AND a real end-to-end
-PGlite RLS suite that has actually run and passed (`supabase/tests/pglite/`,
-D-026), idempotent seed data (1 household, 12 people incl. 2 children, ~2yr
+PGlite RLS suite (19 assertions across 9 tables) that has actually run and
+passed (`supabase/tests/pglite/`, D-026), idempotent seed data (1 household,
+12 people incl. 2 children, ~2yr
 gift history, 4 activities+locations, a month of events, alternating
 custody) — the seed data itself has now loaded successfully too.
 
 ### Phase 2 — Data layer: done
-Typed repository + Zod schema per table (`lib/db/`). 91 of the 193 tests
-are in this layer and `lib/gifts`/`lib/ai` combined.
+Typed repository + Zod schema per table (`lib/db/`). 91 of the original 193
+unit tests are in this layer and `lib/gifts`/`lib/ai` combined (212 total
+now, after the PGlite RLS suite landed — see Phase 1).
 
 ### Phase 3 — Gift intelligence engine: done
 Occasion scan, order-by-date math (`lib/gifts/leadtime.ts` — the spec's own
@@ -165,7 +167,7 @@ deduplicated, sorted by priority).
 
 ## Test coverage snapshot
 
-206 passing tests across 27 files. Everything in Section 12.7's explicit
+212 passing tests across 27 files. Everything in Section 12.7's explicit
 list is covered: lead-time math, activity scoring, cadence-overdue
 calculation, travel-time fallback, and RLS policies — the last of those
 now genuinely executed and passing (D-026), not just written. Coverage

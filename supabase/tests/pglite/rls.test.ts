@@ -25,6 +25,7 @@ const CHILD_PERSON = "90000000-0000-0000-0000-000000000021";
 const PRIVATE_EVENT = "80000000-0000-0000-0000-000000000002"; // "Team standup"
 const HOUSEHOLD_EVENT = "80000000-0000-0000-0000-000000000001"; // "Golf with Mike"
 const SHARED_EVENT = "80000000-0000-0000-0000-000000000008"; // "Kids handoff to Jennifer"
+const DAVE_PERSON = "30000000-0000-0000-0000-000000000005"; // seeded, friend
 
 describe("RLS end-to-end (PGlite, real migrations + real seed data)", () => {
   let db: PGlite;
@@ -196,6 +197,120 @@ describe("RLS end-to-end (PGlite, real migrations + real seed data)", () => {
 
       const giftsLeak = await asUser(db, OUTSIDER_USER, () => db.query("select count(*)::int as n from gifts;"));
       expect((giftsLeak.rows[0] as { n: number }).n).toBe(0);
+    });
+  });
+
+  describe("person_interests and person_gift_budgets (household-readable, D-009)", () => {
+    it("Richard sees Dave's seeded interests and budgets; the outsider sees none", async () => {
+      const richardInterests = await asUser(db, RICHARD_USER, () =>
+        db.query(`select count(*)::int as n from person_interests where person_id = '${DAVE_PERSON}';`)
+      );
+      expect((richardInterests.rows[0] as { n: number }).n).toBeGreaterThan(0);
+
+      const outsiderInterests = await asUser(db, OUTSIDER_USER, () =>
+        db.query(`select count(*)::int as n from person_interests where person_id = '${DAVE_PERSON}';`)
+      );
+      expect((outsiderInterests.rows[0] as { n: number }).n).toBe(0);
+
+      const outsiderBudgets = await asUser(db, OUTSIDER_USER, () =>
+        db.query("select count(*)::int as n from person_gift_budgets;")
+      );
+      expect((outsiderBudgets.rows[0] as { n: number }).n).toBe(0);
+    });
+
+    it("a child-role member can read interests/budgets but only owner/adult can write them", async () => {
+      const childRead = await asUser(db, CHILD_USER, () =>
+        db.query(`select count(*)::int as n from person_interests where person_id = '${DAVE_PERSON}';`)
+      );
+      expect((childRead.rows[0] as { n: number }).n).toBeGreaterThan(0);
+
+      await expect(
+        asUser(db, CHILD_USER, () =>
+          db.exec(
+            `insert into person_interests (person_id, interest) values ('${DAVE_PERSON}', 'child-role-should-not-be-able-to-add-this');`
+          )
+        )
+      ).rejects.toThrow();
+    });
+  });
+
+  describe("user_activities and activity_locations (activity_household_id helper)", () => {
+    it("Richard sees his seeded activities and their locations; the outsider sees none", async () => {
+      const richardActivities = await asUser(db, RICHARD_USER, () =>
+        db.query("select count(*)::int as n from user_activities;")
+      );
+      expect((richardActivities.rows[0] as { n: number }).n).toBeGreaterThan(0);
+      const richardLocations = await asUser(db, RICHARD_USER, () =>
+        db.query("select count(*)::int as n from activity_locations;")
+      );
+      expect((richardLocations.rows[0] as { n: number }).n).toBeGreaterThan(0);
+
+      const outsiderActivities = await asUser(db, OUTSIDER_USER, () =>
+        db.query("select count(*)::int as n from user_activities;")
+      );
+      expect((outsiderActivities.rows[0] as { n: number }).n).toBe(0);
+      const outsiderLocations = await asUser(db, OUTSIDER_USER, () =>
+        db.query("select count(*)::int as n from activity_locations;")
+      );
+      expect((outsiderLocations.rows[0] as { n: number }).n).toBe(0);
+    });
+  });
+
+  describe("ai_usage_log (owner/adult only, D-012 cost-visibility)", () => {
+    it("a child-role member cannot read ai_usage_log even though they can read most other household data", async () => {
+      await asServiceRole(db, () =>
+        db.exec(
+          `insert into ai_usage_log (household_id, feature, model, input_tokens, output_tokens, estimated_cost_cents) values ('${SEEDED_HOUSEHOLD}', 'daily_brief', 'claude-sonnet-4-6', 100, 50, 1.5);`
+        )
+      );
+
+      const richardSees = await asUser(db, RICHARD_USER, () =>
+        db.query("select count(*)::int as n from ai_usage_log;")
+      );
+      expect((richardSees.rows[0] as { n: number }).n).toBeGreaterThan(0);
+
+      const childSees = await asUser(db, CHILD_USER, () => db.query("select count(*)::int as n from ai_usage_log;"));
+      expect((childSees.rows[0] as { n: number }).n).toBe(0);
+    });
+  });
+
+  describe("notifications (recipient-only, not household-wide)", () => {
+    it("only the addressed person can read their own notification, not another household member", async () => {
+      await asServiceRole(db, () =>
+        db.exec(
+          `insert into notifications (household_id, person_id, notification_type, title, body) values ('${SEEDED_HOUSEHOLD}', '${CHILD_PERSON}', 'daily_brief', 'Test', 'Test body');`
+        )
+      );
+
+      const childSees = await asUser(db, CHILD_USER, () =>
+        db.query("select count(*)::int as n from notifications;")
+      );
+      expect((childSees.rows[0] as { n: number }).n).toBe(1);
+
+      const richardSees = await asUser(db, RICHARD_USER, () =>
+        db.query("select count(*)::int as n from notifications;")
+      );
+      expect((richardSees.rows[0] as { n: number }).n, "Richard is a different person, not the addressee").toBe(0);
+    });
+  });
+
+  describe("weekend_plans (household-readable)", () => {
+    it("household members see it, the outsider does not", async () => {
+      await asServiceRole(db, () =>
+        db.exec(
+          `insert into weekend_plans (household_id, for_date, content_json, content_markdown, model_version) values ('${SEEDED_HOUSEHOLD}', '2026-08-22', '{}', 'test plan', 'test');`
+        )
+      );
+
+      const richardSees = await asUser(db, RICHARD_USER, () =>
+        db.query("select count(*)::int as n from weekend_plans;")
+      );
+      expect((richardSees.rows[0] as { n: number }).n).toBe(1);
+
+      const outsiderSees = await asUser(db, OUTSIDER_USER, () =>
+        db.query("select count(*)::int as n from weekend_plans;")
+      );
+      expect((outsiderSees.rows[0] as { n: number }).n).toBe(0);
     });
   });
 });
