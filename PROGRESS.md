@@ -38,6 +38,20 @@ were confirmed to fail with the intended clear error rather than crash
 silently. Run `supabase db reset && pnpm db:test` as the first thing you do
 with this repo — that's the highest-value unexecuted verification.
 
+**Additional verification performed without a live database:** every migration,
+`supabase/seed.sql`, and `supabase/tests/database/rls_isolation.test.sql`
+was parsed with `libpg-query` (the actual Postgres grammar, no live
+connection needed) — all 19 files are syntactically valid SQL, zero parse
+errors. Also manually cross-referenced every custom SQL function
+(`is_household_member`, `household_role`, `person_is_in_my_household`,
+etc.) against every call site across all 17 migrations to confirm each is
+defined before its first use and called with the right argument count —
+no orphaned or misspelled function calls. This doesn't catch everything a
+live run would (catalog-level errors like a wrong column name, or actual
+RLS *behavior* under real query plans), but it rules out the most common
+failure mode for hand-written, never-executed SQL: a typo or malformed
+statement that would fail on the very first `supabase db reset`.
+
 **A follow-up attempt at this without Docker:** installed PostgreSQL 17
 natively via `winget` (`PostgreSQL.PostgreSQL.17`) to try hand-bootstrapping
 a Supabase-compatible schema (an `auth` schema/roles shim) and run the real

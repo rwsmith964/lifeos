@@ -152,6 +152,14 @@ Log of non-obvious autonomous decisions made during the LifeOS build, per Sectio
 
 ---
 
+## D-025 | 2026-08-21 | Offline SQL syntax verification via `libpg-query`, to partially de-risk D-002
+**Context:** D-002 established that every migration, `seed.sql`, and the RLS test suite are real but unexecuted — no Docker/Supabase CLI available. That's the single biggest unverified surface in the build. Wanted a way to reduce that risk without a live Postgres.
+**Decision:** Installed `libpg-query` (the actual Postgres parser grammar, compiled to run standalone with no database connection) in an isolated scratchpad npm project — not added to this repo's `package.json`, since it's a one-time verification tool, not a runtime or dev dependency of the app. Parsed all 17 migrations, `seed.sql`, and the RLS test file: zero syntax errors. Separately, manually cross-referenced every custom SQL function definition against every call site across all migrations (11 functions, ~90 call sites) to confirm no orphaned or misspelled references and correct argument counts.
+**Rationale:** Parsing isn't the same as running — it can't catch a wrong column name, a real RLS policy logic bug, or anything that needs the actual catalog/query planner. But hand-written SQL that's never executed most commonly fails on a typo or malformed statement, and that whole failure class is now ruled out. This meaningfully raises confidence in the unexecuted SQL without requiring the Docker/Postgres access this session doesn't have.
+**Reversibility:** N/A — a verification step, not a code change. The scratchpad tool isn't part of the repo.
+
+---
+
 ## D-015 | 2026-08-20 | Added `gift_suggestions.category` (migration `20260820000015`)
 **Context:** Section 7.3's output requirement explicitly lists "category (used to look up shipping window)" as one of the three required fields per suggestion, but Section 4.2's `gift_suggestions` table list has no `category` column (unlike `gifts`, which has one).
 **Decision:** Added it via a new migration rather than editing the already-committed `20260820000008_gifts_and_suggestions.sql` (Section 5: never edit a committed migration).
