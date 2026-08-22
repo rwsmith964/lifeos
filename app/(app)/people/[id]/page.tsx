@@ -19,6 +19,7 @@ import {
   DeleteBudgetButton,
   DeleteGiftButton,
   DeleteInterestButton,
+  GenerateSuggestionsForm,
   LogInteractionButton,
   RecordGiftForm,
 } from "./person-forms";
@@ -128,6 +129,17 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
           <AddBudgetForm personId={id} />
         </CardContent>
       </Card>
+
+      {person.relationship_type !== "self" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Get gift ideas</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <GenerateSuggestionsForm personId={id} />
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

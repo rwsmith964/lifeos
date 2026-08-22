@@ -11,7 +11,9 @@ import {
   deleteInterestAction,
   deleteBudgetAction,
   deleteGiftAction,
+  generateSuggestionsAction,
   type SimpleFormState,
+  type GenerateSuggestionsState,
 } from "./actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -123,6 +125,38 @@ export function RecordGiftForm({ personId }: { personId: string }) {
       {state.error && <p className="text-xs text-destructive">{state.error}</p>}
       <Button type="submit" size="sm" disabled={pending}>
         Record gift
+      </Button>
+    </form>
+  );
+}
+
+const initialGenerateState: GenerateSuggestionsState = { error: null, success: false };
+
+export function GenerateSuggestionsForm({ personId }: { personId: string }) {
+  const action = generateSuggestionsAction.bind(null, personId);
+  const [state, formAction, pending] = useActionState(action, initialGenerateState);
+
+  return (
+    <form action={formAction} className="flex flex-col gap-2">
+      <div className="flex gap-2">
+        <select
+          name="occasionType"
+          defaultValue="just_because"
+          aria-label="Occasion"
+          className="border-input h-8 flex-1 rounded-md border bg-transparent px-2 text-sm"
+        >
+          {OCCASION_OPTIONS.map((o) => (
+            <option key={o} value={o}>
+              {o}
+            </option>
+          ))}
+        </select>
+        <Input name="occasionDate" type="date" required className="h-8" aria-label="Occasion date" />
+      </div>
+      {state.error && <p className="text-xs text-destructive">{state.error}</p>}
+      {state.success && <p className="text-xs text-muted-foreground">Done — see the Gifts tab.</p>}
+      <Button type="submit" size="sm" variant="secondary" disabled={pending}>
+        {pending ? "Thinking…" : "Get gift ideas"}
       </Button>
     </form>
   );

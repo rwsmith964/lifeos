@@ -14,9 +14,45 @@ import {
   interactionInsertSchema,
 } from "@/lib/db/schemas";
 import { applyGiftFeedback } from "@/lib/gifts/feedback";
+import { generateGiftSuggestions } from "@/lib/gifts/suggest";
+import type { OccasionType } from "@/lib/db/database.types";
 
 export interface SimpleFormState {
   error: string | null;
+}
+
+export interface GenerateSuggestionsState {
+  error: string | null;
+  success: boolean;
+}
+
+export async function generateSuggestionsAction(
+  personId: string,
+  _prevState: GenerateSuggestionsState,
+  formData: FormData
+): Promise<GenerateSuggestionsState> {
+  const { supabase, household } = await requireHouseholdContext();
+
+  const occasionType = String(formData.get("occasionType") ?? "just_because") as OccasionType;
+  const occasionDateStr = String(formData.get("occasionDate") ?? "");
+  const occasionDate = occasionDateStr ? new Date(`${occasionDateStr}T00:00:00`) : new Date();
+
+  const result = await generateGiftSuggestions(supabase, {
+    householdId: household.id,
+    personId,
+    occasionType,
+    occasionDate,
+  });
+
+  if (result.status === "ai_unavailable" || result.status === "budget_exceeded") {
+    return { error: result.reason, success: false };
+  }
+  if (result.status === "parse_failed") {
+    return { error: "Couldn't parse a suggestion this time — try again.", success: false };
+  }
+
+  revalidatePath("/gifts");
+  return { error: null, success: true };
 }
 
 export async function addInterestAction(
