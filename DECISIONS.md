@@ -116,6 +116,14 @@ Log of non-obvious autonomous decisions made during the LifeOS build, per Sectio
 
 ---
 
+## D-021 | 2026-08-21 | Richard's answers to Q-001/Q-002/Q-003 — no code changes required
+**Context:** Presented three questions at the end of the first autonomous session (QUESTIONS.md Q-001, Q-002, Q-003).
+**Decision:** Richard confirmed all three as-built defaults: ODFW stays scrape-only with no manual override field; SMS/A2P 10DLC registration is not being started yet; the product keeps the "LifeOS" placeholder name for now.
+**Rationale:** All three were already built to their now-confirmed answer (Option A/B/A respectively), so no code changed — this entry exists so the confirmation is on the record, not just the original recommendation.
+**Reversibility:** N/A — a record of an explicit answer, not a design choice.
+
+---
+
 ## D-015 | 2026-08-20 | Added `gift_suggestions.category` (migration `20260820000015`)
 **Context:** Section 7.3's output requirement explicitly lists "category (used to look up shipping window)" as one of the three required fields per suggestion, but Section 4.2's `gift_suggestions` table list has no `category` column (unlike `gifts`, which has one).
 **Decision:** Added it via a new migration rather than editing the already-committed `20260820000008_gifts_and_suggestions.sql` (Section 5: never edit a committed migration).
