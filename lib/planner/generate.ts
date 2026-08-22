@@ -22,6 +22,7 @@ import { householdsRepo, usersRepo } from "../db/repositories/households";
 import { listPeopleForHousehold, peopleRepo } from "../db/repositories/people";
 import { getWeekendPlanForDate, weekendPlansRepo } from "../db/repositories/system";
 import { getNwsForecast } from "../external/nws";
+import { getOdfwReport } from "../external/odfw";
 import { getTravelTime } from "../external/travel";
 import { getUsgsGaugeReading } from "../external/usgs";
 import { findOpenBlocks, largestOpenBlock } from "./available-blocks";
@@ -100,11 +101,14 @@ export async function generateWeekendPlan(
     const location = activity.locations[0];
     const point = location?.lat != null && location.lng != null ? { lat: location.lat, lng: location.lng } : home;
 
-    const [forecast, travel, usgs] = await Promise.all([
+    const [forecast, travel, usgs, odfw] = await Promise.all([
       getNwsForecast(client, point.lat, point.lng),
       getTravelTime(home, point, {}),
       location?.external_ids?.usgs_gauge
         ? getUsgsGaugeReading(client, location.external_ids.usgs_gauge)
+        : Promise.resolve(null),
+      location?.external_ids?.odfw_zone_url
+        ? getOdfwReport(client, location.external_ids.odfw_zone_url)
         : Promise.resolve(null),
     ]);
 
@@ -142,6 +146,19 @@ export async function generateWeekendPlan(
       weeksSinceLastProposed,
     });
 
+    const conditionParts: string[] = [];
+    if (usgs?.data) {
+      conditionParts.push(`flow ${usgs.data.flowCfs ?? "?"} cfs, gauge height ${usgs.data.gaugeHeightFt ?? "?"} ft`);
+    }
+    if (odfw?.data) {
+      // The scraped page can run to thousands of characters (see
+      // MAX_REPORT_TEXT_LENGTH in lib/external/odfw.ts) — trim what goes
+      // into the AI prompt so one activity's condition data doesn't
+      // dominate token usage across the whole weekend-plan call.
+      const ODFW_PROMPT_EXCERPT_LENGTH = 400;
+      conditionParts.push(`ODFW report: ${odfw.data.reportText.slice(0, ODFW_PROMPT_EXCERPT_LENGTH)}`);
+    }
+
     scored.push({
       activityId: activity.id,
       activityType: activity.activity_type,
@@ -149,9 +166,7 @@ export async function generateWeekendPlan(
       score: result.totalScore,
       totalScore: result.totalScore,
       weatherSummary: todayPeriod?.shortForecast ?? null,
-      conditionSummary: usgs?.data
-        ? `flow ${usgs.data.flowCfs ?? "?"} cfs, gauge height ${usgs.data.gaugeHeightFt ?? "?"} ft`
-        : null,
+      conditionSummary: conditionParts.length > 0 ? conditionParts.join(" | ") : null,
       travelMinutesEachWay: travelMinutes,
       overdueCompanionLabels,
     });

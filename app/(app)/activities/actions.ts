@@ -16,10 +16,7 @@ export async function createActivityAction(
 ): Promise<ActivityFormState> {
   const { supabase, household, selfPerson } = await requireHouseholdContext();
 
-  const preferredCompanions = String(formData.get("preferredCompanionIds") ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const preferredCompanions = formData.getAll("preferredCompanionIds").map(String).filter(Boolean);
 
   const parsed = userActivityInsertSchema.safeParse({
     household_id: household.id,
@@ -37,12 +34,19 @@ export async function createActivityAction(
 
   const locationName = String(formData.get("locationName") ?? "").trim();
   if (locationName) {
+    const externalIds: Record<string, string> = {};
+    const usgsGauge = String(formData.get("usgsGauge") ?? "").trim();
+    const odfwZoneUrl = String(formData.get("odfwZoneUrl") ?? "").trim();
+    if (usgsGauge) externalIds.usgs_gauge = usgsGauge;
+    if (odfwZoneUrl) externalIds.odfw_zone_url = odfwZoneUrl;
+
     const locationParsed = activityLocationInsertSchema.safeParse({
       user_activity_id: activity.id,
       name: locationName,
       address: String(formData.get("locationAddress") ?? "").trim() || null,
       lat: formData.get("locationLat") ? Number(formData.get("locationLat")) : null,
       lng: formData.get("locationLng") ? Number(formData.get("locationLng")) : null,
+      external_ids: externalIds,
     });
     if (locationParsed.success) {
       await activityLocationsRepo.create(supabase, locationParsed.data);

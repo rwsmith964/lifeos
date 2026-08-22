@@ -140,6 +140,14 @@ Log of non-obvious autonomous decisions made during the LifeOS build, per Sectio
 
 ---
 
+## D-024 | 2026-08-21 | Fixed two more integration gaps found by auditing Section 9 against what actually got wired up
+**Context:** Phase 4 built and unit-tested the ODFW adapter (`lib/external/odfw.ts`) and Section 9.5's companion layer depends on `user_activities.preferred_companions`, but a grep turned up that neither ever actually got connected end-to-end: `lib/planner/generate.ts` never called `getOdfwReport()` at all (USGS was wired, ODFW wasn't), and the `/activities/new` form had no field to set `preferred_companions` — meaning Section 9.5 ("the entire product thesis in one feature... do not treat it as optional polish") could only ever be exercised by directly editing seed data, never through the app.
+**Decision:** Wired `getOdfwReport()` into the weekend-plan scoring loop (only for locations with an `odfw_zone_url` in `external_ids`, report text truncated to 400 chars before it enters the AI prompt — the scraped page can run to thousands). Added a companion multi-select (checkboxes over the household's people) and `usgsGauge`/`odfwZoneUrl` fields to the activity form, wired through to `activity_locations.external_ids`.
+**Rationale:** Same category as [[D-023]] — built-and-tested components that never got connected to the feature that was supposed to use them. Worth its own entry because Section 9.5 explicitly flags the companion layer as core to the product thesis, not incidental.
+**Reversibility:** N/A — bug fixes / completing existing wiring, not new design decisions.
+
+---
+
 ## D-015 | 2026-08-20 | Added `gift_suggestions.category` (migration `20260820000015`)
 **Context:** Section 7.3's output requirement explicitly lists "category (used to look up shipping window)" as one of the three required fields per suggestion, but Section 4.2's `gift_suggestions` table list has no `category` column (unlike `gifts`, which has one).
 **Decision:** Added it via a new migration rather than editing the already-committed `20260820000008_gifts_and_suggestions.sql` (Section 5: never edit a committed migration).
