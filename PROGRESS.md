@@ -106,8 +106,10 @@ into cards), people list + detail + "add person," gifts (suggestion list
 with save/dismiss), calendar (14-day agenda list, not a month grid — see
 that page's own comment for why — plus a "this weekend" card that renders
 the weekend planner's own output and can generate one on demand),
-activities (feeds the weekend planner's scoring), settings (household
-budget defaults, brief time, timezone). A
+activities (feeds the weekend planner's scoring), notifications (the
+Section 10.2 "in-app notification center, unread state" — a header bell
+with unread badge, mark-read/mark-all-read), settings (household budget
+defaults, brief time, timezone). A
 fresh signup can now build out a real household entirely through the UI:
 add people, add interests/budgets/gift history/contact cadence per person
 (all on the person detail screen), add activities with a location, add

@@ -120,3 +120,13 @@ export async function listUnreadNotifications(
     q.eq("person_id", personId).is("read_at", null).order("created_at", { ascending: false })
   );
 }
+
+export async function listNotificationsForPerson(
+  client: SupabaseClient,
+  personId: string,
+  limit = 50
+): Promise<NotificationRow[]> {
+  return notificationsRepo.list(client, (q) =>
+    q.eq("person_id", personId).order("created_at", { ascending: false }).limit(limit)
+  );
+}
