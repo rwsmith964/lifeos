@@ -96,15 +96,13 @@ calendar events. This closes what was originally a gap noted after the
 first UI pass (person detail was read-only) — see the commit history if
 you want the before/after.
 
-**Remaining gap:** no UI to create or edit a `custody_blocks` row. The data
-model and RLS are fully built (Section 6.4/9), and seed data demonstrates
-the alternating-weekend pattern, but there's no form for it — custody
-scheduling is inherently a co-parent-coordination feature and v1 has no
-co-parent login (Section 6.4, by design), so building a solo-parent-facing
-custody CRUD form felt lower-value than the forms above. Also not built:
-editing an existing person's fields (only create), and no in-UI archive
-action for a person (the repository supports `is_archived`, no button
-calls it yet).
+**Update:** person editing (`/people/[id]/edit`), an archive-person action,
+and a custody-block form (`/calendar/custody/new`) were all added after the
+first UI pass too — every table the app touches now has both a read path
+and a real write path through the UI. What's genuinely not built: no way
+to delete/edit an interest, budget, gift, activity, or calendar event once
+created (only add) — only the person record itself supports edit+archive.
+That's the honest remaining gap.
 
 ### Phase 8 — Polish and documentation: done
 This file, `README.md`, `docs/privacy.md`, `docs/ai-costs.md`,
@@ -132,7 +130,8 @@ a live Supabase instance to test meaningfully.
    against the seeded household and read the output — the fastest way to
    see whether the AI-generated content is actually good, which no amount
    of unit testing can tell you.
-3. Work through `QUESTIONS.md`, highest priority first.
-4. Person editing (only create exists), an archive-person action, and a
-   custody-block form if/when co-parent coordination becomes a real v1
-   need — the smaller items noted in the Phase 7 gap above.
+3. `QUESTIONS.md` is fully resolved as of 2026-08-21 (see D-021) — nothing
+   currently blocked on Richard's input.
+4. Edit/delete actions for interests, budgets, gifts, activities, and
+   calendar events (currently add-only) — the smaller item noted in the
+   Phase 7 gap above.

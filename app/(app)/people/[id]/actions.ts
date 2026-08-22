@@ -1,8 +1,9 @@
 "use server";
 
+import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireHouseholdContext } from "@/lib/auth/session";
-import { personInterestsRepo, personGiftBudgetsRepo } from "@/lib/db/repositories/people";
+import { peopleRepo, personInterestsRepo, personGiftBudgetsRepo } from "@/lib/db/repositories/people";
 import { giftsRepo } from "@/lib/db/repositories/gifts";
 import { contactCadencesRepo, interactionsRepo, getCadenceForPerson } from "@/lib/db/repositories/contact";
 import {
@@ -120,4 +121,48 @@ export async function logInteractionAction(personId: string): Promise<void> {
   });
   await interactionsRepo.create(supabase, parsed);
   revalidatePath(`/people/${personId}`);
+}
+
+export async function updatePersonAction(
+  personId: string,
+  _prevState: SimpleFormState,
+  formData: FormData
+): Promise<SimpleFormState> {
+  const { supabase, household } = await requireHouseholdContext();
+
+  const existing = await peopleRepo.getById(supabase, personId);
+  if (!existing || existing.household_id !== household.id) {
+    return { error: "Person not found." };
+  }
+
+  const fullName = String(formData.get("fullName") ?? "").trim();
+  if (!fullName) return { error: "Full name is required." };
+
+  const birthdate = String(formData.get("birthdate") ?? "");
+  await peopleRepo.update(supabase, personId, {
+    full_name: fullName,
+    nickname: String(formData.get("nickname") ?? "").trim() || null,
+    relationship_type: existing.relationship_type === "self" ? "self" : (String(formData.get("relationshipType") ?? existing.relationship_type) as typeof existing.relationship_type),
+    birthdate: birthdate || null,
+    birth_year_known: formData.get("birthYearKnown") === "on",
+    phone: String(formData.get("phone") ?? "").trim() || null,
+    email: String(formData.get("email") ?? "").trim() || null,
+    notes: String(formData.get("notes") ?? ""),
+  });
+
+  revalidatePath(`/people/${personId}`);
+  redirect(`/people/${personId}`);
+}
+
+export async function archivePersonAction(personId: string): Promise<void> {
+  const { supabase, household } = await requireHouseholdContext();
+
+  const existing = await peopleRepo.getById(supabase, personId);
+  if (!existing || existing.household_id !== household.id || existing.relationship_type === "self") {
+    return;
+  }
+
+  await peopleRepo.update(supabase, personId, { is_archived: true });
+  revalidatePath("/people");
+  redirect("/people");
 }

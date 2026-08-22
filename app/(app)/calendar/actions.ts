@@ -3,8 +3,8 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireHouseholdContext } from "@/lib/auth/session";
-import { calendarEventsRepo } from "@/lib/db/repositories/calendar";
-import { calendarEventInsertSchema } from "@/lib/db/schemas";
+import { calendarEventsRepo, custodyBlocksRepo } from "@/lib/db/repositories/calendar";
+import { calendarEventInsertSchema, custodyBlockInsertSchema } from "@/lib/db/schemas";
 
 export interface CalendarEventFormState {
   error: string | null;
@@ -38,6 +38,31 @@ export async function createCalendarEventAction(
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
 
   await calendarEventsRepo.create(supabase, parsed.data);
+  revalidatePath("/calendar");
+  redirect("/calendar");
+}
+
+export async function createCustodyBlockAction(
+  _prevState: CalendarEventFormState,
+  formData: FormData
+): Promise<CalendarEventFormState> {
+  const { supabase, household } = await requireHouseholdContext();
+
+  const startDate = String(formData.get("startDate") ?? "");
+  const endDate = String(formData.get("endDate") ?? "");
+
+  const parsed = custodyBlockInsertSchema.safeParse({
+    household_id: household.id,
+    child_person_id: String(formData.get("childPersonId") ?? ""),
+    responsible_person_id: String(formData.get("responsiblePersonId") ?? ""),
+    starts_at: new Date(`${startDate}T17:00:00`).toISOString(),
+    ends_at: new Date(`${endDate}T17:00:00`).toISOString(),
+    block_type: String(formData.get("blockType") ?? "regular"),
+    notes: String(formData.get("notes") ?? ""),
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
+
+  await custodyBlocksRepo.create(supabase, parsed.data);
   revalidatePath("/calendar");
   redirect("/calendar");
 }

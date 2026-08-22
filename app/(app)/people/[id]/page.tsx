@@ -1,5 +1,7 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { format } from "date-fns";
+import { Pencil } from "lucide-react";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { peopleRepo } from "@/lib/db/repositories/people";
 import { listInterestsForPerson, listBudgetsForPerson } from "@/lib/db/repositories/people";
@@ -9,6 +11,7 @@ import { evaluateCadence } from "@/lib/contact/cadence";
 import { estimateAgeYears } from "@/lib/ai/prompts/gift-suggestion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { AddBudgetForm, AddInterestForm, CadenceForm, LogInteractionButton, RecordGiftForm } from "./person-forms";
 
 export default async function PersonDetailPage({ params }: PageProps<"/people/[id]">) {
@@ -30,13 +33,20 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
 
   return (
     <div className="flex flex-col gap-4 p-4">
-      <div>
-        <h1 className="text-xl font-semibold">{person.full_name}</h1>
-        <p className="text-sm text-muted-foreground">
-          {person.relationship_type.replace("_", " ")}
-          {age != null && ` · ${age} years old`}
-          {person.birthdate && ` · born ${format(new Date(person.birthdate), "MMMM d")}`}
-        </p>
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <h1 className="text-xl font-semibold">{person.full_name}</h1>
+          <p className="text-sm text-muted-foreground">
+            {person.relationship_type.replace("_", " ")}
+            {age != null && ` · ${age} years old`}
+            {person.birthdate && ` · born ${format(new Date(person.birthdate), "MMMM d")}`}
+          </p>
+        </div>
+        <Button asChild size="sm" variant="outline">
+          <Link href={`/people/${id}/edit`}>
+            <Pencil className="size-4" /> Edit
+          </Link>
+        </Button>
       </div>
 
       {person.relationship_type !== "self" && (
