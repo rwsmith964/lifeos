@@ -21,7 +21,19 @@ create table auth.users (
   created_at timestamptz default now(),
   updated_at timestamptz default now(),
   raw_app_meta_data jsonb default '{}'::jsonb,
-  raw_user_meta_data jsonb default '{}'::jsonb
+  raw_user_meta_data jsonb default '{}'::jsonb,
+  -- Real Supabase defaults these to '' (see DECISIONS.md D-028 — seed.sql
+  -- must set them explicitly, since NULL breaks GoTrue login). Defaulting
+  -- to '' here too so the shim matches real behavior for any test that
+  -- doesn't set them explicitly.
+  confirmation_token text default '',
+  recovery_token text default '',
+  email_change text default '',
+  email_change_token_new text default '',
+  email_change_token_current text default '',
+  phone_change text default '',
+  phone_change_token text default '',
+  reauthentication_token text default ''
 );
 
 -- Supabase's auth.uid(): reads the 'sub' claim from the request.jwt.claims

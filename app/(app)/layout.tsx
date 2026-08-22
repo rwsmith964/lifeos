@@ -6,6 +6,7 @@ import { signOut } from "../(auth)/actions";
 import { APP_NAME } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { CaptureButton } from "@/components/capture/capture-button";
 
 const NAV_ITEMS = [
   { href: "/", label: "Brief", icon: Home },
@@ -49,6 +50,8 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
       </header>
 
       <main className="flex-1 overflow-y-auto pb-20">{children}</main>
+
+      <CaptureButton />
 
       <nav className="fixed bottom-0 mx-auto flex w-full max-w-md items-stretch border-t bg-background">
         {NAV_ITEMS.map((item) => (

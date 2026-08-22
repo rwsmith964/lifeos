@@ -77,6 +77,28 @@ export async function listAttendeeNamesForEvents(
   return byEvent;
 }
 
+/** Upcoming events this person is attending, for their CRM detail page. */
+export async function listUpcomingEventsForPerson(
+  client: SupabaseClient,
+  personId: string,
+  fromISO: string,
+  limit = 10
+): Promise<CalendarEventRow[]> {
+  const { data, error } = await client
+    .from("event_attendees")
+    .select("calendar_event:calendar_events!inner(*)")
+    .eq("person_id", personId)
+    .gte("calendar_event.starts_at", fromISO)
+    .order("starts_at", { referencedTable: "calendar_events", ascending: true })
+    .limit(limit);
+  if (error) throw error;
+
+  type Row = { calendar_event: CalendarEventRow | CalendarEventRow[] | null };
+  return ((data ?? []) as unknown as Row[])
+    .map((row) => (Array.isArray(row.calendar_event) ? row.calendar_event[0] : row.calendar_event))
+    .filter((e): e is CalendarEventRow => e != null);
+}
+
 export async function listCustodyBlocksForChildInRange(
   client: SupabaseClient,
   childPersonId: string,
