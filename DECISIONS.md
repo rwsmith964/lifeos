@@ -158,6 +158,8 @@ Log of non-obvious autonomous decisions made during the LifeOS build, per Sectio
 **Rationale:** Parsing isn't the same as running — it can't catch a wrong column name, a real RLS policy logic bug, or anything that needs the actual catalog/query planner. But hand-written SQL that's never executed most commonly fails on a typo or malformed statement, and that whole failure class is now ruled out. This meaningfully raises confidence in the unexecuted SQL without requiring the Docker/Postgres access this session doesn't have.
 **Reversibility:** N/A — a verification step, not a code change. The scratchpad tool isn't part of the repo.
 
+**Follow-up (same session):** used the same parser's AST output to mechanically extract every `CREATE TABLE` and `ALTER TABLE ... ADD COLUMN` across all 17 migrations — the actual, ground-truth column list per table — and diffed it column-by-column against every interface in `lib/db/database.types.ts`. All 23 tables matched exactly; zero drift between the hand-written TypeScript types and the real schema. This is the check that would have caught the `gift_suggestions.category` / `calendar_events.related_activity_id` class of gap (D-015, D-018) if it had been missed — confirms both were added correctly and nothing else was missed.
+
 ---
 
 ## D-015 | 2026-08-20 | Added `gift_suggestions.category` (migration `20260820000015`)
