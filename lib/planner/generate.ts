@@ -5,6 +5,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { addDays, format, setHours, startOfDay } from "date-fns";
 import { AiBudgetExceededError, AiUnavailableError, callAi } from "../ai/client";
+import { buildChildTokenMap, type ChildTokenMap } from "../ai/context";
 import { parseAiJson } from "../ai/parse-json";
 import { AI_MODEL } from "../ai/pricing";
 import {
@@ -18,7 +19,7 @@ import { listActivitiesWithLocations } from "../db/repositories/activities";
 import { listCustodyBlocksForHouseholdInRange, listEventsInRange } from "../db/repositories/calendar";
 import { listActiveCadencesForHousehold } from "../db/repositories/contact";
 import { householdsRepo, usersRepo } from "../db/repositories/households";
-import { peopleRepo } from "../db/repositories/people";
+import { listPeopleForHousehold, peopleRepo } from "../db/repositories/people";
 import { getWeekendPlanForDate, weekendPlansRepo } from "../db/repositories/system";
 import { getNwsForecast } from "../external/nws";
 import { getTravelTime } from "../external/travel";
@@ -85,6 +86,14 @@ export async function generateWeekendPlan(
   const cadenceByPersonId = new Map(cadenceRows.map((c) => [c.person_id, c]));
   const recentActivityTypes = recentPlans.map((p) => p.activityType);
 
+  // Section 6.5 / docs/privacy.md: any person handed to the AI prompt goes
+  // through the child-token map first, same as the brief and gift engines —
+  // a preferred_companion CAN be a child (e.g. a parent's own kid listed as
+  // a fishing buddy), so this can't skip the redaction just because
+  // "companions" sounds adult-only.
+  const householdPeople = await listPeopleForHousehold(client, householdId);
+  const tokenMap = buildChildTokenMap(householdPeople);
+
   const scored: (ScoredActivityContext & { totalScore: number; activityId: string })[] = [];
 
   for (const activity of activities) {
@@ -119,7 +128,11 @@ export async function generateWeekendPlan(
       : null;
 
     const overdueCompanions = findOverdueCompanions(activity.preferred_companions, cadenceByPersonId, today);
-    const overdueCompanionLabels = await labelPeople(client, overdueCompanions.map((c) => c.personId));
+    const overdueCompanionLabels = await labelPeople(
+      client,
+      overdueCompanions.map((c) => c.personId),
+      tokenMap
+    );
 
     const result = scoreActivity({
       weatherSuitabilityScore: weatherScore,
@@ -171,7 +184,12 @@ export async function generateWeekendPlan(
     throw error;
   }
 
-  const content: WeekendPlanAiResponse = aiResponse ?? buildTemplatedWeekendPlan(scored);
+  // overdueCompanionLabels were tokenized before being handed to the AI
+  // (or, on the template-fallback path, never left this process at all) —
+  // either way, restore real names before rendering/storing so CHILD_N
+  // never surfaces in the UI.
+  const rawContent: WeekendPlanAiResponse = aiResponse ?? buildTemplatedWeekendPlan(scored);
+  const content: WeekendPlanAiResponse = JSON.parse(tokenMap.restoreRealNames(JSON.stringify(rawContent)));
   const markdown = renderWeekendPlanMarkdown(content);
 
   const existing = await getWeekendPlanForDate(client, householdId, forDate);
@@ -202,12 +220,12 @@ async function findHouseholdOwnerUser(client: SupabaseClient, householdId: strin
   return usersRepo.getById(client, self.user_id);
 }
 
-async function labelPeople(client: SupabaseClient, personIds: string[]): Promise<string[]> {
+async function labelPeople(client: SupabaseClient, personIds: string[], tokenMap: ChildTokenMap): Promise<string[]> {
   if (personIds.length === 0) return [];
   const labels: string[] = [];
   for (const id of personIds) {
     const person = await peopleRepo.getById(client, id);
-    if (person) labels.push(person.full_name);
+    if (person) labels.push(tokenMap.labelFor(person));
   }
   return labels;
 }

@@ -132,6 +132,14 @@ Log of non-obvious autonomous decisions made during the LifeOS build, per Sectio
 
 ---
 
+## D-023 | 2026-08-21 | Fixed a real privacy bug: weekend planner wasn't redacting child names before the AI call
+**Context:** While auditing the codebase for more unblocked work, grepped every use of `person.full_name` in `lib/` against docs/privacy.md's rule that every AI feature must build its person-facing context through `lib/ai/context.ts`'s child-token map. `lib/planner/generate.ts`'s `labelPeople()` helper — used to label `overdueCompanionLabels` fed into the weekend-plan AI prompt — used `person.full_name` directly, with no token substitution. `user_activities.preferred_companions` has no constraint against listing a child (a parent's own kid is a perfectly normal fishing/hiking companion), so this was a real path for a child's real name to reach the Anthropic API when the gift-suggestion and brief engines both correctly redact it.
+**Decision:** Fixed: `generate.ts` now builds a `ChildTokenMap` from the full household roster once per call, `labelPeople()` takes and uses it, and the AI response (or the template-fallback content, which was built from the same tokenized labels) is restored to real names before rendering/storing — the same pattern already used in `lib/gifts/suggest.ts` and `lib/brief/generate.ts`.
+**Rationale:** This wasn't a hypothetical — it's a straightforward miss (a third feature module re-implementing person-labeling instead of reusing the one already-correct helper) caught by systematically grepping for the unsafe pattern rather than by a specific bug report. Worth calling out here rather than folding silently into a commit message, since it's a privacy-relevant correction, not a feature.
+**Reversibility:** N/A — this is a bug fix, not a design choice with an alternative.
+
+---
+
 ## D-015 | 2026-08-20 | Added `gift_suggestions.category` (migration `20260820000015`)
 **Context:** Section 7.3's output requirement explicitly lists "category (used to look up shipping window)" as one of the three required fields per suggestion, but Section 4.2's `gift_suggestions` table list has no `category` column (unlike `gifts`, which has one).
 **Decision:** Added it via a new migration rather than editing the already-committed `20260820000008_gifts_and_suggestions.sql` (Section 5: never edit a committed migration).
