@@ -18,7 +18,16 @@ begin;
 -- Auth user + household + membership
 -- ---------------------------------------------------------------------
 
-insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data)
+-- The token columns (confirmation_token, recovery_token, etc.) must be ''
+-- rather than the column default of NULL — GoTrue's Go client scans them as
+-- strings and errors with a generic "Database error querying schema" on
+-- login if any of them are NULL. See DECISIONS.md D-028.
+insert into auth.users (
+  id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
+  created_at, updated_at, raw_app_meta_data, raw_user_meta_data,
+  confirmation_token, recovery_token, email_change_token_new, email_change,
+  email_change_token_current, phone_change, phone_change_token, reauthentication_token
+)
 values (
   '10000000-0000-0000-0000-000000000001',
   '00000000-0000-0000-0000-000000000000',
@@ -30,7 +39,8 @@ values (
   now(),
   now(),
   '{"provider":"email","providers":["email"]}',
-  '{"display_name":"Richard Smith"}'
+  '{"display_name":"Richard Smith"}',
+  '', '', '', '', '', '', '', ''
 )
 on conflict (id) do nothing;
 
