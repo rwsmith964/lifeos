@@ -1,0 +1,37 @@
+"use server";
+
+import { redirect } from "next/navigation";
+import { createSupabaseServerClient } from "@/lib/db/client-server";
+import { createHouseholdWithOwner } from "@/lib/db/repositories/households";
+import { peopleRepo } from "@/lib/db/repositories/people";
+
+export interface OnboardingState {
+  error: string | null;
+}
+
+export async function createHouseholdAction(
+  _prevState: OnboardingState,
+  formData: FormData
+): Promise<OnboardingState> {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const householdName = String(formData.get("householdName") ?? "").trim();
+  const fullName = String(formData.get("fullName") ?? "").trim();
+  if (!householdName || !fullName) {
+    return { error: "Both fields are required." };
+  }
+
+  const household = await createHouseholdWithOwner(supabase, user.id, householdName);
+  await peopleRepo.create(supabase, {
+    household_id: household.id,
+    user_id: user.id,
+    full_name: fullName,
+    relationship_type: "self",
+  });
+
+  redirect("/");
+}

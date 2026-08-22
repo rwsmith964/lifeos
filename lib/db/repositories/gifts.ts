@@ -66,6 +66,20 @@ export async function listSuggestionsDueForOrder(
   return (data ?? []) as GiftSuggestionRow[];
 }
 
+export async function listActiveSuggestionsForHousehold(
+  client: SupabaseClient,
+  householdId: string
+): Promise<(GiftSuggestionRow & { person: { id: string; full_name: string } })[]> {
+  const { data, error } = await client
+    .from("gift_suggestions")
+    .select("*, person:people!inner(id, full_name, household_id)")
+    .eq("person.household_id", householdId)
+    .in("status", ["suggested", "saved"])
+    .order("order_by_date", { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as (GiftSuggestionRow & { person: { id: string; full_name: string } })[];
+}
+
 export async function getShippingWindows(client: SupabaseClient): Promise<GiftShippingWindowRow[]> {
   const { data, error } = await client.from("gift_shipping_windows").select("*");
   if (error) throw error;
