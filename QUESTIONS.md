@@ -20,6 +20,15 @@ Questions that genuinely cannot be decided without Richard's input, per Section 
   C) A dated manual override that supersedes the scraped report until it expires (e.g. 3 days), then falls back to scraping again
 **My recommendation if forced:** B — simplest, keeps the scraped report as the source of truth, adds your read without new staleness logic to get wrong.
 
+## Q-003 | notifications / sms | Priority: MEDIUM
+**Question:** SMS delivery is deferred per Section 10.4 — US A2P 10DLC brand/campaign registration through a carrier aggregator takes weeks of approval, which is the actual binding constraint, not the code (`lib/notifications/channels/sms.ts` is already a working no-op behind the same dispatcher interface as every other channel). Do you want to start that registration process now, in parallel with the rest of the build, so SMS is ready to flip on the moment it's approved rather than waiting until the code is "done" to start the clock?
+**Why it matters:** Purely a sequencing question — it doesn't change any code in this repo, but the lead time only starts once you (or I, on your behalf, outside this coding session) actually begin the carrier registration with a provider like Twilio.
+**What I did meanwhile:** Built the no-op adapter and left it wired into the dispatcher so real Twilio integration later is a one-file change.
+**Options I see:**
+  A) Start A2P 10DLC registration now, in parallel
+  B) Wait until the rest of v1 is live and in daily use before starting
+**My recommendation if forced:** A — the lead time is the whole cost here; starting it costs nothing but a form and doesn't commit you to shipping SMS.
+
 ## LOW
 
 ## Q-001 | NAMING | Priority: LOW

@@ -14,7 +14,8 @@
     "db:reset": "supabase db reset",
     "db:test": "supabase test db",
     "job:brief": "tsx scripts/run-brief-job.ts",
-    "job:weekend-plan": "tsx scripts/run-weekend-plan-job.ts"
+    "job:weekend-plan": "tsx scripts/run-weekend-plan-job.ts",
+    "job:gift-scan": "tsx scripts/run-gift-scan-job.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.118.0",

@@ -24,6 +24,7 @@ import { briefsRepo, getBriefForPersonAndDate, getWeekendPlanForDate } from "../
 import { getNwsForecast } from "../external/nws";
 import { getTravelTime } from "../external/travel";
 import { evaluateCadence } from "../contact/cadence";
+import { dispatchNotification } from "../notifications/dispatch";
 import { computePrepObligations, computeTravelLegs } from "./prep";
 import { renderBriefMarkdown } from "./render";
 import { buildTemplatedBriefContent } from "./template-fallback";
@@ -229,6 +230,22 @@ export async function generateDailyBrief(
     content_json: restoredContent,
     content_markdown: markdown,
     delivered_channels: [],
+  });
+
+  const delivered = await dispatchNotification(
+    client,
+    {
+      householdId,
+      personId: forPersonId,
+      notificationType: "daily_brief",
+      title: restoredContent.headline,
+      body: markdown,
+      linkPath: `/brief/${todayDateStr}`,
+    },
+    ["in_app", "email"]
+  );
+  await briefsRepo.update(client, brief.id, {
+    delivered_channels: delivered.filter((d) => d.result.delivered).map((d) => d.channel),
   });
 
   return { status: "generated", briefId: brief.id, contentMarkdown: markdown };
