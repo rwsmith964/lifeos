@@ -7,7 +7,17 @@
 // every call and keeps the generic CRUD factory free of per-table logic.
 import { z } from "zod";
 
-const uuid = z.uuid();
+// z.uuid() validates strict RFC 4122 version/variant bits and rejects
+// anything else with the message "Invalid UUID" — including this project's
+// own seed data (household/person ids like 20000000-0000-0000-0000-…001),
+// which Postgres's `uuid` column type accepts without complaint since it
+// has no such requirement. Every create/update against the seeded demo
+// household failed validation here before it ever reached the database —
+// this was THE literal "Invalid UUID" bug (see DECISIONS.md D-031).
+// z.guid() checks the same 8-4-4-4-12 hex shape Postgres does, without the
+// version/variant constraint, so it accepts both real gen_random_uuid()
+// output and the seed data's hand-assigned ids.
+const uuid = z.guid();
 const isoDate = z.iso.date(); // YYYY-MM-DD
 const isoDateTime = z.iso.datetime({ offset: true });
 const cents = z.number().int().min(0);

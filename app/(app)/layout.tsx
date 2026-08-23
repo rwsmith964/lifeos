@@ -2,11 +2,10 @@ import Link from "next/link";
 import { Bell, CalendarDays, Compass, Gift, Home, Settings, Users } from "lucide-react";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { listUnreadNotifications } from "@/lib/db/repositories/system";
-import { signOut } from "../(auth)/actions";
 import { APP_NAME } from "@/lib/constants";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { CaptureButton } from "@/components/capture/capture-button";
+import { SignOutButton } from "./sign-out-button";
 
 const NAV_ITEMS = [
   { href: "/", label: "Brief", icon: Home },
@@ -41,11 +40,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
               </Badge>
             )}
           </Link>
-          <form action={signOut}>
-            <Button type="submit" variant="ghost" size="sm">
-              Sign out
-            </Button>
-          </form>
+          <SignOutButton />
         </div>
       </header>
 

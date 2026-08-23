@@ -1,13 +1,11 @@
 "use client";
 
-import { useActionState } from "react";
-import { createPersonAction, type PersonFormState } from "../actions";
+import { useRef } from "react";
+import { useFormPost } from "@/lib/hooks/use-form-post";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-
-const initialState: PersonFormState = { error: null };
 
 const RELATIONSHIP_OPTIONS = [
   "child",
@@ -23,12 +21,18 @@ const RELATIONSHIP_OPTIONS = [
 ] as const;
 
 export default function NewPersonPage() {
-  const [state, action, pending] = useActionState(createPersonAction, initialState);
+  const { submit, pending, error } = useFormPost("/api/people");
+  const formRef = useRef<HTMLFormElement>(null);
+
+  function handleSave() {
+    if (!formRef.current || !formRef.current.reportValidity()) return;
+    submit(new FormData(formRef.current), { redirectTo: (data) => `/people/${data.id}` });
+  }
 
   return (
     <div className="flex flex-col gap-4 p-4">
       <h1 className="text-xl font-semibold">Add someone</h1>
-      <form action={action} className="flex flex-col gap-4">
+      <form ref={formRef} className="flex flex-col gap-4">
         <div className="flex flex-col gap-2">
           <Label htmlFor="fullName">Full name</Label>
           <Input id="fullName" name="fullName" required />
@@ -63,8 +67,8 @@ export default function NewPersonPage() {
           <Label htmlFor="notes">Notes</Label>
           <Textarea id="notes" name="notes" rows={3} />
         </div>
-        {state.error && <p className="text-sm text-destructive">{state.error}</p>}
-        <Button type="submit" disabled={pending}>
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        <Button type="button" onClick={handleSave} disabled={pending}>
           {pending ? "Saving…" : "Save"}
         </Button>
       </form>

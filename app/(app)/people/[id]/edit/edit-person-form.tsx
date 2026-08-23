@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useTransition } from "react";
+import { useActionState, useRef, useTransition } from "react";
 import { updatePersonAction, archivePersonAction, type SimpleFormState } from "../actions";
 import type { PersonRow } from "@/lib/db/database.types";
 import { Button } from "@/components/ui/button";
@@ -25,13 +25,21 @@ const RELATIONSHIP_OPTIONS = [
 
 export function EditPersonForm({ person }: { person: PersonRow }) {
   const updateAction = updatePersonAction.bind(null, person.id);
-  const [state, formAction, pending] = useActionState(updateAction, initialState);
+  const [state, dispatch, pending] = useActionState(updateAction, initialState);
   const [archivePending, startArchiveTransition] = useTransition();
   const isSelf = person.relationship_type === "self";
+  const formRef = useRef<HTMLFormElement>(null);
+
+  // See DECISIONS.md D-031 — dispatch() called manually on click rather
+  // than bound to the form's `action` prop.
+  function handleSave() {
+    if (!formRef.current || !formRef.current.reportValidity()) return;
+    dispatch(new FormData(formRef.current));
+  }
 
   return (
     <div className="flex flex-col gap-6">
-      <form action={formAction} className="flex flex-col gap-4">
+      <form ref={formRef} className="flex flex-col gap-4">
         <div className="flex flex-col gap-2">
           <Label htmlFor="fullName">Full name</Label>
           <Input id="fullName" name="fullName" defaultValue={person.full_name} required />
@@ -78,7 +86,7 @@ export function EditPersonForm({ person }: { person: PersonRow }) {
           <Textarea id="notes" name="notes" rows={3} defaultValue={person.notes} />
         </div>
         {state.error && <p className="text-sm text-destructive">{state.error}</p>}
-        <Button type="submit" disabled={pending}>
+        <Button type="button" onClick={handleSave} disabled={pending}>
           {pending ? "Saving…" : "Save changes"}
         </Button>
       </form>

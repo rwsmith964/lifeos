@@ -1,13 +1,12 @@
 "use client";
 
-import { useActionState } from "react";
-import { createCustodyBlockAction } from "../../actions";
+import { useRef } from "react";
+import { useFormPost } from "@/lib/hooks/use-form-post";
 import type { PersonRow } from "@/lib/db/database.types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-const initialState = { error: null };
 const BLOCK_TYPES = ["regular", "holiday", "swap", "vacation"] as const;
 
 export function CustodyBlockForm({
@@ -17,10 +16,16 @@ export function CustodyBlockForm({
   childPeople: PersonRow[];
   responsibleCandidates: PersonRow[];
 }) {
-  const [state, action, pending] = useActionState(createCustodyBlockAction, initialState);
+  const { submit, pending, error } = useFormPost("/api/calendar/custody");
+  const formRef = useRef<HTMLFormElement>(null);
+
+  function handleSave() {
+    if (!formRef.current || !formRef.current.reportValidity()) return;
+    submit(new FormData(formRef.current), { redirectTo: () => "/calendar" });
+  }
 
   return (
-    <form action={action} className="flex flex-col gap-4">
+    <form ref={formRef} className="flex flex-col gap-4">
       <div className="flex flex-col gap-2">
         <Label htmlFor="childPersonId">Child</Label>
         <select
@@ -76,8 +81,8 @@ export function CustodyBlockForm({
           ))}
         </select>
       </div>
-      {state.error && <p className="text-sm text-destructive">{state.error}</p>}
-      <Button type="submit" disabled={pending}>
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      <Button type="button" onClick={handleSave} disabled={pending}>
         {pending ? "Saving…" : "Save custody block"}
       </Button>
     </form>

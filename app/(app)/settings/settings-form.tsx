@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useRef } from "react";
 import { updateHouseholdSettingsAction, type SettingsFormState } from "./actions";
 import type { HouseholdRow } from "@/lib/db/database.types";
 import { Button } from "@/components/ui/button";
@@ -11,12 +11,24 @@ import { Card, CardContent } from "@/components/ui/card";
 const initialState: SettingsFormState = { error: null, saved: false };
 
 export function SettingsForm({ household, timezone }: { household: HouseholdRow; timezone: string }) {
-  const [state, action, pending] = useActionState(updateHouseholdSettingsAction, initialState);
+  const [state, dispatch, pending] = useActionState(updateHouseholdSettingsAction, initialState);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  // Dispatching manually on click, rather than binding the action to the
+  // form's `action` prop, works around a live production bug where Next's
+  // native <form action={fn}> submission mechanism reliably fails for any
+  // Server Action nested under an auth-checking layout — see
+  // DECISIONS.md D-031. dispatch() is the same useActionState-managed
+  // function either way; only how it's invoked changes.
+  function handleSave() {
+    if (!formRef.current || !formRef.current.reportValidity()) return;
+    dispatch(new FormData(formRef.current));
+  }
 
   return (
     <Card>
       <CardContent>
-        <form action={action} className="flex flex-col gap-4">
+        <form ref={formRef} className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <Label htmlFor="householdName">Household name</Label>
             <Input id="householdName" name="householdName" defaultValue={household.name} required />
@@ -59,7 +71,7 @@ export function SettingsForm({ household, timezone }: { household: HouseholdRow;
 
           {state.error && <p className="text-sm text-destructive">{state.error}</p>}
           {state.saved && !state.error && <p className="text-sm text-muted-foreground">Saved.</p>}
-          <Button type="submit" disabled={pending}>
+          <Button type="button" onClick={handleSave} disabled={pending}>
             {pending ? "Saving…" : "Save settings"}
           </Button>
         </form>

@@ -11,13 +11,17 @@ import {
   userActivityInsertSchema,
 } from "./schemas";
 
-// Real v4 UUIDs (version nibble 4, variant nibble in 8-b) — zod's z.uuid()
-// enforces RFC 4122 shape, unlike Postgres's `uuid` column type which
-// accepts any 32 hex digits. Seed data's readable literal ids (e.g.
-// "30000000-...-000000000001") are fine for raw SQL but would fail this
-// validator, which is correct: seed.sql never passes through Zod.
 const PERSON_ID = "11111111-1111-4111-8111-111111111111";
 const HOUSEHOLD_ID = "22222222-2222-4222-8222-222222222222";
+// Seed data's readable literal ids (e.g. "20000000-...-000000000001") don't
+// carry a valid RFC 4122 version/variant nibble. seed.sql itself never
+// passes through Zod, but these ids get read back out of the database and
+// re-validated on every later create/update against the seeded household
+// (e.g. household_id: household.id) — see DECISIONS.md D-031, where
+// lib/db/schemas.ts's uuid schema switched from z.uuid() (RFC-strict,
+// rejects these) to z.guid() (same shape Postgres's uuid column actually
+// enforces) for exactly this reason.
+const SEED_HOUSEHOLD_ID = "20000000-0000-0000-0000-000000000001";
 
 describe("personInsertSchema", () => {
   it("accepts a minimal valid person", () => {
@@ -43,6 +47,24 @@ describe("personInsertSchema", () => {
       household_id: HOUSEHOLD_ID,
       full_name: "Dave Wilson",
       relationship_type: "best_friend_forever",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts the seeded demo household's non-RFC-4122 id (D-031 regression)", () => {
+    const result = personInsertSchema.safeParse({
+      household_id: SEED_HOUSEHOLD_ID,
+      full_name: "Dave Wilson",
+      relationship_type: "friend",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("still rejects a non-UUID string", () => {
+    const result = personInsertSchema.safeParse({
+      household_id: "not-a-uuid",
+      full_name: "Dave Wilson",
+      relationship_type: "friend",
     });
     expect(result.success).toBe(false);
   });

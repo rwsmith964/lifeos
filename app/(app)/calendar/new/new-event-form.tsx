@@ -1,23 +1,27 @@
 "use client";
 
-import { useActionState, useState } from "react";
-import { createCalendarEventAction, type CalendarEventFormState } from "../actions";
+import { useRef, useState } from "react";
+import { useFormPost } from "@/lib/hooks/use-form-post";
 import type { PersonRow } from "@/lib/db/database.types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-const initialState: CalendarEventFormState = { error: null };
-
 const EVENT_TYPES = ["personal", "work", "family", "kid_activity", "custody", "prep", "travel"] as const;
 const VISIBILITY_OPTIONS = ["private", "household", "shared_with_coparent"] as const;
 
 export function NewEventForm({ people }: { people: PersonRow[] }) {
-  const [state, action, pending] = useActionState(createCalendarEventAction, initialState);
+  const { submit, pending, error } = useFormPost("/api/calendar/events");
   const [allDay, setAllDay] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  function handleSave() {
+    if (!formRef.current || !formRef.current.reportValidity()) return;
+    submit(new FormData(formRef.current), { redirectTo: () => "/calendar" });
+  }
 
   return (
-    <form action={action} className="flex flex-col gap-4">
+    <form ref={formRef} className="flex flex-col gap-4">
       <div className="flex flex-col gap-2">
         <Label htmlFor="title">Title</Label>
         <Input id="title" name="title" required />
@@ -91,8 +95,8 @@ export function NewEventForm({ people }: { people: PersonRow[] }) {
         </div>
       )}
 
-      {state.error && <p className="text-sm text-destructive">{state.error}</p>}
-      <Button type="submit" disabled={pending}>
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      <Button type="button" onClick={handleSave} disabled={pending}>
         {pending ? "Saving…" : "Save event"}
       </Button>
     </form>

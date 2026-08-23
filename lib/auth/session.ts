@@ -3,6 +3,7 @@
 // Supabase client plus the current household/self-person, or gets
 // redirected. Centralizing it means the redirect rules (no session ->
 // /login, no household yet -> /onboarding) are defined exactly once.
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "../db/client-server";
@@ -17,7 +18,12 @@ export interface HouseholdContext {
   selfPerson: PersonRow;
 }
 
-export async function requireHouseholdContext(): Promise<HouseholdContext> {
+// Memoized per request (React's cache(), not a cross-request cache — see
+// https://react.dev/reference/react/cache): this function is called from
+// both the (app) layout and every mutating Server Action nested under it,
+// so dedupe to one real getUser() round trip per request instead of one
+// per call site.
+export const requireHouseholdContext = cache(async (): Promise<HouseholdContext> => {
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -33,4 +39,4 @@ export async function requireHouseholdContext(): Promise<HouseholdContext> {
   if (!selfPerson) redirect("/onboarding");
 
   return { supabase, userId: user.id, household, selfPerson };
-}
+});

@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useTransition } from "react";
+import { useActionState, useRef, useTransition } from "react";
 import { X } from "lucide-react";
 import {
   addInterestAction,
@@ -25,12 +25,27 @@ const OCCASION_OPTIONS = ["birthday", "christmas", "anniversary", "graduation", 
 const REACTION_OPTIONS = ["", "loved_it", "liked_it", "neutral", "missed"] as const;
 const STRENGTH_OPTIONS = ["casual", "regular", "passionate"] as const;
 
+// Every form below dispatches useActionState's action manually on button
+// click, reading FormData from a ref, rather than binding it to the form's
+// `action` prop. Native <form action={fn}> submission reliably fails for
+// any Server Action nested under (app)'s auth-checking layout in
+// production — see DECISIONS.md D-031. dispatch() is the same
+// useActionState-managed function either way; only how it's invoked
+// changes, and reportValidity() keeps native required/min/max validation
+// working the same as a real submit would.
+
 export function AddInterestForm({ personId }: { personId: string }) {
   const action = addInterestAction.bind(null, personId);
-  const [state, formAction, pending] = useActionState(action, initialState);
+  const [state, dispatch, pending] = useActionState(action, initialState);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  function handleAdd() {
+    if (!formRef.current || !formRef.current.reportValidity()) return;
+    dispatch(new FormData(formRef.current));
+  }
 
   return (
-    <form action={formAction} className="flex flex-wrap items-end gap-2">
+    <form ref={formRef} className="flex flex-wrap items-end gap-2">
       <div className="flex flex-col gap-1">
         <Label htmlFor={`interest-${personId}`} className="text-xs">
           Interest
@@ -49,7 +64,7 @@ export function AddInterestForm({ personId }: { personId: string }) {
           </option>
         ))}
       </select>
-      <Button type="submit" size="sm" disabled={pending}>
+      <Button type="button" size="sm" onClick={handleAdd} disabled={pending}>
         Add
       </Button>
       {state.error && <p className="w-full text-xs text-destructive">{state.error}</p>}
@@ -59,10 +74,16 @@ export function AddInterestForm({ personId }: { personId: string }) {
 
 export function AddBudgetForm({ personId }: { personId: string }) {
   const action = addBudgetAction.bind(null, personId);
-  const [state, formAction, pending] = useActionState(action, initialState);
+  const [state, dispatch, pending] = useActionState(action, initialState);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  function handleAdd() {
+    if (!formRef.current || !formRef.current.reportValidity()) return;
+    dispatch(new FormData(formRef.current));
+  }
 
   return (
-    <form action={formAction} className="flex flex-wrap items-end gap-2">
+    <form ref={formRef} className="flex flex-wrap items-end gap-2">
       <select
         name="occasionType"
         defaultValue="default"
@@ -77,7 +98,7 @@ export function AddBudgetForm({ personId }: { personId: string }) {
       </select>
       <Input name="minDollars" type="number" min={0} placeholder="Min $" required className="h-8 w-20" />
       <Input name="maxDollars" type="number" min={0} placeholder="Max $" required className="h-8 w-20" />
-      <Button type="submit" size="sm" disabled={pending}>
+      <Button type="button" size="sm" onClick={handleAdd} disabled={pending}>
         Add
       </Button>
       {state.error && <p className="w-full text-xs text-destructive">{state.error}</p>}
@@ -87,10 +108,16 @@ export function AddBudgetForm({ personId }: { personId: string }) {
 
 export function RecordGiftForm({ personId }: { personId: string }) {
   const action = recordGiftAction.bind(null, personId);
-  const [state, formAction, pending] = useActionState(action, initialState);
+  const [state, dispatch, pending] = useActionState(action, initialState);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  function handleRecord() {
+    if (!formRef.current || !formRef.current.reportValidity()) return;
+    dispatch(new FormData(formRef.current));
+  }
 
   return (
-    <form action={formAction} className="flex flex-col gap-2">
+    <form ref={formRef} className="flex flex-col gap-2">
       <Input name="description" placeholder="What did you give them?" required />
       <div className="flex gap-2">
         <select
@@ -123,7 +150,7 @@ export function RecordGiftForm({ personId }: { personId: string }) {
         </select>
       </div>
       {state.error && <p className="text-xs text-destructive">{state.error}</p>}
-      <Button type="submit" size="sm" disabled={pending}>
+      <Button type="button" size="sm" onClick={handleRecord} disabled={pending}>
         Record gift
       </Button>
     </form>
@@ -134,10 +161,16 @@ const initialGenerateState: GenerateSuggestionsState = { error: null, success: f
 
 export function GenerateSuggestionsForm({ personId }: { personId: string }) {
   const action = generateSuggestionsAction.bind(null, personId);
-  const [state, formAction, pending] = useActionState(action, initialGenerateState);
+  const [state, dispatch, pending] = useActionState(action, initialGenerateState);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  function handleGenerate() {
+    if (!formRef.current || !formRef.current.reportValidity()) return;
+    dispatch(new FormData(formRef.current));
+  }
 
   return (
-    <form action={formAction} className="flex flex-col gap-2">
+    <form ref={formRef} className="flex flex-col gap-2">
       <div className="flex gap-2">
         <select
           name="occasionType"
@@ -155,7 +188,7 @@ export function GenerateSuggestionsForm({ personId }: { personId: string }) {
       </div>
       {state.error && <p className="text-xs text-destructive">{state.error}</p>}
       {state.success && <p className="text-xs text-muted-foreground">Done — see the Gifts tab.</p>}
-      <Button type="submit" size="sm" variant="secondary" disabled={pending}>
+      <Button type="button" size="sm" variant="secondary" onClick={handleGenerate} disabled={pending}>
         {pending ? "Thinking…" : "Get gift ideas"}
       </Button>
     </form>
@@ -164,10 +197,16 @@ export function GenerateSuggestionsForm({ personId }: { personId: string }) {
 
 export function CadenceForm({ personId, currentDays }: { personId: string; currentDays: number | null }) {
   const action = setCadenceAction.bind(null, personId);
-  const [state, formAction, pending] = useActionState(action, initialState);
+  const [state, dispatch, pending] = useActionState(action, initialState);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  function handleSet() {
+    if (!formRef.current || !formRef.current.reportValidity()) return;
+    dispatch(new FormData(formRef.current));
+  }
 
   return (
-    <form action={formAction} className="flex items-end gap-2">
+    <form ref={formRef} className="flex items-end gap-2">
       <div className="flex flex-col gap-1">
         <Label htmlFor={`cadence-${personId}`} className="text-xs">
           Check in every (days)
@@ -181,7 +220,7 @@ export function CadenceForm({ personId, currentDays }: { personId: string; curre
           className="h-8 w-20"
         />
       </div>
-      <Button type="submit" size="sm" variant="secondary" disabled={pending}>
+      <Button type="button" size="sm" variant="secondary" onClick={handleSet} disabled={pending}>
         Set
       </Button>
       {state.error && <p className="text-xs text-destructive">{state.error}</p>}

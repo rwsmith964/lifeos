@@ -1,19 +1,23 @@
 "use client";
 
-import { useActionState } from "react";
-import { createActivityAction, type ActivityFormState } from "../actions";
+import { useRef } from "react";
+import { useFormPost } from "@/lib/hooks/use-form-post";
 import type { PersonRow } from "@/lib/db/database.types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-const initialState: ActivityFormState = { error: null };
-
 export function NewActivityForm({ possibleCompanions }: { possibleCompanions: PersonRow[] }) {
-  const [state, action, pending] = useActionState(createActivityAction, initialState);
+  const { submit, pending, error } = useFormPost("/api/activities");
+  const formRef = useRef<HTMLFormElement>(null);
+
+  function handleSave() {
+    if (!formRef.current || !formRef.current.reportValidity()) return;
+    submit(new FormData(formRef.current), { redirectTo: () => "/activities" });
+  }
 
   return (
-    <form action={action} className="flex flex-col gap-4">
+    <form ref={formRef} className="flex flex-col gap-4">
       <div className="flex flex-col gap-2">
         <Label htmlFor="activityType">Activity</Label>
         <Input id="activityType" name="activityType" placeholder="golf, fishing, hiking, gym…" required />
@@ -87,8 +91,8 @@ export function NewActivityForm({ possibleCompanions }: { possibleCompanions: Pe
         <Input id="noaaStation" name="noaaStation" placeholder="e.g. 9432780" />
       </div>
 
-      {state.error && <p className="text-sm text-destructive">{state.error}</p>}
-      <Button type="submit" disabled={pending}>
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      <Button type="button" onClick={handleSave} disabled={pending}>
         {pending ? "Saving…" : "Save activity"}
       </Button>
     </form>
