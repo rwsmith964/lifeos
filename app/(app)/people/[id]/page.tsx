@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { format } from "date-fns";
-import { Mail, Pencil, Phone } from "lucide-react";
+import { addDays, format } from "date-fns";
+import { ArrowLeft, Mail, Pencil, Phone } from "lucide-react";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { peopleRepo } from "@/lib/db/repositories/people";
 import { listInterestsForPerson, listBudgetsForPerson } from "@/lib/db/repositories/people";
@@ -63,6 +63,10 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
 
   return (
     <div className="flex flex-col gap-4 p-4">
+      <Link href="/people" className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+        <ArrowLeft className="size-3" /> People
+      </Link>
+
       <div className="flex items-start justify-between gap-2">
         <div>
           <h1 className="text-xl font-semibold">{person.full_name}</h1>
@@ -149,7 +153,13 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
                 </span>
               ) : (
                 <span className="text-sm text-muted-foreground">
-                  In touch — {cadenceStatus.daysSinceLastContact} days since last contact
+                  On track — last contact{" "}
+                  {cadenceStatus.daysSinceLastContact === 0
+                    ? "today"
+                    : `${cadenceStatus.daysSinceLastContact} day${cadenceStatus.daysSinceLastContact === 1 ? "" : "s"} ago`}
+                  .{" "}
+                  {cadence?.last_contact_date &&
+                    `Next check-in ${format(addDays(new Date(`${cadence.last_contact_date}T00:00:00`), cadence.target_interval_days), "MMM d")}.`}
                 </span>
               )
             ) : (

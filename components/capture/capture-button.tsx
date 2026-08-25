@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Mic, MicOff, Send, Sparkles, X } from "lucide-react";
+import { useAiHealth } from "@/lib/hooks/use-ai-health";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -44,6 +45,7 @@ export function CaptureButton() {
   const [listening, setListening] = useState(false);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const { aiAvailable } = useAiHealth();
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
@@ -167,7 +169,12 @@ export function CaptureButton() {
             </div>
 
             <div ref={scrollRef} className="flex flex-1 flex-col gap-2 overflow-y-auto px-4 py-3" style={{ minHeight: 120 }}>
-              {turns.length === 0 && (
+              {aiAvailable === false && (
+                <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+                  Quick Capture is temporarily unavailable. Try again in a few minutes.
+                </p>
+              )}
+              {turns.length === 0 && aiAvailable !== false && (
                 <p className="text-sm text-muted-foreground">
                   Say or type anything — a note about someone, a gift idea, something to put on the calendar. I&apos;ll
                   ask if I need more detail.
@@ -215,9 +222,16 @@ export function CaptureButton() {
                   }
                 }}
                 placeholder={listening ? "Listening…" : "Type or dictate a note…"}
-                className="h-9 flex-1 rounded-md border border-input bg-transparent px-3 text-sm"
+                disabled={aiAvailable === false}
+                className="h-9 flex-1 rounded-md border border-input bg-transparent px-3 text-sm disabled:opacity-50"
               />
-              <Button size="icon" className="size-9 shrink-0" disabled={pending || !input.trim()} onClick={() => void send()}>
+              <Button
+                size="icon"
+                className="size-9 shrink-0"
+                disabled={pending || !input.trim() || aiAvailable === false}
+                title={aiAvailable === false ? "Quick Capture is temporarily unavailable." : undefined}
+                onClick={() => void send()}
+              >
                 <Send className="size-4" />
               </Button>
             </div>

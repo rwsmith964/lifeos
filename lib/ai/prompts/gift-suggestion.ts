@@ -98,5 +98,9 @@ export function estimateAgeYears(birthdate: PersonRow["birthdate"], birthYearKno
     today.getMonth() > birth.getMonth() ||
     (today.getMonth() === birth.getMonth() && today.getDate() >= birth.getDate());
   if (!hasHadBirthdayThisYear) age -= 1;
-  return age;
+  // A future birthdate (bad input from before server-side validation
+  // existed, or a birth_year_known flag on stale data) must never render
+  // as a negative age — treat it as unknown rather than clamp to 0, since
+  // 0 has its own meaning (a baby born this year).
+  return age < 0 ? null : age;
 }

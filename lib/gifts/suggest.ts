@@ -93,8 +93,13 @@ export async function generateGiftSuggestions(
       });
       responseText = result.text;
     } catch (error) {
-      if (error instanceof AiUnavailableError) return { status: "ai_unavailable", reason: error.message };
-      if (error instanceof AiBudgetExceededError) return { status: "budget_exceeded", reason: error.message };
+      if (error instanceof AiUnavailableError) {
+        console.error("Gift suggestions unavailable:", error.message);
+        return { status: "ai_unavailable", reason: "Gift ideas are temporarily unavailable. Try again in a few minutes." };
+      }
+      if (error instanceof AiBudgetExceededError) {
+        return { status: "budget_exceeded", reason: "Today's AI budget for this household has been reached — try again tomorrow." };
+      }
       throw error; // a real API error (rate limit, 5xx) — not ours to swallow
     }
 

@@ -50,6 +50,25 @@ export function createRepository<Row extends { id: string }, InsertT, UpdateT>(t
       return (data ?? []) as Row[];
     },
 
+    /**
+     * Insert, or update in place on a unique-constraint conflict. Use this
+     * instead of `create` for any user-facing "add" action where re-adding
+     * the same logical row (e.g. the same interest, the same occasion
+     * budget) is a normal thing to do, not an error — see D-032. Postgres
+     * needs the actual conflicting column(s) named explicitly; there's no
+     * way to upsert "whatever the table's unique index happens to be" from
+     * PostgREST.
+     */
+    async upsert(client: SupabaseClient, values: InsertT, conflictColumns: string): Promise<Row> {
+      const { data, error } = await client
+        .from(table)
+        .upsert(values as never, { onConflict: conflictColumns })
+        .select("*")
+        .single();
+      if (error) throw error;
+      return data as Row;
+    },
+
     async update(client: SupabaseClient, id: string, values: UpdateT): Promise<Row> {
       const { data, error } = await client
         .from(table)

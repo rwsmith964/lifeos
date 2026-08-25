@@ -38,7 +38,7 @@ export default async function ActivitiesPage() {
             <Card key={activity.id}>
               <CardContent className="flex items-start justify-between gap-2">
                 <div>
-                  <p className="text-sm font-medium capitalize">{activity.activity_type}</p>
+                  <p className="text-sm font-medium">{activity.activity_type}</p>
                   <p className="text-xs text-muted-foreground">
                     Enjoyment {activity.enjoyment_rank}/10 · {activity.typical_duration_minutes} min
                     {activity.requires_prep && ` · prep ${activity.prep_lead_time_hours}h ahead`}

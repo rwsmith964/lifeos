@@ -10,15 +10,28 @@ import { Label } from "@/components/ui/label";
 const EVENT_TYPES = ["personal", "work", "family", "kid_activity", "custody", "prep", "travel"] as const;
 const VISIBILITY_OPTIONS = ["private", "household", "shared_with_coparent"] as const;
 
+// "End time must be after the start time" is the only server-side error
+// this form can produce that concerns a specific field rather than the
+// whole form — placed under End, and dismissed as soon as either time
+// changes, rather than sitting there (unclearable) until the next submit.
+function isTimeRangeError(message: string): boolean {
+  return /start time|starts_at/i.test(message);
+}
+
 export function NewEventForm({ people }: { people: PersonRow[] }) {
   const { submit, pending, error } = useFormPost("/api/calendar/events");
   const [allDay, setAllDay] = useState(false);
+  const [errorDismissed, setErrorDismissed] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
 
   function handleSave() {
     if (!formRef.current || !formRef.current.reportValidity()) return;
+    setErrorDismissed(false);
     submit(new FormData(formRef.current), { redirectTo: () => "/calendar" });
   }
+
+  const timeRangeError = error && isTimeRangeError(error) && !errorDismissed ? error : null;
+  const otherError = error && !isTimeRangeError(error) ? error : null;
 
   return (
     <form ref={formRef} className="flex flex-col gap-4">
@@ -38,11 +51,25 @@ export function NewEventForm({ people }: { people: PersonRow[] }) {
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-2">
             <Label htmlFor="startTime">Start</Label>
-            <Input id="startTime" name="startTime" type="time" defaultValue="09:00" />
+            <Input
+              id="startTime"
+              name="startTime"
+              type="time"
+              defaultValue="09:00"
+              onChange={() => setErrorDismissed(true)}
+            />
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="endTime">End</Label>
-            <Input id="endTime" name="endTime" type="time" defaultValue="10:00" />
+            <Input
+              id="endTime"
+              name="endTime"
+              type="time"
+              defaultValue="10:00"
+              aria-invalid={!!timeRangeError || undefined}
+              onChange={() => setErrorDismissed(true)}
+            />
+            {timeRangeError && <p className="text-xs text-destructive">{timeRangeError}</p>}
           </div>
         </div>
       )}
@@ -95,7 +122,7 @@ export function NewEventForm({ people }: { people: PersonRow[] }) {
         </div>
       )}
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {otherError && <p className="text-sm text-destructive">{otherError}</p>}
       <Button type="button" onClick={handleSave} disabled={pending}>
         {pending ? "Saving…" : "Save event"}
       </Button>

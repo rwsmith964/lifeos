@@ -222,8 +222,16 @@ export async function generateWeekendPlan(
       if (validated.success) aiResponse = validated.data;
     }
   } catch (error) {
-    if (error instanceof AiUnavailableError) return { status: "ai_unavailable", reason: error.message };
-    if (error instanceof AiBudgetExceededError) return { status: "budget_exceeded", reason: error.message };
+    if (error instanceof AiUnavailableError) {
+      console.error("Weekend plan unavailable:", error.message);
+      return {
+        status: "ai_unavailable",
+        reason: "Weekend planning is temporarily unavailable. Try again in a few minutes.",
+      };
+    }
+    if (error instanceof AiBudgetExceededError) {
+      return { status: "budget_exceeded", reason: "Today's AI budget for this household has been reached — try again tomorrow." };
+    }
     throw error;
   }
 

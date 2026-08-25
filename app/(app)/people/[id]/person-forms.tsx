@@ -1,7 +1,7 @@
 "use client";
 
-import { useActionState, useRef, useTransition } from "react";
-import { X } from "lucide-react";
+import { useActionState, useEffect, useRef, useState, useTransition } from "react";
+import { Loader2, X } from "lucide-react";
 import {
   addInterestAction,
   addBudgetAction,
@@ -15,6 +15,7 @@ import {
   type SimpleFormState,
   type GenerateSuggestionsState,
 } from "./actions";
+import { useAiHealth } from "@/lib/hooks/use-ai-health";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -38,11 +39,23 @@ export function AddInterestForm({ personId }: { personId: string }) {
   const action = addInterestAction.bind(null, personId);
   const [state, dispatch, pending] = useActionState(action, initialState);
   const formRef = useRef<HTMLFormElement>(null);
+  const justSubmittedRef = useRef(false);
 
   function handleAdd() {
     if (!formRef.current || !formRef.current.reportValidity()) return;
+    justSubmittedRef.current = true;
     dispatch(new FormData(formRef.current));
   }
+
+  // Clear the input (and reset the strength select) after a successful
+  // add, not just on error — leaving the just-added word sitting there
+  // was what invited a second click that used to crash the app (D-032).
+  useEffect(() => {
+    if (justSubmittedRef.current && !state.error) {
+      formRef.current?.reset();
+    }
+    justSubmittedRef.current = false;
+  }, [state]);
 
   return (
     <form ref={formRef} className="flex flex-wrap items-end gap-2">
@@ -76,11 +89,24 @@ export function AddBudgetForm({ personId }: { personId: string }) {
   const action = addBudgetAction.bind(null, personId);
   const [state, dispatch, pending] = useActionState(action, initialState);
   const formRef = useRef<HTMLFormElement>(null);
+  const justSubmittedRef = useRef(false);
+  const [errorDismissed, setErrorDismissed] = useState(false);
 
   function handleAdd() {
     if (!formRef.current || !formRef.current.reportValidity()) return;
+    justSubmittedRef.current = true;
+    setErrorDismissed(false); // a fresh submit is about to produce a fresh result either way
     dispatch(new FormData(formRef.current));
   }
+
+  useEffect(() => {
+    if (justSubmittedRef.current && !state.error) {
+      formRef.current?.reset();
+    }
+    justSubmittedRef.current = false;
+  }, [state]);
+
+  const showError = state.error && !errorDismissed;
 
   return (
     <form ref={formRef} className="flex flex-wrap items-end gap-2">
@@ -96,12 +122,31 @@ export function AddBudgetForm({ personId }: { personId: string }) {
           </option>
         ))}
       </select>
-      <Input name="minDollars" type="number" min={0} placeholder="Min $" required className="h-8 w-20" />
-      <Input name="maxDollars" type="number" min={0} placeholder="Max $" required className="h-8 w-20" />
+      <Input
+        name="minDollars"
+        type="number"
+        min={0}
+        placeholder="Min $"
+        required
+        className="h-8 w-20"
+        onChange={() => setErrorDismissed(true)}
+      />
+      <div className="flex flex-col gap-1">
+        <Input
+          name="maxDollars"
+          type="number"
+          min={0}
+          placeholder="Max $"
+          required
+          className="h-8 w-20"
+          aria-invalid={showError || undefined}
+          onChange={() => setErrorDismissed(true)}
+        />
+        {showError && <p className="text-xs text-destructive">{state.error}</p>}
+      </div>
       <Button type="button" size="sm" onClick={handleAdd} disabled={pending}>
         Add
       </Button>
-      {state.error && <p className="w-full text-xs text-destructive">{state.error}</p>}
     </form>
   );
 }
@@ -163,11 +208,19 @@ export function GenerateSuggestionsForm({ personId }: { personId: string }) {
   const action = generateSuggestionsAction.bind(null, personId);
   const [state, dispatch, pending] = useActionState(action, initialGenerateState);
   const formRef = useRef<HTMLFormElement>(null);
+  const { aiAvailable } = useAiHealth();
 
   function handleGenerate() {
+    // The date field is `required` with no default — a click while it's
+    // still empty was silently swallowed by native reportValidity() with
+    // no visible feedback ("first click does nothing"). Defaulting the
+    // field means this path is now rarely hit, but it's still a no-op
+    // rather than a silent one if it is.
     if (!formRef.current || !formRef.current.reportValidity()) return;
     dispatch(new FormData(formRef.current));
   }
+
+  const disabled = pending || aiAvailable === false;
 
   return (
     <form ref={formRef} className="flex flex-col gap-2">
@@ -184,12 +237,32 @@ export function GenerateSuggestionsForm({ personId }: { personId: string }) {
             </option>
           ))}
         </select>
-        <Input name="occasionDate" type="date" required className="h-8" aria-label="Occasion date" />
+        <Input
+          name="occasionDate"
+          type="date"
+          required
+          defaultValue={new Date().toISOString().slice(0, 10)}
+          className="h-8"
+          aria-label="Occasion date"
+        />
       </div>
       {state.error && <p className="text-xs text-destructive">{state.error}</p>}
       {state.success && <p className="text-xs text-muted-foreground">Done — see the Gifts tab.</p>}
-      <Button type="button" size="sm" variant="secondary" onClick={handleGenerate} disabled={pending}>
-        {pending ? "Thinking…" : "Get gift ideas"}
+      <Button
+        type="button"
+        size="sm"
+        variant="secondary"
+        onClick={handleGenerate}
+        disabled={disabled}
+        title={aiAvailable === false ? "Gift ideas are temporarily unavailable." : undefined}
+      >
+        {pending ? (
+          <>
+            <Loader2 className="size-3 animate-spin" /> Thinking…
+          </>
+        ) : (
+          "Get gift ideas"
+        )}
       </Button>
     </form>
   );

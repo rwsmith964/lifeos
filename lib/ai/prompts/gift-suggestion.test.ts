@@ -25,6 +25,10 @@ describe("estimateAgeYears", () => {
   it("computes age correctly on the exact birthday", () => {
     expect(estimateAgeYears("1985-08-01", true, new Date(2026, 7, 1))).toBe(41);
   });
+
+  it("returns null instead of a negative age for a future birthdate (round 2 regression)", () => {
+    expect(estimateAgeYears("2035-11-04", true, new Date(2026, 7, 1))).toBeNull();
+  });
 });
 
 describe("giftSuggestionAiResponseSchema", () => {

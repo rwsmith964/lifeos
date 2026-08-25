@@ -4,6 +4,7 @@ import type {
   ContactCadenceInsert,
   ContactCadenceRow,
   ContactCadenceUpdate,
+  ContactType,
   InteractionInsert,
   InteractionRow,
   InteractionUpdate,
@@ -40,6 +41,30 @@ export async function listActiveCadencesForHousehold(
     .eq("is_active", true);
   if (error) throw error;
   return (data ?? []) as (ContactCadenceRow & { person_id: string })[];
+}
+
+/**
+ * Keeps contact_cadences.last_contact_date/last_contact_type in sync with
+ * the interactions log. Logging an interaction and evaluating cadence
+ * status read from two different tables that nothing wired together —
+ * cadence status ("Overdue") never reflected a contact logged the same
+ * day, even though it appeared right below in the interaction history.
+ * See DECISIONS.md D-032. No-op if the person has no cadence row (nothing
+ * to keep in sync) or if a newer contact is already recorded.
+ */
+export async function recordContactForCadence(
+  client: SupabaseClient,
+  personId: string,
+  occurredOn: string,
+  interactionType: ContactType
+): Promise<void> {
+  const cadence = await getCadenceForPerson(client, personId);
+  if (!cadence) return;
+  if (cadence.last_contact_date && cadence.last_contact_date >= occurredOn) return;
+  await contactCadencesRepo.update(client, cadence.id, {
+    last_contact_date: occurredOn,
+    last_contact_type: interactionType,
+  });
 }
 
 export async function listInteractionsForPerson(

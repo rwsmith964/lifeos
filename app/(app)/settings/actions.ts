@@ -5,6 +5,7 @@ import { requireHouseholdContext } from "@/lib/auth/session";
 import { householdsRepo } from "@/lib/db/repositories/households";
 import { usersRepo } from "@/lib/db/repositories/households";
 import { householdInsertSchema, userInsertSchema } from "@/lib/db/schemas";
+import { friendlyMutationError } from "@/lib/db/errors";
 
 export interface SettingsFormState {
   error: string | null;
@@ -27,14 +28,29 @@ export async function updateHouseholdSettingsAction(
     return { error: parsedHousehold.error.issues[0]?.message ?? "Invalid input.", saved: false };
   }
 
-  await householdsRepo.update(supabase, household.id, parsedHousehold.data);
+  // householdInsertSchema is shared with a `.partial()` caller elsewhere,
+  // so this cross-field check can't live on the schema itself (`.refine()`
+  // isn't compatible with `.partial()`) — checked here instead.
+  const { default_gift_budget_min_cents: min, default_gift_budget_max_cents: max } = parsedHousehold.data;
+  if (min != null && max != null && max < min) {
+    return { error: "Max must be at least the minimum.", saved: false };
+  }
 
-  const timezone = String(formData.get("timezone") ?? "").trim();
-  if (timezone) {
-    const parsedUser = userInsertSchema.partial().safeParse({ timezone });
-    if (parsedUser.success) {
-      await usersRepo.update(supabase, userId, parsedUser.data);
+  try {
+    await householdsRepo.update(supabase, household.id, parsedHousehold.data);
+
+    const timezone = String(formData.get("timezone") ?? "").trim();
+    if (timezone) {
+      const parsedUser = userInsertSchema.partial().safeParse({ timezone });
+      if (parsedUser.success) {
+        await usersRepo.update(supabase, userId, parsedUser.data);
+      }
     }
+  } catch (error) {
+    return {
+      error: friendlyMutationError(error, { fallback: "Couldn't save settings — please try again." }),
+      saved: false,
+    };
   }
 
   revalidatePath("/settings");

@@ -5,7 +5,12 @@ import { revalidatePath } from "next/cache";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { peopleRepo, personInterestsRepo, personGiftBudgetsRepo } from "@/lib/db/repositories/people";
 import { giftsRepo } from "@/lib/db/repositories/gifts";
-import { contactCadencesRepo, interactionsRepo, getCadenceForPerson } from "@/lib/db/repositories/contact";
+import {
+  contactCadencesRepo,
+  interactionsRepo,
+  getCadenceForPerson,
+  recordContactForCadence,
+} from "@/lib/db/repositories/contact";
 import {
   personInterestInsertSchema,
   personGiftBudgetInsertSchema,
@@ -13,6 +18,7 @@ import {
   contactCadenceInsertSchema,
   interactionInsertSchema,
 } from "@/lib/db/schemas";
+import { friendlyMutationError } from "@/lib/db/errors";
 import { applyGiftFeedback } from "@/lib/gifts/feedback";
 import { generateGiftSuggestions } from "@/lib/gifts/suggest";
 import type { OccasionType } from "@/lib/db/database.types";
@@ -70,7 +76,16 @@ export async function addInterestAction(
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
 
-  await personInterestsRepo.create(supabase, parsed.data);
+  try {
+    // Upsert, not insert: re-adding an interest the person already has
+    // (person_id, interest) is a unique constraint, and previously an
+    // uncaught violation here crashed the whole app (D-032). Re-adding is
+    // a normal thing to do — treat it as "update the strength" rather
+    // than an error.
+    await personInterestsRepo.upsert(supabase, parsed.data, "person_id,interest");
+  } catch (error) {
+    return { error: friendlyMutationError(error, { fallback: "Couldn't add that interest — please try again." }) };
+  }
   revalidatePath(`/people/${personId}`);
   return { error: null };
 }
@@ -90,7 +105,14 @@ export async function addBudgetAction(
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
 
-  await personGiftBudgetsRepo.create(supabase, parsed.data);
+  try {
+    // Same reasoning as addInterestAction: (person_id, occasion_type) is
+    // unique, and re-setting a budget for an occasion that already has one
+    // should replace it, not crash.
+    await personGiftBudgetsRepo.upsert(supabase, parsed.data, "person_id,occasion_type");
+  } catch (error) {
+    return { error: friendlyMutationError(error, { fallback: "Couldn't save that budget — please try again." }) };
+  }
   revalidatePath(`/people/${personId}`);
   return { error: null };
 }
@@ -115,9 +137,13 @@ export async function recordGiftAction(
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
 
-  const gift = await giftsRepo.create(supabase, parsed.data);
-  if (gift.reaction) {
-    await applyGiftFeedback(supabase, gift.id);
+  try {
+    const gift = await giftsRepo.create(supabase, parsed.data);
+    if (gift.reaction) {
+      await applyGiftFeedback(supabase, gift.id);
+    }
+  } catch (error) {
+    return { error: friendlyMutationError(error, { fallback: "Couldn't record that gift — please try again." }) };
   }
   revalidatePath(`/people/${personId}`);
   return { error: null };
@@ -137,11 +163,15 @@ export async function setCadenceAction(
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
 
-  const existing = await getCadenceForPerson(supabase, personId);
-  if (existing) {
-    await contactCadencesRepo.update(supabase, existing.id, { target_interval_days: targetDays });
-  } else {
-    await contactCadencesRepo.create(supabase, parsed.data);
+  try {
+    const existing = await getCadenceForPerson(supabase, personId);
+    if (existing) {
+      await contactCadencesRepo.update(supabase, existing.id, { target_interval_days: targetDays });
+    } else {
+      await contactCadencesRepo.create(supabase, parsed.data);
+    }
+  } catch (error) {
+    return { error: friendlyMutationError(error, { fallback: "Couldn't save that — please try again." }) };
   }
   revalidatePath(`/people/${personId}`);
   return { error: null };
@@ -150,12 +180,14 @@ export async function setCadenceAction(
 export async function logInteractionAction(personId: string): Promise<void> {
   const { supabase } = await requireHouseholdContext();
 
+  const occurredOn = new Date().toISOString().slice(0, 10);
   const parsed = interactionInsertSchema.parse({
     person_id: personId,
     interaction_type: "in_person",
-    occurred_on: new Date().toISOString().slice(0, 10),
+    occurred_on: occurredOn,
   });
   await interactionsRepo.create(supabase, parsed);
+  await recordContactForCadence(supabase, personId, occurredOn, "in_person");
   revalidatePath(`/people/${personId}`);
 }
 
@@ -175,16 +207,24 @@ export async function updatePersonAction(
   if (!fullName) return { error: "Full name is required." };
 
   const birthdate = String(formData.get("birthdate") ?? "");
-  await peopleRepo.update(supabase, personId, {
-    full_name: fullName,
-    nickname: String(formData.get("nickname") ?? "").trim() || null,
-    relationship_type: existing.relationship_type === "self" ? "self" : (String(formData.get("relationshipType") ?? existing.relationship_type) as typeof existing.relationship_type),
-    birthdate: birthdate || null,
-    birth_year_known: formData.get("birthYearKnown") === "on",
-    phone: String(formData.get("phone") ?? "").trim() || null,
-    email: String(formData.get("email") ?? "").trim() || null,
-    notes: String(formData.get("notes") ?? ""),
-  });
+  if (birthdate && birthdate > new Date().toISOString().slice(0, 10)) {
+    return { error: "Birthdate can't be in the future." };
+  }
+
+  try {
+    await peopleRepo.update(supabase, personId, {
+      full_name: fullName,
+      nickname: String(formData.get("nickname") ?? "").trim() || null,
+      relationship_type: existing.relationship_type === "self" ? "self" : (String(formData.get("relationshipType") ?? existing.relationship_type) as typeof existing.relationship_type),
+      birthdate: birthdate || null,
+      birth_year_known: formData.get("birthYearKnown") === "on",
+      phone: String(formData.get("phone") ?? "").trim() || null,
+      email: String(formData.get("email") ?? "").trim() || null,
+      notes: String(formData.get("notes") ?? ""),
+    });
+  } catch (error) {
+    return { error: friendlyMutationError(error, { fallback: "Couldn't save those changes — please try again." }) };
+  }
 
   revalidatePath(`/people/${personId}`);
   redirect(`/people/${personId}`);

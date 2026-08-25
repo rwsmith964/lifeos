@@ -149,7 +149,7 @@ export const personGiftBudgetInsertSchema = z
     max_cents: cents,
   })
   .refine((v) => v.max_cents >= v.min_cents, {
-    message: "max_cents must be >= min_cents",
+    message: "Max must be at least the minimum.",
     path: ["max_cents"],
   });
 
@@ -243,7 +243,7 @@ export const calendarEventInsertSchema = z
     related_activity_id: uuid.nullable().optional(),
   })
   .refine((v) => new Date(v.ends_at) >= new Date(v.starts_at), {
-    message: "ends_at must be >= starts_at",
+    message: "End time must be after the start time.",
     path: ["ends_at"],
   });
 
@@ -264,7 +264,7 @@ export const custodyBlockInsertSchema = z
     notes: z.string().optional(),
   })
   .refine((v) => new Date(v.ends_at) >= new Date(v.starts_at), {
-    message: "ends_at must be >= starts_at",
+    message: "End date can't be before the start date.",
     path: ["ends_at"],
   });
 

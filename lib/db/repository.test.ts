@@ -138,4 +138,21 @@ describe("createRepository", () => {
     const client = makeFakeClient({ data: null, error: new Error("fk violation") });
     await expect(repo.remove(client as never, "1")).rejects.toThrow("fk violation");
   });
+
+  it("upsert() passes the conflict target through and returns the row (D-032 regression)", async () => {
+    const row: FakeRow = { id: "1", name: "gardening" };
+    const client = makeFakeClient({ data: row, error: null });
+
+    const result = await repo.upsert(client as never, { name: "gardening" }, "person_id,interest");
+
+    const calls = (client.query as { calls: { method: string; args: unknown[] }[] }).calls;
+    const upsertCall = calls.find((c) => c.method === "upsert");
+    expect(upsertCall?.args[1]).toEqual({ onConflict: "person_id,interest" });
+    expect(result).toEqual(row);
+  });
+
+  it("upsert() throws on a Postgres error rather than swallowing it", async () => {
+    const client = makeFakeClient({ data: null, error: new Error("check violation") });
+    await expect(repo.upsert(client as never, { name: "x" }, "id")).rejects.toThrow("check violation");
+  });
 });

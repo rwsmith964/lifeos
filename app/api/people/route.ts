@@ -4,12 +4,17 @@ import { NextResponse } from "next/server";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { peopleRepo } from "@/lib/db/repositories/people";
 import { personInsertSchema } from "@/lib/db/schemas";
+import { friendlyMutationError } from "@/lib/db/errors";
 
 export async function POST(request: Request) {
   const { supabase, household } = await requireHouseholdContext();
   const formData = await request.formData();
 
   const birthdate = String(formData.get("birthdate") ?? "");
+  if (birthdate && birthdate > new Date().toISOString().slice(0, 10)) {
+    return NextResponse.json({ error: "Birthdate can't be in the future." }, { status: 400 });
+  }
+
   const parsed = personInsertSchema.safeParse({
     household_id: household.id,
     full_name: String(formData.get("fullName") ?? "").trim(),
@@ -27,7 +32,9 @@ export async function POST(request: Request) {
     const person = await peopleRepo.create(supabase, parsed.data);
     return NextResponse.json({ id: person.id });
   } catch (error) {
-    console.error("POST /api/people failed:", error);
-    return NextResponse.json({ error: "Couldn't save this person — please try again." }, { status: 500 });
+    return NextResponse.json(
+      { error: friendlyMutationError(error, { fallback: "Couldn't save this person — please try again." }) },
+      { status: 500 }
+    );
   }
 }

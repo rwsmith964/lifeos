@@ -19,8 +19,9 @@ import {
 } from "@/lib/ai/prompts/capture";
 import { listPeopleForHousehold, peopleRepo, personGiftBudgetsRepo, personInterestsRepo } from "@/lib/db/repositories/people";
 import { giftsRepo } from "@/lib/db/repositories/gifts";
-import { interactionsRepo } from "@/lib/db/repositories/contact";
+import { interactionsRepo, recordContactForCadence } from "@/lib/db/repositories/contact";
 import { calendarEventsRepo, eventAttendeesRepo } from "@/lib/db/repositories/calendar";
+import { friendlyMutationError } from "@/lib/db/errors";
 import type { PersonRow } from "@/lib/db/database.types";
 
 interface CaptureRequestBody {
@@ -38,22 +39,28 @@ async function executeAction(
   switch (action.type) {
     case "add_interest": {
       if (!action.personId || !action.interest) throw new Error("Missing person or interest");
-      await personInterestsRepo.create(supabase, {
-        person_id: action.personId,
-        interest: action.interest,
-        strength: action.interestStrength ?? "casual",
-        source: "inferred_from_conversation",
-      });
+      await personInterestsRepo.upsert(
+        supabase,
+        {
+          person_id: action.personId,
+          interest: action.interest,
+          strength: action.interestStrength ?? "casual",
+          source: "inferred_from_conversation",
+        },
+        "person_id,interest"
+      );
       return;
     }
     case "log_interaction": {
       if (!action.personId) throw new Error("Missing person");
+      const interactionType = action.interactionType ?? "other";
       await interactionsRepo.create(supabase, {
         person_id: action.personId,
-        interaction_type: action.interactionType ?? "other",
+        interaction_type: interactionType,
         occurred_on: today,
         notes: action.interactionNotes ?? null,
       });
+      await recordContactForCadence(supabase, action.personId, today, interactionType);
       return;
     }
     case "record_gift": {
@@ -115,7 +122,7 @@ export async function POST(request: Request) {
   if (!isAiConfigured()) {
     return NextResponse.json({
       status: "unavailable",
-      message: "AI capture isn't set up yet — it needs an Anthropic API key configured on the server.",
+      message: "Quick Capture is temporarily unavailable. Try again in a few minutes.",
     });
   }
 
@@ -150,7 +157,8 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     if (error instanceof AiUnavailableError) {
-      return NextResponse.json({ status: "unavailable", message: error.message });
+      console.error("Quick Capture unavailable:", error.message);
+      return NextResponse.json({ status: "unavailable", message: "Quick Capture is temporarily unavailable. Try again in a few minutes." });
     }
     if (error instanceof AiBudgetExceededError) {
       return NextResponse.json({
@@ -195,7 +203,7 @@ export async function POST(request: Request) {
   } catch (error) {
     return NextResponse.json({
       status: "error",
-      message: `Couldn't save that: ${error instanceof Error ? error.message : "unknown error"}`,
+      message: friendlyMutationError(error, { fallback: "Couldn't save that — please try again." }),
     });
   }
 
