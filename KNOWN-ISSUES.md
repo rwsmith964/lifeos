@@ -16,6 +16,10 @@ Migration `20260820000019_custody_schedules.sql` applied live. Multi-day custody
 
 `ANTHROPIC_API_KEY` is set in Vercel. Getting a real key live immediately surfaced two previously-invisible RLS/wrong-client bugs (the health-gating from D-032 could only prove the *absence* of a key was handled gracefully, never that a *present* key actually worked) — both fixed, see D-034: `ai_usage_log` writes (used by all three AI features) and `weekend_plans` writes were both being attempted with the request-scoped user client against tables that, by design, only a service-role client can write. All three AI features — gift suggestions, weekend planning, Quick Capture — are now live-verified working end to end in production, including a full Quick Capture clarifying-question round trip.
 
+## Fixed and verified live this pass (round 3, D-035 — onboarding was completely broken for every new signup)
+
+Creating a household during onboarding failed 100% of the time with an RLS error on `households` — not a policy bug but a `RETURNING`-vs-SELECT-policy chicken-and-egg problem (the user isn't a household member yet at the exact moment the household row is being returned to the client). Fixed with a `SECURITY DEFINER` bootstrap function (`create_household_with_owner`) that does both inserts atomically, matching this schema's existing bypass-RLS-safely pattern. Live-verified end to end with a real account that had never completed onboarding: household creation, redirect to the home dashboard, and the self person record all confirmed working. See D-035.
+
 ## Open — from the round 2 brief, not yet started
 
 - **1.3**: field-level error placement + clear-on-edit was applied to the two forms the brief's table named (gift budgets, calendar event start/end). Not applied to every other form with a validation error (interests, cadence, activities, settings) — those still show one message near the submit control. Settings' stale-"Saved."-message complaint appears to have been a symptom of D-031's original bug (state never updated on a failed retry); not independently re-reproduced this pass.
@@ -26,7 +30,6 @@ Migration `20260820000019_custody_schedules.sql` applied live. Multi-day custody
 ## Found during this pass, not in the brief
 
 - **Multiple custody-block rows found for the same Emma/Sep 5–7 span** while cleaning up test data (three rows, not the one the brief described creating). Could be a genuine double-submit bug in the pre-D-031 custody form, or just repeated manual test attempts during round 2's QA pass — not investigated further, since Phase 2 replaces this form outright. Worth keeping an eye on double-submission generally once the new schedule view exists.
-- **`app/onboarding/onboarding-form.tsx`** still uses native `<form action={dispatch}>` binding, unaudited against D-031/D-032 — it sits outside `(app)`'s auth-redirecting layout so it's probably unaffected, but this has not been verified live with a fresh signup this pass or last.
 - **Gift and notification actions** (`app/(app)/gifts/actions.ts`, `app/(app)/notifications/actions.ts`) weren't individually re-verified live this pass; they use the confirmed-working `startTransition()` direct-call pattern, not the `<form action>` binding, so risk is low but unconfirmed.
 
 ## Deferred / won't-do-as-specified (with reason)
