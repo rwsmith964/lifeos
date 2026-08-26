@@ -505,3 +505,21 @@ Fixing `callAi` immediately surfaced the *second* instance: generating a weekend
 **Rationale:** Manifest + icons + a real (if intentionally inert) service worker is the standard, low-risk way to make a Next.js app installable without touching any of its actual data-fetching behavior.
 
 **Reversibility:** Cheap. All additive (new files only); no existing route or component behavior changed. The service worker's cache-versioning (`lifeos-static-v1`) makes future icon updates safe — bumping that string invalidates the old cache.
+
+---
+
+## D-046 | 2026-08-26 | Dark mode support
+
+**Context:** Phase 3 backlog: no dark mode. `app/globals.css` already had a complete `.dark` class with oklch tokens (shadcn scaffolding default) and every component was already built against `bg-background`/`text-foreground`/`bg-card`/`text-muted-foreground`-style CSS variable tokens rather than hardcoded colors — but nothing ever added the `.dark` class to `<html>`, so dark mode was structurally ready but functionally inert.
+
+**Fix:**
+- Installed `next-themes`. `components/theme-provider.tsx` wraps its `ThemeProvider`, mounted in `app/layout.tsx` with `attribute="class" defaultTheme="system" enableSystem` — this is what actually toggles `.dark` on `<html>`, persists the choice to `localStorage`, and injects a pre-hydration inline script so a dark-preferring device doesn't flash light mode before React mounts. `<html suppressHydrationWarning>` added since that injected script intentionally sets the class before hydration.
+- `components/theme-toggle.tsx` — a three-way Light/Dark/System segmented control using `useTheme()`. Renders a neutral (non-selected) state until mounted, since the real resolved theme is only knowable client-side.
+- Added an "Appearance" card to `/settings` hosting the toggle. This is a device-local UI preference (not a household setting), so it's deliberately separate from `SettingsForm`'s server-action-backed household fields.
+- Audited every component for hardcoded (non-token) colors before assuming dark mode would "just work": found only `text-white` on the fixed-red `destructive` button/badge variant (correct in both themes — destructive stays red-ish either way) and a `bg-black/40` modal backdrop (also correct in both themes). The two amber gap-detection/warning banners already had explicit `dark:text-amber-400` variants from when they were built. No changes needed to any of these.
+
+**Verification:** `pnpm typecheck && pnpm lint && pnpm test && pnpm build` all pass (244/244 tests). Live-verification pending for next round — checking: toggle switches themes instantly and persists across reload, "System" follows the OS preference, and a visual scan of a few key pages (Brief, Calendar, Settings, a form) in dark mode for any remaining low-contrast text.
+
+**Rationale:** The CSS foundation already existed; this was purely wiring next-themes on top of it, which is the standard, well-tested approach for Next.js dark mode and avoids hand-rolling class toggling, persistence, and hydration-safe SSR handling.
+
+**Reversibility:** Cheap. Additive only — no existing component's markup or class names changed (the tokens they already used simply now respond to a class that gets toggled). Removing the `ThemeProvider` wrapper would just leave the app permanently in light mode (the `:root` tokens), matching pre-D-046 behavior exactly.

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Download } from "lucide-react";
 import { format } from "date-fns";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
@@ -58,14 +58,23 @@ export default async function CustodyScheduleDetailPage({ params }: { params: Pr
         <ArrowLeft className="size-3" /> Custody
       </Link>
 
-      <div>
-        <h1 className="text-xl font-semibold">{peopleById.get(schedule.child_person_id) ?? "Unknown child"}&rsquo;s schedule</h1>
-        <p className="text-sm text-muted-foreground">
-          Handover {schedule.handover_time.slice(0, 5)}
-          {schedule.handover_location && ` at ${schedule.handover_location}`} · from{" "}
-          {format(new Date(`${schedule.start_date}T00:00:00`), "MMM d, yyyy")}
-          {schedule.end_date ? ` to ${format(new Date(`${schedule.end_date}T00:00:00`), "MMM d, yyyy")}` : " · ongoing"}
-        </p>
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <h1 className="text-xl font-semibold">{peopleById.get(schedule.child_person_id) ?? "Unknown child"}&rsquo;s schedule</h1>
+          <p className="text-sm text-muted-foreground">
+            Handover {schedule.handover_time.slice(0, 5)}
+            {schedule.handover_location && ` at ${schedule.handover_location}`} · from{" "}
+            {format(new Date(`${schedule.start_date}T00:00:00`), "MMM d, yyyy")}
+            {schedule.end_date ? ` to ${format(new Date(`${schedule.end_date}T00:00:00`), "MMM d, yyyy")}` : " · ongoing"}
+          </p>
+        </div>
+        <a
+          href={`/api/calendar/custody/schedules/${schedule.id}/ics`}
+          className="flex shrink-0 items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
+          download
+        >
+          <Download className="size-3.5" /> Export .ics
+        </a>
       </div>
 
       {gaps.length > 0 && (
