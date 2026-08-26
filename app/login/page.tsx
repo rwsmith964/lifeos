@@ -43,6 +43,9 @@ export default function LoginPage() {
               <Button type="submit" disabled={passwordPending}>
                 {passwordPending ? "Signing in…" : "Sign in"}
               </Button>
+              <Link href="/forgot-password" className="text-center text-sm underline underline-offset-2">
+                Forgot password?
+              </Link>
             </form>
           ) : (
             <form

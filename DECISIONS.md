@@ -418,8 +418,27 @@ Fixing `callAi` immediately surfaced the *second* instance: generating a weekend
 
 **Calendar auto-scroll:** Clicking a day in the month grid always left the viewport at the top of the page (next/link's default post-navigation scroll-to-top), so the newly selected day's event list — rendered below the whole month grid card — was off-screen until the user scrolled down manually, every single time. Added `id="selected-day"` to that list's wrapper and a `#selected-day` hash fragment to every day-cell's `href` (and to the D-039 post-create redirect target) — `next/link`'s built-in hash-scroll behavior takes it from there, no client JS needed.
 
-**Verification:** `pnpm typecheck && pnpm lint && pnpm test && pnpm build` all pass (244/244 tests). Not yet independently re-verified live in the browser this pass.
+**Verification:** `pnpm typecheck && pnpm lint && pnpm test && pnpm build` all pass (244/244 tests). Live-verified in production: the timezone select shows all 418 IANA zones, saves and persists correctly across a page reload, then reverted cleanly back to the original value. Calendar auto-scroll confirmed on a 375×667 mobile viewport — clicking an unselected day cell moves `scrollY` from 0 to 183 and brings the selected day's heading into view; the D-039 post-create redirect also lands already scrolled to the newly created event.
 
 **Rationale:** Both are narrow, config-shaped fixes (a data source swap for one field; a URL fragment for scroll targeting) rather than new features, so no product decision was needed for either.
 
 **Reversibility:** Cheap. Timezone: reverting drops back to the free-text input with no schema/data implications (already-saved valid IANA strings, which is everything real users could have saved via the old UI in practice, still validate fine). Auto-scroll: the `#selected-day` fragments are purely additive routing sugar with no effect on any browser that doesn't support hash-scroll (it just falls back to the old scroll-to-top behavior).
+
+---
+
+## D-041 | 2026-08-26 | Custom 404 page; forgot-password flow
+
+**Custom 404:** `app/not-found.tsx` was missing entirely, so any bad or stale link fell through to Next's bare unstyled default page — no branding, no navigation, no way back into the app except the browser's back button. Added a branded 404 that checks auth state directly (via `supabase.auth.getUser()`, not `requireHouseholdContext()` — that helper *redirects* on no session/household, the opposite of a 404's job) and links "Go to calendar" or "Go to sign in" depending on whether the visitor is logged in.
+
+**Forgot password:** No self-service path existed for a locked-out user beyond asking someone to reset it by hand in Supabase. Added the standard two-step flow:
+- `/forgot-password` — email form, calls new `sendPasswordResetEmail` action (`app/actions.ts`) which wraps `supabase.auth.resetPasswordForEmail(email, { redirectTo: "<origin>/auth/callback?next=/reset-password" })`. Always shows the same "if an account exists…" message regardless of whether the email matched anything, matching Supabase's own non-enumerating behavior.
+- `app/auth/callback/route.ts` — extended to read an optional `next` query param (allow-listed to `/onboarding` or `/reset-password`) instead of hardcoding the onboarding redirect, so the existing magic-link/signup-confirmation links (which never set `next`) keep working exactly as before.
+- `/reset-password` — new password + confirm-password form (client-side match check), calls new `updatePasswordAfterReset` action, which requires the caller to already hold the short-lived recovery session the callback just established (`supabase.auth.getUser()` returning a user is proof enough — no separate "current password" field, since reaching this page at all already proves control of the account's inbox), then `supabase.auth.updateUser({ password })` and redirects to `/calendar`.
+- `/login` gets a "Forgot password?" link next to the password sign-in form.
+- `getSiteOrigin()` helper reads `x-forwarded-host`/`x-forwarded-proto` via `next/headers` since Server Actions have no `request` object the way Route Handlers do.
+
+**Verification:** `pnpm typecheck && pnpm lint && pnpm test && pnpm build` all pass (244/244 tests). Live verification pending — needs an actual reset email round-trip (send → receive → click → set new password) checked against the real inbox before calling this done.
+
+**Rationale:** Both are standard, expected auth/error-page affordances with an obvious one correct shape — no product decision needed.
+
+**Reversibility:** Cheap. 404 page is purely additive. Forgot-password touches `app/auth/callback/route.ts`'s redirect target logic, but the change is backward compatible (defaults to the exact prior behavior for any link without `next` set) — reverting drops the three new pages/actions and callback change with no schema or data implications.
