@@ -5,6 +5,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { householdsRepo } from "../db/repositories/households";
 import { aiUsageLogRepo, sumAiSpendToday } from "../db/repositories/system";
+import { createSupabaseServiceRoleClient } from "../db/client-service-role";
 import { AI_MODEL, estimateCostCents } from "./pricing";
 
 export class AiUnavailableError extends Error {
@@ -64,9 +65,19 @@ export async function callAi(dbClient: SupabaseClient, params: AiCallParams): Pr
   const anthropic = getAnthropicClient();
   if (!anthropic) throw new AiUnavailableError();
 
+  // ai_usage_log has no RLS policy for ordinary authenticated writes/reads
+  // by design (migration 20260820000012: "written only by lib/ai/client.ts
+  // via the service role") — every caller of callAi passes the
+  // request-scoped, user-authenticated client, which can only read a
+  // household's own row and never this table. Route the spend check and
+  // the usage write through the service-role client instead; the household
+  // lookup stays on the caller's client since members can read their own
+  // household under normal RLS.
+  const serviceRoleClient = createSupabaseServiceRoleClient();
+
   const household = await householdsRepo.getById(dbClient, params.householdId);
   const ceilingCents = household?.ai_daily_spend_ceiling_cents ?? 50;
-  const spentTodayCents = await sumAiSpendToday(dbClient, params.householdId);
+  const spentTodayCents = await sumAiSpendToday(serviceRoleClient, params.householdId);
   if (spentTodayCents >= ceilingCents) {
     throw new AiBudgetExceededError(
       `Household ${params.householdId} has spent ${spentTodayCents}c today, at/over its ${ceilingCents}c daily ceiling`
@@ -96,7 +107,7 @@ export async function callAi(dbClient: SupabaseClient, params: AiCallParams): Pr
   const outputTokens = response.usage.output_tokens;
   const costCents = estimateCostCents(inputTokens, outputTokens);
 
-  await aiUsageLogRepo.create(dbClient, {
+  await aiUsageLogRepo.create(serviceRoleClient, {
     household_id: params.householdId,
     feature: params.feature,
     model: AI_MODEL,
