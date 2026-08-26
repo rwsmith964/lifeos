@@ -487,3 +487,21 @@ Fixing `callAi` immediately surfaced the *second* instance: generating a weekend
 **Rationale:** This is a real security gap (session confusion between "authenticated" and "authorized via password-reset flow specifically"), so it jumped the backlog queue ahead of other Phase 2/3 items despite not being in the original brief.
 
 **Reversibility:** Cheap, additive-only (a new cookie and a length check); no schema or migration changes. Rolling back means one logged-in session could again silently reset its own password via direct URL visit — not recommended.
+
+---
+
+## D-045 | 2026-08-26 | PWA manifest, app icons, and install support
+
+**Context:** Phase 3 backlog: no web app manifest, no app icons beyond the existing `favicon.ico`, and no service worker — the app couldn't be "installed" as a PWA on desktop or mobile home screens.
+
+**Fix:**
+- Generated a brand icon set (black circle / white triangle, matching the existing `favicon.ico` mark) at 192×192 and 512×512 (`any` purpose) plus a 512×512 `maskable` variant with a proper safe-zone margin, saved under `public/`. Added `app/icon.png` (512×512) and `app/apple-icon.png` (180×180) using Next.js's App Router icon file convention, so the browser tab favicon and iOS home-screen icon are both covered automatically with no manual `<link>` tags needed.
+- `app/manifest.ts` — Next.js's native manifest route, auto-served at `/manifest.webmanifest` with the correct content-type. `start_url: "/calendar"`, `display: "standalone"`, theme/background colors matching the app's existing neutral palette.
+- `app/layout.tsx` — added `metadata.manifest`, `metadata.appleWebApp` (iOS "Add to Home Screen" standalone look), `metadata.formatDetection.telephone: false`, and a `viewport` export with `themeColor` (Next 16 requires viewport config as a separate export from `metadata`).
+- `public/sw.js` + `app/service-worker-registration.tsx` — a deliberately minimal service worker, registered client-side. It only cache-first-serves the three static icon files; every page and API request passes straight through to the network untouched. This was a deliberate, explicit choice: this app is entirely session-dependent (`force-dynamic` on every route, per the comment already in `app/layout.tsx`), and D-031 already documented one real production bug from a *cached* auth-dependent response being replayed to the wrong session at Vercel's edge — caching HTML/API responses in a service worker would risk the same class of bug one layer further down, in the browser itself. The service worker exists purely to satisfy PWA installability criteria (manifest + active service worker), not to add offline support.
+
+**Verification:** `pnpm typecheck && pnpm lint && pnpm test && pnpm build` all pass (244/244 tests); build output confirms `/manifest.webmanifest`, `/icon.png`, and `/apple-icon.png` are all generated as static routes. Not yet independently re-verified live in the browser this pass (checking manifest content, icon rendering, and an actual "Add to Home Screen"/install prompt is next).
+
+**Rationale:** Manifest + icons + a real (if intentionally inert) service worker is the standard, low-risk way to make a Next.js app installable without touching any of its actual data-fetching behavior.
+
+**Reversibility:** Cheap. All additive (new files only); no existing route or component behavior changed. The service worker's cache-versioning (`lifeos-static-v1`) makes future icon updates safe — bumping that string invalidates the old cache.
