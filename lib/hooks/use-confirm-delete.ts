@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 
 /**
  * Shared two-click "arm, then confirm" delete flow (KNOWN-ISSUES.md 1.5: no
@@ -30,6 +31,7 @@ export function useConfirmDelete(action: () => Promise<void> | void, armMs = 400
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const router = useRouter();
 
   useEffect(() => {
     return () => {
@@ -50,6 +52,19 @@ export function useConfirmDelete(action: () => Promise<void> | void, armMs = 400
       try {
         await action();
         setArmed(false);
+        // D-051: the Server Action's own revalidatePath() call correctly
+        // marks the route stale and (per direct network inspection) the
+        // POST response IS the fresh, already-updated RSC payload — but
+        // in production this tab's already-mounted component tree was
+        // observed staying stuck on the pre-delete view for 5+ seconds
+        // with zero errors, only fixing itself on the next real
+        // navigation/reload. router.refresh() forces this tab to
+        // re-request and apply a fresh server render explicitly, instead
+        // of relying on the framework to notice and apply the
+        // revalidation signal on its own. Cheap (one extra round trip)
+        // and used by every delete flow sharing this hook (activities,
+        // gifts, interests, budgets, calendar events/custody, people).
+        router.refresh();
       } catch (err) {
         // Next.js redirect()/notFound() inside a server action surface here
         // as a special digest-tagged error ("NEXT_REDIRECT"/"NEXT_NOT_FOUND")
@@ -62,7 +77,7 @@ export function useConfirmDelete(action: () => Promise<void> | void, armMs = 400
         setError(err instanceof Error ? err.message : "Couldn't delete that — please try again.");
       }
     });
-  }, [armed, action, armMs]);
+  }, [armed, action, armMs, router]);
 
   const cancel = useCallback(() => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);

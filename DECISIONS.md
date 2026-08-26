@@ -590,3 +590,21 @@ Fixing `callAi` immediately surfaced the *second* instance: generating a weekend
 **Verification:** `pnpm typecheck && pnpm lint && pnpm test && pnpm build` all pass (262/262 tests, +6 new for the geocoding adapter covering blank input, a successful match, no-match, HTTP failure, network failure, and the required User-Agent header). Live re-verification (save a real address, confirm weekend-plan generation and brief weather both start working) still pending for next round.
 
 **Reversibility:** Additive — new nullable columns are already in the schema and were simply unreachable before; no migration needed. The geocode adapter is a new, isolated file.
+
+---
+
+## D-051 | 2026-08-26 | Fix stale UI after delete (router.refresh() in useConfirmDelete)
+
+**Context:** D-048's live-verification flagged an apparent "calendar event delete doesn't persist" bug. Ran a dedicated diagnostic pass with full network/response instrumentation against production to pin down the exact mechanism before touching any code. Findings, in order:
+1. The two-click arm/confirm UI works exactly as designed (first click arms, no network call; second click within 4s fires the real action).
+2. The second click's request **does** reach the server: `POST /calendar` with the `Next-Action` header for `deleteCalendarEventAction`, response `200 OK` with `x-action-revalidated: 1`.
+3. The row is **genuinely deleted in the database** — captured the raw response body of that exact 200, and it's already the fresh, event-free RSC payload. The server did its job correctly before responding.
+4. The already-open tab's DOM still showed the deleted event for 5+ seconds with zero console errors, only correcting itself on the next real navigation or reload. A brand-new session confirmed the row was already gone server-side the whole time.
+
+**Root cause:** not a database bug, not a caching/CDN bug, not a business-logic bug — the Server Action + `revalidatePath` round trip is completing correctly, but the already-mounted client component tree isn't reliably reapplying that revalidation signal to the live DOM in this app's setup. This is a known class of Next.js App Router issue: a bare `await someServerAction()` call from a client component is not guaranteed to force the invoking route segment to re-render just because the action revalidated a path — the framework applies the update to the *router cache*, but the mounted tree doesn't always pick it up without an explicit `router.refresh()`.
+
+**Fix:** added a single `router.refresh()` call (`next/navigation`) inside `useConfirmDelete`'s success path, right after every successful two-click delete. This hook already backs every delete flow across activities, gifts, interests, budgets, calendar events, custody schedules/blocks, and archiving people — one change covers all of them, rather than patching `/calendar` specifically. It's very likely the exact same "ghost row until reload" symptom was present on those other pages too and simply wasn't caught, since the only prior verification method was "reload afterward and check the final state" rather than watching the in-place transition.
+
+**Verification:** `pnpm typecheck && pnpm lint && pnpm test && pnpm build` all pass (262/262 tests — no new tests added; this is a client-rendering-freshness fix with no new branching logic to unit test, and is best verified live/visually). Live re-verification (delete something and confirm the row disappears immediately, without a reload) pending for next round — should specifically re-test on `/calendar` where the bug was originally caught.
+
+**Reversibility:** Trivial, one hook, one added call.
