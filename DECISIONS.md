@@ -393,3 +393,17 @@ Fixing `callAi` immediately surfaced the *second* instance: generating a weekend
 **Rationale:** All six fixes are narrow and mechanical (reorder two schema calls, tighten one bound to match a UI value that already existed, clear two pieces of state together instead of one, two label/sort tweaks on the people list, one label map for calendar chips) — none required a design decision, so fixing them immediately kept the backlog moving rather than filing them for a separate pass.
 
 **Reversibility:** Cheap. Each fix is a small, independent, self-contained change (one schema field, one hook function, one page's render/sort logic) with no migration or data implications — the whitespace-interest fix only changes what new submissions accept, it doesn't touch any already-stored row.
+
+---
+
+## D-039 | 2026-08-26 | Calendar "Add" link now prefills and redirects back to the right day
+
+**Context:** KNOWN-ISSUES.md's Phase 3 backlog flagged "no post-create redirect" for the calendar. The day view's own "Add" link already builds `/calendar/new?date=YYYY-MM-DD` for whichever day is selected, but the new-event page never read that query param — the date input always started blank — and after saving, the form unconditionally redirected to plain `/calendar`, which resolves to today's date regardless of which day (or month) you'd actually navigated to and added the event for.
+
+**Fix:** `app/(app)/calendar/new/page.tsx` now reads `searchParams.date`, validates it's a `YYYY-MM-DD` string, and passes it to `NewEventForm` as `defaultDate` (used as the date input's `defaultValue`). On save, the form reads the actual submitted `date` field from its own `FormData` (no server round-trip needed — the value is already known client-side) and redirects to `/calendar?month=<YYYY-MM>&day=<YYYY-MM-DD>` instead of a bare `/calendar`.
+
+**Verification:** `pnpm typecheck && pnpm lint && pnpm test && pnpm build` all pass (244/244 tests). Not yet independently re-verified live in the browser this pass.
+
+**Rationale:** Scoped to the event-creation flow specifically, since that's what the calendar day view's own "Add" link targets — the one-off custody-block form (`/calendar/custody/one-off`) has a separate hub page (`/calendar/custody`) it correctly returns to and isn't reachable from a day-cell click, so it wasn't in scope here.
+
+**Reversibility:** Cheap. Purely additive (`defaultDate` is an optional prop; the redirect target falls back to `/calendar` if no date is present) with no schema or data changes.

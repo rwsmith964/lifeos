@@ -18,7 +18,7 @@ function isTimeRangeError(message: string): boolean {
   return /start time|starts_at/i.test(message);
 }
 
-export function NewEventForm({ people }: { people: PersonRow[] }) {
+export function NewEventForm({ people, defaultDate }: { people: PersonRow[]; defaultDate?: string }) {
   const { submit, pending, error } = useFormPost("/api/calendar/events");
   const [allDay, setAllDay] = useState(false);
   const [errorDismissed, setErrorDismissed] = useState(false);
@@ -27,7 +27,15 @@ export function NewEventForm({ people }: { people: PersonRow[] }) {
   function handleSave() {
     if (!formRef.current || !formRef.current.reportValidity()) return;
     setErrorDismissed(false);
-    submit(new FormData(formRef.current), { redirectTo: () => "/calendar" });
+    const formData = new FormData(formRef.current);
+    // Land back on the day the event was actually created for (and the
+    // right month), instead of always bouncing to /calendar's default of
+    // "today" — losing the date you just picked, and any month you'd
+    // navigated to, was the "no post-create redirect" half of the Phase 3
+    // backlog item.
+    const savedDate = String(formData.get("date") ?? "");
+    const target = savedDate ? `/calendar?month=${savedDate.slice(0, 7)}&day=${savedDate}` : "/calendar";
+    submit(formData, { redirectTo: () => target });
   }
 
   const timeRangeError = error && isTimeRangeError(error) && !errorDismissed ? error : null;
@@ -41,7 +49,7 @@ export function NewEventForm({ people }: { people: PersonRow[] }) {
       </div>
       <div className="flex flex-col gap-2">
         <Label htmlFor="date">Date</Label>
-        <Input id="date" name="date" type="date" required />
+        <Input id="date" name="date" type="date" required defaultValue={defaultDate} />
       </div>
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" name="allDay" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} /> All
