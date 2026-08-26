@@ -608,3 +608,18 @@ Fixing `callAi` immediately surfaced the *second* instance: generating a weekend
 **Verification:** `pnpm typecheck && pnpm lint && pnpm test && pnpm build` all pass (262/262 tests — no new tests added; this is a client-rendering-freshness fix with no new branching logic to unit test, and is best verified live/visually). Live re-verification (delete something and confirm the row disappears immediately, without a reload) pending for next round — should specifically re-test on `/calendar` where the bug was originally caught.
 
 **Reversibility:** Trivial, one hook, one added call.
+
+---
+
+## D-052 | 2026-08-26 | "Refresh brief" button + cleanup of a stale production brief row
+
+**Context:** D-048's re-verification surfaced Richard's real, live Brief page showing a "Heads up" reminder for "Carol Smith" — a person who does not exist in People. Traced this to the `briefs` table directly: today's brief row (`generated_at` 14:38 UTC) had that content baked into its stored `content_json` from whenever it was first generated, and since `briefs` has no update/delete policy for regular users (service-role-write-only by design, alongside `weekend_plans`/`ai_usage_log`/etc. — see earlier pitfalls), there was no way for Richard to ever force a fresh one. This was flagged in KNOWN-ISSUES.md as a real quality-of-life gap, not dismissed as a one-off fluke.
+
+**What shipped:**
+- `regenerateBriefAction` (`app/(app)/actions.ts`): deletes today's existing brief row for the current person (via the service-role client, same justification as `generateWeekendPlanAction`) and calls `generateDailyBrief` fresh.
+- A small "Refresh brief" button (`app/(app)/regenerate-brief-button.tsx`) next to the Brief page's headline, using the `startTransition` + `router.refresh()` pattern (per D-051's finding that a bare await + `revalidatePath` isn't reliably picked up by the already-mounted tree in this app).
+- Deleted the one stale, live "Carol Smith" brief row directly (production data cleanup, not a code change) so Richard's actual Brief page stops showing it; his next real brief generation (today, via this new button, or tomorrow's normal cron) will reflect his real current data (zero people, zero pending gifts).
+
+**Verification:** `pnpm typecheck && pnpm lint && pnpm test && pnpm build` all pass (262/262 tests — no new tests; this reuses already-tested `generateDailyBrief`/`briefsRepo` and adds no new branching logic worth isolating). Live re-verification (click Refresh brief, confirm the stale Carol Smith reminder is gone and the button doesn't error) pending for next round.
+
+**Reversibility:** Additive UI + one action; the production data deletion only removed a single already-stale cached row that gets regenerated every day regardless.

@@ -9,6 +9,7 @@ import { listPeopleForHousehold } from "@/lib/db/repositories/people";
 import type { BriefContent } from "@/lib/brief/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { RegenerateBriefButton } from "./regenerate-brief-button";
 
 export default async function BriefPage() {
   const { supabase, household, selfPerson } = await requireHouseholdContext();
@@ -59,9 +60,12 @@ export default async function BriefPage() {
 
   return (
     <div className="flex flex-col gap-4 p-4">
-      <div>
-        <p className="text-xs text-muted-foreground">{format(today, "EEEE, MMMM d")}</p>
-        <h1 className="text-xl font-semibold">{content.headline}</h1>
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-xs text-muted-foreground">{format(today, "EEEE, MMMM d")}</p>
+          <h1 className="text-xl font-semibold">{content.headline}</h1>
+        </div>
+        <RegenerateBriefButton />
       </div>
 
       {content.today.length > 0 && (
