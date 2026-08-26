@@ -26,6 +26,7 @@ import { getWeekendPlanForDate } from "@/lib/db/repositories/system";
 import { buildChildColorMap } from "@/lib/custody/colors";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { RenderedMarkdown } from "@/components/ui/rendered-markdown";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { DeleteCalendarItemButton } from "./delete-item-button";
@@ -235,7 +236,7 @@ export default async function CalendarPage({
           </CardHeader>
           <CardContent className="flex flex-col gap-2">
             {weekendPlan ? (
-              <div className="whitespace-pre-line text-sm text-muted-foreground">{weekendPlan.content_markdown}</div>
+              <RenderedMarkdown content={weekendPlan.content_markdown} className="flex flex-col gap-1.5 text-sm text-muted-foreground" />
             ) : (
               <>
                 <p className="text-sm text-muted-foreground">No plan generated yet.</p>

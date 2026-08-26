@@ -3,7 +3,7 @@
 // structured brief (8.3), and falls back to the non-AI template (11.3)
 // when AI is unavailable or over budget. Runs once per person per day.
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { addDays, format, isTomorrow as dateIsTomorrow, startOfDay } from "date-fns";
+import { addDays, format, isToday as dateIsToday, isTomorrow as dateIsTomorrow, startOfDay } from "date-fns";
 import { AiBudgetExceededError, AiUnavailableError, callAi } from "../ai/client";
 import { buildChildTokenMap } from "../ai/context";
 import { parseAiJson } from "../ai/parse-json";
@@ -23,7 +23,7 @@ import { listPeopleForHousehold, peopleRepo } from "../db/repositories/people";
 import { briefsRepo, getBriefForPersonAndDate, getWeekendPlanForDate } from "../db/repositories/system";
 import { getNwsForecast } from "../external/nws";
 import { getTravelTime } from "../external/travel";
-import { evaluateCadence } from "../contact/cadence";
+import { evaluateCadence, suppressCadencesSeenToday } from "../contact/cadence";
 import { dispatchNotification } from "../notifications/dispatch";
 import { computePrepObligations, computeTravelLegs } from "./prep";
 import { renderBriefMarkdown } from "./render";
@@ -121,18 +121,40 @@ export async function generateDailyBrief(
   );
 
   // --- Overdue contact cadences ----------------------------------------
-  const overdueContacts = cadenceRows
-    .map((c) => ({ cadence: c, status: evaluateCadence(c, todayStart) }))
-    .filter((c) => c.status.isOverdue)
-    .map((c) => {
-      const contactPerson = peopleById.get(c.cadence.person_id);
-      const matchingActivity = activities.find((a) => a.preferred_companions.includes(c.cadence.person_id));
-      return {
-        personLabel: contactPerson ? tokenMap.labelFor(contactPerson) : "someone",
-        daysSinceLastContact: c.status.daysSinceLastContact,
-        activityType: matchingActivity?.activity_type ?? null,
-      };
-    });
+  // D-048: suppress a nudge for anyone the user is already going to see
+  // today — a custody handover (as the responsible parent or the child
+  // themselves) or a today's-events companion via a related activity's
+  // preferred_companions. Deliberately scoped to TODAY only, not tomorrow:
+  // "you're seeing them today" shouldn't suppress a reminder that's still
+  // useful to plan around for tomorrow.
+  const todaysEvents = events.filter((e) => dateIsToday(new Date(e.starts_at)));
+  const todaysCustodyBlocks = custodyBlocks.filter((c) => dateIsToday(new Date(c.starts_at)));
+  const seenTodayPersonIds = new Set<string>();
+  for (const block of todaysCustodyBlocks) {
+    seenTodayPersonIds.add(block.child_person_id);
+    seenTodayPersonIds.add(block.responsible_person_id);
+  }
+  for (const event of todaysEvents) {
+    if (!event.related_activity_id) continue;
+    const activity = activities.find((a) => a.id === event.related_activity_id);
+    for (const companionId of activity?.preferred_companions ?? []) seenTodayPersonIds.add(companionId);
+  }
+
+  const overdueContacts = suppressCadencesSeenToday(
+    cadenceRows
+      .map((c) => ({ cadence: c, status: evaluateCadence(c, todayStart) }))
+      .filter((c) => c.status.isOverdue)
+      .map((c) => ({ personId: c.cadence.person_id, cadence: c.cadence, status: c.status })),
+    seenTodayPersonIds
+  ).map((c) => {
+    const contactPerson = peopleById.get(c.cadence.person_id);
+    const matchingActivity = activities.find((a) => a.preferred_companions.includes(c.cadence.person_id));
+    return {
+      personLabel: contactPerson ? tokenMap.labelFor(contactPerson) : "someone",
+      daysSinceLastContact: c.status.daysSinceLastContact,
+      activityType: matchingActivity?.activity_type ?? null,
+    };
+  });
 
   // --- Weather -----------------------------------------------------------
   let weather: BriefContextInput["weather"] = null;

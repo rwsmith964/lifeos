@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluateCadence, findOverdueCadences } from "./cadence";
+import { evaluateCadence, findOverdueCadences, suppressCadencesSeenToday } from "./cadence";
 
 describe("evaluateCadence", () => {
   it("is overdue with null daysSinceLastContact when there's never been contact", () => {
@@ -63,5 +63,31 @@ describe("findOverdueCadences", () => {
     ];
     const result = findOverdueCadences(cadences, today);
     expect(result[0].id).toBe("never");
+  });
+});
+
+describe("suppressCadencesSeenToday", () => {
+  it("removes an overdue contact whose personId is in the seen-today set", () => {
+    const overdue = [
+      { personId: "mike", daysSinceLastContact: 40 },
+      { personId: "dave", daysSinceLastContact: 20 },
+    ];
+    const result = suppressCadencesSeenToday(overdue, new Set(["mike"]));
+    expect(result.map((c) => c.personId)).toEqual(["dave"]);
+  });
+
+  it("is a no-op when the seen-today set is empty", () => {
+    const overdue = [{ personId: "mike", daysSinceLastContact: 40 }];
+    const result = suppressCadencesSeenToday(overdue, new Set<string>());
+    expect(result).toEqual(overdue);
+  });
+
+  it("suppresses every overdue contact when all of them are seen today", () => {
+    const overdue = [
+      { personId: "mike", daysSinceLastContact: 40 },
+      { personId: "dave", daysSinceLastContact: 20 },
+    ];
+    const result = suppressCadencesSeenToday(overdue, new Set(["mike", "dave"]));
+    expect(result).toEqual([]);
   });
 });
