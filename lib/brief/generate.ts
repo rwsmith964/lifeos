@@ -17,7 +17,7 @@ import type { PersonRow } from "../db/database.types";
 import { listActivitiesWithLocations } from "../db/repositories/activities";
 import { calendarEventsRepo, listCustodyBlocksForHouseholdInRange, listEventsInRange } from "../db/repositories/calendar";
 import { listActiveCadencesForHousehold } from "../db/repositories/contact";
-import { giftSuggestionsRepo } from "../db/repositories/gifts";
+import { listSuggestionsDueForOrder } from "../db/repositories/gifts";
 import { householdsRepo, usersRepo } from "../db/repositories/households";
 import { listPeopleForHousehold, peopleRepo } from "../db/repositories/people";
 import { briefsRepo, getBriefForPersonAndDate, getWeekendPlanForDate } from "../db/repositories/system";
@@ -99,11 +99,22 @@ export async function generateDailyBrief(
   );
 
   // --- Gift order-by reminders within 14 days (Section 8.2) -----------
-  const giftSuggestions = await giftSuggestionsRepo.list(client, (q) =>
-    q
-      .in("status", ["suggested", "saved"])
-      .lte("order_by_date", format(addDays(todayStart, 14), "yyyy-MM-dd"))
-      .gte("order_by_date", todayDateStr)
+  // SECURITY (D-053): this previously called giftSuggestionsRepo.list()
+  // with only a status/date filter and NO household_id scoping at all.
+  // generateDailyBrief always runs on the service-role client (see the
+  // callers in app/(app)/page.tsx and app/(app)/actions.ts), which
+  // bypasses RLS entirely, so that query silently pulled gift_suggestions
+  // rows from EVERY household in the database, not just this one — a
+  // genuine cross-household data leak. Caught live: the seeded demo
+  // household's "Carol Smith" gift suggestions were appearing on
+  // Richard's real household's brief because both happened to have
+  // suggestions with an order_by_date in the same 14-day window.
+  // listSuggestionsDueForOrder() already existed as the correctly-scoped
+  // version (inner-joins people.household_id) but wasn't being used here;
+  // switched to it, then re-applied the original lower bound (>= today)
+  // that the helper itself doesn't take as a parameter.
+  const giftSuggestions = (await listSuggestionsDueForOrder(client, householdId, 14)).filter(
+    (g) => g.order_by_date >= todayDateStr
   );
   const giftReminders = await Promise.all(
     giftSuggestions.map(async (g) => {
