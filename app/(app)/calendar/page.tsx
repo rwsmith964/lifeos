@@ -35,6 +35,33 @@ const MONTH_PARAM_FORMAT = "yyyy-MM";
 const DAY_PARAM_FORMAT = "yyyy-MM-dd";
 const WEEKDAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
 
+// Human labels for the raw event_type / block_type enum values (Phase 3
+// backlog: "raw enum chips shown unstyled" — these used to render via a
+// bare `.replace(/_/g, " ")`, so e.g. "kid_activity" showed as the
+// unstyled, lowercase "kid activity" chip instead of a proper label).
+const EVENT_TYPE_LABELS: Record<string, string> = {
+  personal: "Personal",
+  work: "Work",
+  family: "Family",
+  custody: "Custody",
+  kid_activity: "Kid activity",
+  prep: "Prep",
+  travel: "Travel",
+};
+const BLOCK_TYPE_LABELS: Record<string, string> = {
+  regular: "Regular",
+  holiday: "Holiday",
+  swap: "Swap",
+  vacation: "Vacation",
+};
+function humanizeChipLabel(raw: string): string {
+  return (
+    EVENT_TYPE_LABELS[raw] ??
+    BLOCK_TYPE_LABELS[raw] ??
+    raw.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase())
+  );
+}
+
 function parseMonthParam(raw: string | undefined): Date {
   if (!raw) return startOfMonth(new Date());
   const parsed = parse(raw, MONTH_PARAM_FORMAT, new Date());
@@ -302,7 +329,7 @@ export default async function CalendarPage({
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Badge variant="outline">{item.subtitle.replace(/_/g, " ")}</Badge>
+                  <Badge variant="outline">{humanizeChipLabel(item.subtitle)}</Badge>
                   <DeleteCalendarItemButton id={item.id} kind={item.kind} />
                 </div>
               </CardContent>

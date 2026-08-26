@@ -131,10 +131,15 @@ export const personInsertSchema = z.object({
 
 export const personInterestInsertSchema = z.object({
   person_id: uuid,
-  interest: z
-    .string()
-    .min(1)
-    .transform((s) => s.toLowerCase().trim()),
+  // .trim()/.toLowerCase() must run BEFORE .min(1): with the old
+  // ordering (.min(1).transform(trim+lowercase)) a whitespace-only
+  // string like "   " passed the length check first (length 3 >= 1)
+  // and only got reduced to an empty string afterward at insert time —
+  // saving a permanently blank, unremovable interest chip. Chaining
+  // .trim().toLowerCase() before .min(1) makes the length check run
+  // against the already-normalized value, so whitespace-only input is
+  // correctly rejected instead of silently persisted.
+  interest: z.string().trim().toLowerCase().min(1, "Interest can't be empty."),
   category: z.string().nullable().optional(),
   strength: interestStrengthSchema.optional(),
   source: interestSourceSchema.optional(),
@@ -204,7 +209,14 @@ export const userActivityInsertSchema = z.object({
   person_id: uuid,
   activity_type: z.string().min(1),
   enjoyment_rank: z.number().int().min(1).max(10),
-  typical_duration_minutes: z.number().int().positive(),
+  // The form's own input declares `min={15}` as the shortest sensible
+  // activity duration, but the server schema only required `.positive()`
+  // — so any client that skips or bypasses the native HTML min attribute
+  // (a different browser, a direct API call, JS manipulation) could
+  // silently persist e.g. a 5-minute "typical duration" with no error at
+  // all. Aligning the schema with the UI's own stated minimum closes
+  // that gap.
+  typical_duration_minutes: z.number().int().min(15, "Typical duration must be at least 15 minutes."),
   requires_prep: z.boolean().optional(),
   prep_lead_time_hours: z.number().int().min(0).nullable().optional(),
   preferred_companions: z.array(uuid).optional(),

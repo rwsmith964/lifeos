@@ -57,7 +57,14 @@ export function useFormPost(endpoint: string) {
   }
 
   function clearErrorField(field: string) {
-    setErrorField((current) => (current === field ? null : current));
+    // Clearing errorField alone left `error` itself set, so the generic
+    // fallback banner (rendered by callers as `error && !errorField`)
+    // would flip back on the instant the field-level message cleared —
+    // a stale duplicate of the very error that had just been resolved.
+    // Field and message are one unit: only ever clear them together.
+    if (errorField !== field) return;
+    setErrorField(null);
+    setError(null);
   }
 
   return { submit, pending, error, errorField, clearErrorField };
