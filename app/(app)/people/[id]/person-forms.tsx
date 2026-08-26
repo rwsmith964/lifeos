@@ -41,10 +41,12 @@ export function AddInterestForm({ personId }: { personId: string }) {
   const [state, dispatch, pending] = useActionState(action, initialState);
   const formRef = useRef<HTMLFormElement>(null);
   const justSubmittedRef = useRef(false);
+  const [errorDismissed, setErrorDismissed] = useState(false);
 
   function handleAdd() {
     if (!formRef.current || !formRef.current.reportValidity()) return;
     justSubmittedRef.current = true;
+    setErrorDismissed(false);
     dispatch(new FormData(formRef.current));
   }
 
@@ -58,13 +60,28 @@ export function AddInterestForm({ personId }: { personId: string }) {
     justSubmittedRef.current = false;
   }, [state]);
 
+  // "interest" is the only field validation can meaningfully fail on
+  // (blank/too-long text) — shown right under it and cleared as soon as
+  // the user edits it, instead of a generic message under the whole row
+  // (KNOWN-ISSUES.md 1.3).
+  const showError = state.error && !errorDismissed;
+
   return (
     <form ref={formRef} className="flex flex-wrap items-end gap-2">
       <div className="flex flex-col gap-1">
         <Label htmlFor={`interest-${personId}`} className="text-xs">
           Interest
         </Label>
-        <Input id={`interest-${personId}`} name="interest" placeholder="fly fishing" required className="h-8 w-40" />
+        <Input
+          id={`interest-${personId}`}
+          name="interest"
+          placeholder="fly fishing"
+          required
+          className="h-8 w-40"
+          aria-invalid={!!showError || undefined}
+          onChange={() => setErrorDismissed(true)}
+        />
+        {showError && <p className="text-xs text-destructive">{state.error}</p>}
       </div>
       <select
         name="strength"
@@ -81,7 +98,6 @@ export function AddInterestForm({ personId }: { personId: string }) {
       <Button type="button" size="sm" onClick={handleAdd} disabled={pending}>
         Add
       </Button>
-      {state.error && <p className="w-full text-xs text-destructive">{state.error}</p>}
     </form>
   );
 }
@@ -273,11 +289,18 @@ export function CadenceForm({ personId, currentDays }: { personId: string; curre
   const action = setCadenceAction.bind(null, personId);
   const [state, dispatch, pending] = useActionState(action, initialState);
   const formRef = useRef<HTMLFormElement>(null);
+  const [errorDismissed, setErrorDismissed] = useState(false);
 
   function handleSet() {
     if (!formRef.current || !formRef.current.reportValidity()) return;
+    setErrorDismissed(false);
     dispatch(new FormData(formRef.current));
   }
+
+  // "targetIntervalDays" is the only field here, so no field-matching is
+  // needed — just move the message under it and clear on edit
+  // (KNOWN-ISSUES.md 1.3).
+  const showError = state.error && !errorDismissed;
 
   return (
     <form ref={formRef} className="flex items-end gap-2">
@@ -292,12 +315,14 @@ export function CadenceForm({ personId, currentDays }: { personId: string; curre
           min={1}
           defaultValue={currentDays ?? 30}
           className="h-8 w-20"
+          aria-invalid={!!showError || undefined}
+          onChange={() => setErrorDismissed(true)}
         />
+        {showError && <p className="text-xs text-destructive">{state.error}</p>}
       </div>
       <Button type="button" size="sm" variant="secondary" onClick={handleSet} disabled={pending}>
         Set
       </Button>
-      {state.error && <p className="text-xs text-destructive">{state.error}</p>}
     </form>
   );
 }

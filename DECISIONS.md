@@ -356,3 +356,20 @@ Fixing `callAi` immediately surfaced the *second* instance: generating a weekend
 **Rationale:** A one-off confirm dialog per delete button would have meant seven near-identical implementations to keep in sync (and an eighth, ninth… every time a future delete button is added). Generalizing the pattern already proven correct for custody schedules into one hook + component means every future "delete this" button gets the safety behavior for free by construction, and the redirect-signal handling only needs to be correct once.
 
 **Reversibility:** Cheap. Purely additive (`use-confirm-delete.ts`, `confirm-delete-button.tsx`) plus call-site swaps and a `void` → `{error}` return-type change on seven actions — no schema or RLS changes. Reverting restores the pre-D-036 instant-delete behavior with no other side effects.
+
+---
+
+## D-037 | 2026-08-26 | Field-level error placement extended to every remaining form (interests, cadence, activities, settings)
+
+**Context:** KNOWN-ISSUES.md 1.3 was only half-closed by D-032: gift budgets and the calendar event start/end pair got field-level error placement + clear-on-edit, but interests, contact cadence, activities, and settings still showed one generic message near the submit control regardless of which field actually failed validation.
+
+**Fix, matched to how many plausibly-invalid fields each form has:**
+- **Interests and cadence** (`app/(app)/people/[id]/person-forms.tsx`): each form has exactly one meaningfully-validated field (the interest text; the check-in interval number) — no disambiguation needed, just moved the existing message under that field with an `errorDismissed` flag cleared on `onChange`, matching the gift-budget form's own established pattern exactly.
+- **Settings** (`app/(app)/settings/settings-form.tsx`): the one cross-field error this form produces ("Max must be at least the minimum.") concerns `budgetMax` specifically — same min/max shape as the gift-budget form it mirrors. A simple text match (`/budget|max must be/i`) separates it from the rare, generic errors (bad household name) that still render near Save.
+- **Activities** (`app/(app)/activities/new/new-activity-form.tsx`): this form has *four* plausibly-invalid fields (activity type, enjoyment rank, duration, prep lead time), so text-matching on the raw zod message wasn't reliable enough — extended `app/api/activities/route.ts` to return the zod issue's own `path` (mapped to the form's input names) as a `field` property alongside `error`, and extended the shared `useFormPost` hook (`lib/hooks/use-form-post.ts`) with an `errorField`/`clearErrorField` pair so any future form using that hook gets the same precise field-tagging for free rather than needing its own regex heuristic.
+
+**Verification:** `pnpm typecheck && pnpm lint && pnpm test && pnpm build` all pass (244/244 tests, zero lint/type errors).
+
+**Rationale:** Reusing the exact `errorDismissed` pattern already proven in D-032 for the two single-field forms kept those changes minimal and consistent. Activities needed a genuinely different mechanism (server-supplied field path vs. client-side text matching) because it's the first form in this codebase with more than two fields that can independently fail — solving it at the shared `useFormPost` hook means the next multi-field form doesn't need to reinvent either the regex-matching approach or a bespoke field-tagging scheme.
+
+**Reversibility:** Cheap. Purely additive to `useFormPost` (new optional return values, unused by existing callers that don't destructure them) and to the activities route's error response shape (`field` is optional and ignored by anything not reading it). Reverting any of the four form changes restores the pre-D-037 generic-message placement with no other side effects.

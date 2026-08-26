@@ -23,7 +23,20 @@ export async function POST(request: Request) {
     preferred_companions: preferredCompanions,
   });
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid input." }, { status: 400 });
+    // KNOWN-ISSUES.md 1.3: this form has several plausibly-invalid fields
+    // (enjoyment rank, duration, prep lead time), so the raw zod message
+    // alone isn't enough to know where to show it — the issue's own
+    // `path` says exactly which field failed, mapped to this form's input
+    // name so the client can place the error there and clear it on edit.
+    const issue = parsed.error.issues[0];
+    const fieldMap: Record<string, string> = {
+      activity_type: "activityType",
+      enjoyment_rank: "enjoymentRank",
+      typical_duration_minutes: "typicalDurationMinutes",
+      prep_lead_time_hours: "prepLeadTimeHours",
+    };
+    const field = issue?.path[0] ? fieldMap[String(issue.path[0])] : undefined;
+    return NextResponse.json({ error: issue?.message ?? "Invalid input.", field }, { status: 400 });
   }
 
   try {

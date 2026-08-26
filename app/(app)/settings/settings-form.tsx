@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useRef } from "react";
+import { useActionState, useRef, useState } from "react";
 import { updateHouseholdSettingsAction, type SettingsFormState } from "./actions";
 import type { HouseholdRow } from "@/lib/db/database.types";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,18 @@ const initialState: SettingsFormState = { error: null, saved: false };
 export function SettingsForm({ household, timezone }: { household: HouseholdRow; timezone: string }) {
   const [state, dispatch, pending] = useActionState(updateHouseholdSettingsAction, initialState);
   const formRef = useRef<HTMLFormElement>(null);
+  const [errorDismissed, setErrorDismissed] = useState(false);
+
+  // The only cross-field validation error this form can produce ("Max
+  // must be at least the minimum.") concerns budgetMax specifically —
+  // mirrors the gift-budget form's own min/max field, moved under that
+  // field and cleared on edit instead of sitting as one generic message
+  // near Save (KNOWN-ISSUES.md 1.3). Every other validation failure here
+  // (bad household name, bad brief time) is rare enough that the generic
+  // placement below still covers it.
+  const isBudgetError = (message: string) => /budget|max must be/i.test(message);
+  const budgetError = state.error && isBudgetError(state.error) && !errorDismissed ? state.error : null;
+  const otherError = state.error && !isBudgetError(state.error) ? state.error : null;
 
   // Dispatching manually on click, rather than binding the action to the
   // form's `action` prop, works around a live production bug where Next's
@@ -22,6 +34,7 @@ export function SettingsForm({ household, timezone }: { household: HouseholdRow;
   // function either way; only how it's invoked changes.
   function handleSave() {
     if (!formRef.current || !formRef.current.reportValidity()) return;
+    setErrorDismissed(false);
     dispatch(new FormData(formRef.current));
   }
 
@@ -44,6 +57,7 @@ export function SettingsForm({ household, timezone }: { household: HouseholdRow;
                 min={0}
                 step={1}
                 defaultValue={household.default_gift_budget_min_cents ? household.default_gift_budget_min_cents / 100 : ""}
+                onChange={() => setErrorDismissed(true)}
               />
             </div>
             <div className="flex flex-col gap-2">
@@ -55,7 +69,10 @@ export function SettingsForm({ household, timezone }: { household: HouseholdRow;
                 min={0}
                 step={1}
                 defaultValue={household.default_gift_budget_max_cents ? household.default_gift_budget_max_cents / 100 : ""}
+                aria-invalid={!!budgetError || undefined}
+                onChange={() => setErrorDismissed(true)}
               />
+              {budgetError && <p className="text-xs text-destructive">{budgetError}</p>}
             </div>
           </div>
 
@@ -69,7 +86,7 @@ export function SettingsForm({ household, timezone }: { household: HouseholdRow;
             <Input id="timezone" name="timezone" defaultValue={timezone} placeholder="America/Los_Angeles" />
           </div>
 
-          {state.error && <p className="text-sm text-destructive">{state.error}</p>}
+          {otherError && <p className="text-sm text-destructive">{otherError}</p>}
           {state.saved && !state.error && <p className="text-sm text-muted-foreground">Saved.</p>}
           <Button type="button" onClick={handleSave} disabled={pending}>
             {pending ? "Saving…" : "Save settings"}

@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 export function NewActivityForm({ possibleCompanions }: { possibleCompanions: PersonRow[] }) {
-  const { submit, pending, error } = useFormPost("/api/activities");
+  const { submit, pending, error, errorField, clearErrorField } = useFormPost("/api/activities");
   const formRef = useRef<HTMLFormElement>(null);
 
   function handleSave() {
@@ -16,16 +16,40 @@ export function NewActivityForm({ possibleCompanions }: { possibleCompanions: Pe
     submit(new FormData(formRef.current), { redirectTo: () => "/activities" });
   }
 
+  // Only the errors the server can tag to a specific field (via `field`
+  // in the JSON response, see app/api/activities/route.ts) render inline;
+  // anything untagged falls through to the generic message near Save.
+  const fieldError = (name: string) => (errorField === name ? error : null);
+
   return (
     <form ref={formRef} className="flex flex-col gap-4">
       <div className="flex flex-col gap-2">
         <Label htmlFor="activityType">Activity</Label>
-        <Input id="activityType" name="activityType" placeholder="golf, fishing, hiking, gym…" required />
+        <Input
+          id="activityType"
+          name="activityType"
+          placeholder="golf, fishing, hiking, gym…"
+          required
+          aria-invalid={!!fieldError("activityType") || undefined}
+          onChange={() => clearErrorField("activityType")}
+        />
+        {fieldError("activityType") && <p className="text-xs text-destructive">{fieldError("activityType")}</p>}
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-2">
           <Label htmlFor="enjoymentRank">Enjoyment (1-10)</Label>
-          <Input id="enjoymentRank" name="enjoymentRank" type="number" min={1} max={10} defaultValue={7} required />
+          <Input
+            id="enjoymentRank"
+            name="enjoymentRank"
+            type="number"
+            min={1}
+            max={10}
+            defaultValue={7}
+            required
+            aria-invalid={!!fieldError("enjoymentRank") || undefined}
+            onChange={() => clearErrorField("enjoymentRank")}
+          />
+          {fieldError("enjoymentRank") && <p className="text-xs text-destructive">{fieldError("enjoymentRank")}</p>}
         </div>
         <div className="flex flex-col gap-2">
           <Label htmlFor="typicalDurationMinutes">Typical duration (min)</Label>
@@ -36,7 +60,12 @@ export function NewActivityForm({ possibleCompanions }: { possibleCompanions: Pe
             min={15}
             defaultValue={120}
             required
+            aria-invalid={!!fieldError("typicalDurationMinutes") || undefined}
+            onChange={() => clearErrorField("typicalDurationMinutes")}
           />
+          {fieldError("typicalDurationMinutes") && (
+            <p className="text-xs text-destructive">{fieldError("typicalDurationMinutes")}</p>
+          )}
         </div>
       </div>
       <label className="flex items-center gap-2 text-sm">
@@ -44,7 +73,15 @@ export function NewActivityForm({ possibleCompanions }: { possibleCompanions: Pe
       </label>
       <div className="flex flex-col gap-2">
         <Label htmlFor="prepLeadTimeHours">Prep lead time (hours, if any)</Label>
-        <Input id="prepLeadTimeHours" name="prepLeadTimeHours" type="number" min={0} />
+        <Input
+          id="prepLeadTimeHours"
+          name="prepLeadTimeHours"
+          type="number"
+          min={0}
+          aria-invalid={!!fieldError("prepLeadTimeHours") || undefined}
+          onChange={() => clearErrorField("prepLeadTimeHours")}
+        />
+        {fieldError("prepLeadTimeHours") && <p className="text-xs text-destructive">{fieldError("prepLeadTimeHours")}</p>}
       </div>
 
       {possibleCompanions.length > 0 && (
@@ -91,7 +128,7 @@ export function NewActivityForm({ possibleCompanions }: { possibleCompanions: Pe
         <Input id="noaaStation" name="noaaStation" placeholder="e.g. 9432780" />
       </div>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && !errorField && <p className="text-sm text-destructive">{error}</p>}
       <Button type="button" onClick={handleSave} disabled={pending}>
         {pending ? "Saving…" : "Save activity"}
       </Button>
