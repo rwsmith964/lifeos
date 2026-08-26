@@ -407,3 +407,19 @@ Fixing `callAi` immediately surfaced the *second* instance: generating a weekend
 **Rationale:** Scoped to the event-creation flow specifically, since that's what the calendar day view's own "Add" link targets — the one-off custody-block form (`/calendar/custody/one-off`) has a separate hub page (`/calendar/custody`) it correctly returns to and isn't reachable from a day-cell click, so it wasn't in scope here.
 
 **Reversibility:** Cheap. Purely additive (`defaultDate` is an optional prop; the redirect target falls back to `/calendar` if no date is present) with no schema or data changes.
+
+---
+
+## D-040 | 2026-08-26 | Settings timezone is now a real IANA select; calendar auto-scrolls to the selected day
+
+**Context:** Two independent Phase 3 backlog items, both quick and self-contained enough to do together.
+
+**Timezone select:** `app/(app)/settings/settings-form.tsx`'s timezone field was free text — a typo like "Amercia/Los_Angeles" or any made-up string saved silently and would quietly break every time-based feature (brief timing, custody-block times) with zero indication why. Replaced with a `<select>` populated from `Intl.supportedValuesOf("timeZone")` (new `lib/timezones.ts`, with a small hardcoded fallback for the rare runtime missing that API), and tightened `userInsertSchema.timezone` server-side with a `.refine(isValidTimezone)` so a direct API call can't bypass the UI's constraint either. If a household's already-saved value somehow isn't in the list, it's prepended to the options so the select still shows the true saved value instead of silently defaulting to the first option.
+
+**Calendar auto-scroll:** Clicking a day in the month grid always left the viewport at the top of the page (next/link's default post-navigation scroll-to-top), so the newly selected day's event list — rendered below the whole month grid card — was off-screen until the user scrolled down manually, every single time. Added `id="selected-day"` to that list's wrapper and a `#selected-day` hash fragment to every day-cell's `href` (and to the D-039 post-create redirect target) — `next/link`'s built-in hash-scroll behavior takes it from there, no client JS needed.
+
+**Verification:** `pnpm typecheck && pnpm lint && pnpm test && pnpm build` all pass (244/244 tests). Not yet independently re-verified live in the browser this pass.
+
+**Rationale:** Both are narrow, config-shaped fixes (a data source swap for one field; a URL fragment for scroll targeting) rather than new features, so no product decision was needed for either.
+
+**Reversibility:** Cheap. Timezone: reverting drops back to the free-text input with no schema/data implications (already-saved valid IANA strings, which is everything real users could have saved via the old UI in practice, still validate fine). Auto-scroll: the `#selected-day` fragments are purely additive routing sugar with no effect on any browser that doesn't support hash-scroll (it just falls back to the old scroll-to-top behavior).

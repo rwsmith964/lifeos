@@ -275,7 +275,13 @@ export default async function CalendarPage({
               return (
                 <Link
                   key={key}
-                  href={`/calendar?month=${monthLabel}&day=${key}${viewQuery}`}
+                  // The #selected-day fragment makes next/link scroll the
+                  // matching-id element into view instead of resetting to
+                  // the top of the page — without it, picking a day left
+                  // you looking at the month grid with the newly selected
+                  // day's events still off-screen below it (Phase 3
+                  // backlog: "no auto-scroll").
+                  href={`/calendar?month=${monthLabel}&day=${key}${viewQuery}#selected-day`}
                   className={cn(
                     "flex flex-col items-center gap-0.5 rounded-md py-1.5 text-xs",
                     inMonth ? "text-foreground" : "text-muted-foreground/40",
@@ -299,7 +305,7 @@ export default async function CalendarPage({
         </CardContent>
       </Card>
 
-      <div className="flex flex-col gap-2">
+      <div id="selected-day" className="flex flex-col gap-2 scroll-mt-4">
         <p className="text-xs font-medium text-muted-foreground">{format(selectedDay, "EEEE, MMMM d")}</p>
         {selectedDayItems.length === 0 ? (
           <Card>

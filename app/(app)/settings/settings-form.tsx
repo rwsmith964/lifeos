@@ -1,12 +1,13 @@
 "use client";
 
-import { useActionState, useRef, useState } from "react";
+import { useActionState, useMemo, useRef, useState } from "react";
 import { updateHouseholdSettingsAction, type SettingsFormState } from "./actions";
 import type { HouseholdRow } from "@/lib/db/database.types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
+import { getTimezoneOptions } from "@/lib/timezones";
 
 const initialState: SettingsFormState = { error: null, saved: false };
 
@@ -14,6 +15,18 @@ export function SettingsForm({ household, timezone }: { household: HouseholdRow;
   const [state, dispatch, pending] = useActionState(updateHouseholdSettingsAction, initialState);
   const formRef = useRef<HTMLFormElement>(null);
   const [errorDismissed, setErrorDismissed] = useState(false);
+  // Was free text (Phase 3 backlog) — a typo ("Amercia/Los_Angeles") or a
+  // made-up zone used to save silently and just quietly break every
+  // time-based feature (brief timing, custody-block times) with no
+  // indication why. A real IANA zone list removes that failure mode
+  // entirely. If the currently-saved value somehow isn't in the list
+  // (e.g. it predates this change and was already invalid), it's added
+  // so the select still shows the true saved value instead of silently
+  // switching to the first option.
+  const timezoneOptions = useMemo(() => {
+    const zones = getTimezoneOptions();
+    return zones.includes(timezone) ? zones : [timezone, ...zones];
+  }, [timezone]);
 
   // The only cross-field validation error this form can produce ("Max
   // must be at least the minimum.") concerns budgetMax specifically —
@@ -83,7 +96,18 @@ export function SettingsForm({ household, timezone }: { household: HouseholdRow;
 
           <div className="flex flex-col gap-2">
             <Label htmlFor="timezone">Timezone</Label>
-            <Input id="timezone" name="timezone" defaultValue={timezone} placeholder="America/Los_Angeles" />
+            <select
+              id="timezone"
+              name="timezone"
+              defaultValue={timezone}
+              className="border-input h-9 rounded-md border bg-transparent px-3 text-sm shadow-xs"
+            >
+              {timezoneOptions.map((tz) => (
+                <option key={tz} value={tz}>
+                  {tz.replace(/_/g, " ")}
+                </option>
+              ))}
+            </select>
           </div>
 
           {otherError && <p className="text-sm text-destructive">{otherError}</p>}

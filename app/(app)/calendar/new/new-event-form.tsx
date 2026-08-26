@@ -34,7 +34,7 @@ export function NewEventForm({ people, defaultDate }: { people: PersonRow[]; def
     // navigated to, was the "no post-create redirect" half of the Phase 3
     // backlog item.
     const savedDate = String(formData.get("date") ?? "");
-    const target = savedDate ? `/calendar?month=${savedDate.slice(0, 7)}&day=${savedDate}` : "/calendar";
+    const target = savedDate ? `/calendar?month=${savedDate.slice(0, 7)}&day=${savedDate}#selected-day` : "/calendar";
     submit(formData, { redirectTo: () => target });
   }
 

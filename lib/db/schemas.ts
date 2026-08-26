@@ -6,6 +6,7 @@
 // rather than inside lib/db/repository.ts avoids double-validating on
 // every call and keeps the generic CRUD factory free of per-table logic.
 import { z } from "zod";
+import { isValidTimezone } from "@/lib/timezones";
 
 // z.uuid() validates strict RFC 4122 version/variant bits and rejects
 // anything else with the message "Invalid UUID" — including this project's
@@ -98,7 +99,11 @@ export const userInsertSchema = z.object({
   home_address: z.string().nullable().optional(),
   home_lat: z.number().min(-90).max(90).nullable().optional(),
   home_lng: z.number().min(-180).max(180).nullable().optional(),
-  timezone: z.string().optional(),
+  // Was a free-text field (Phase 3 backlog) — the settings form now
+  // submits from a constrained <select> of real IANA zones, and this
+  // refine rejects anything else server-side too (defense in depth
+  // against a direct API call bypassing the UI).
+  timezone: z.string().refine(isValidTimezone, { message: "Not a recognized timezone." }).optional(),
 });
 
 export const householdMemberInsertSchema = z.object({
