@@ -1,12 +1,13 @@
 "use client";
 
-import { useActionState, useRef, useTransition } from "react";
+import { useActionState, useRef } from "react";
 import { updatePersonAction, archivePersonAction, type SimpleFormState } from "../actions";
 import type { PersonRow } from "@/lib/db/database.types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { ConfirmDeleteButton } from "@/components/ui/confirm-delete-button";
 
 const initialState: SimpleFormState = { error: null };
 
@@ -26,7 +27,6 @@ const RELATIONSHIP_OPTIONS = [
 export function EditPersonForm({ person }: { person: PersonRow }) {
   const updateAction = updatePersonAction.bind(null, person.id);
   const [state, dispatch, pending] = useActionState(updateAction, initialState);
-  const [archivePending, startArchiveTransition] = useTransition();
   const isSelf = person.relationship_type === "self";
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -92,14 +92,11 @@ export function EditPersonForm({ person }: { person: PersonRow }) {
       </form>
 
       {!isSelf && (
-        <Button
-          type="button"
-          variant="outline"
-          disabled={archivePending}
-          onClick={() => startArchiveTransition(() => archivePersonAction(person.id))}
-        >
-          Archive {person.full_name}
-        </Button>
+        <ConfirmDeleteButton
+          label={`Archive ${person.full_name}`}
+          confirmLabel={`Confirm archive ${person.full_name}`}
+          action={() => archivePersonAction(person.id)}
+        />
       )}
     </div>
   );

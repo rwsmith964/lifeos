@@ -230,33 +230,52 @@ export async function updatePersonAction(
   redirect(`/people/${personId}`);
 }
 
-export async function deleteInterestAction(personId: string, interestId: string): Promise<void> {
+export async function deleteInterestAction(personId: string, interestId: string): Promise<SimpleFormState> {
   const { supabase } = await requireHouseholdContext();
-  await personInterestsRepo.remove(supabase, interestId);
+  try {
+    await personInterestsRepo.remove(supabase, interestId);
+  } catch (error) {
+    return { error: friendlyMutationError(error, { fallback: "Couldn't remove that interest — please try again." }) };
+  }
   revalidatePath(`/people/${personId}`);
+  return { error: null };
 }
 
-export async function deleteBudgetAction(personId: string, budgetId: string): Promise<void> {
+export async function deleteBudgetAction(personId: string, budgetId: string): Promise<SimpleFormState> {
   const { supabase } = await requireHouseholdContext();
-  await personGiftBudgetsRepo.remove(supabase, budgetId);
+  try {
+    await personGiftBudgetsRepo.remove(supabase, budgetId);
+  } catch (error) {
+    return { error: friendlyMutationError(error, { fallback: "Couldn't remove that budget — please try again." }) };
+  }
   revalidatePath(`/people/${personId}`);
+  return { error: null };
 }
 
-export async function deleteGiftAction(personId: string, giftId: string): Promise<void> {
+export async function deleteGiftAction(personId: string, giftId: string): Promise<SimpleFormState> {
   const { supabase } = await requireHouseholdContext();
-  await giftsRepo.remove(supabase, giftId);
+  try {
+    await giftsRepo.remove(supabase, giftId);
+  } catch (error) {
+    return { error: friendlyMutationError(error, { fallback: "Couldn't remove that gift — please try again." }) };
+  }
   revalidatePath(`/people/${personId}`);
+  return { error: null };
 }
 
-export async function archivePersonAction(personId: string): Promise<void> {
+export async function archivePersonAction(personId: string): Promise<SimpleFormState> {
   const { supabase, household } = await requireHouseholdContext();
 
   const existing = await peopleRepo.getById(supabase, personId);
   if (!existing || existing.household_id !== household.id || existing.relationship_type === "self") {
-    return;
+    return { error: null };
   }
 
-  await peopleRepo.update(supabase, personId, { is_archived: true });
+  try {
+    await peopleRepo.update(supabase, personId, { is_archived: true });
+  } catch (error) {
+    return { error: friendlyMutationError(error, { fallback: "Couldn't archive that person — please try again." }) };
+  }
   revalidatePath("/people");
   redirect("/people");
 }

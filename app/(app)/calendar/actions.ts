@@ -7,16 +7,30 @@ import { createSupabaseServiceRoleClient } from "@/lib/db/client-service-role";
 import { generateWeekendPlan } from "@/lib/planner/generate";
 import { friendlyMutationError } from "@/lib/db/errors";
 
-export async function deleteCalendarEventAction(eventId: string): Promise<void> {
-  const { supabase } = await requireHouseholdContext();
-  await calendarEventsRepo.remove(supabase, eventId);
-  revalidatePath("/calendar");
+export interface DeleteActionState {
+  error: string | null;
 }
 
-export async function deleteCustodyBlockAction(blockId: string): Promise<void> {
+export async function deleteCalendarEventAction(eventId: string): Promise<DeleteActionState> {
   const { supabase } = await requireHouseholdContext();
-  await custodyBlocksRepo.remove(supabase, blockId);
+  try {
+    await calendarEventsRepo.remove(supabase, eventId);
+  } catch (error) {
+    return { error: friendlyMutationError(error, { fallback: "Couldn't delete this event — please try again." }) };
+  }
   revalidatePath("/calendar");
+  return { error: null };
+}
+
+export async function deleteCustodyBlockAction(blockId: string): Promise<DeleteActionState> {
+  const { supabase } = await requireHouseholdContext();
+  try {
+    await custodyBlocksRepo.remove(supabase, blockId);
+  } catch (error) {
+    return { error: friendlyMutationError(error, { fallback: "Couldn't delete this custody block — please try again." }) };
+  }
+  revalidatePath("/calendar");
+  return { error: null };
 }
 
 export interface WeekendPlanActionState {

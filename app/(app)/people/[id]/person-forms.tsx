@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
-import { Loader2, X } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import { ConfirmDeleteButton } from "@/components/ui/confirm-delete-button";
 import {
   addInterestAction,
   addBudgetAction,
@@ -316,46 +317,20 @@ export function LogInteractionButton({ personId }: { personId: string }) {
 }
 
 export function DeleteInterestButton({ personId, interestId }: { personId: string; interestId: string }) {
-  const [pending, startTransition] = useTransition();
   return (
-    <button
-      type="button"
-      aria-label="Remove interest"
-      disabled={pending}
-      className="ml-1 inline-flex items-center align-middle text-muted-foreground hover:text-destructive disabled:opacity-50"
-      onClick={() => startTransition(() => deleteInterestAction(personId, interestId))}
-    >
-      <X className="size-3" />
-    </button>
+    <ConfirmDeleteButton
+      variant="icon"
+      ariaLabel="Remove interest"
+      className="ml-1"
+      action={() => deleteInterestAction(personId, interestId)}
+    />
   );
 }
 
 export function DeleteBudgetButton({ personId, budgetId }: { personId: string; budgetId: string }) {
-  const [pending, startTransition] = useTransition();
-  return (
-    <Button
-      type="button"
-      size="sm"
-      variant="ghost"
-      disabled={pending}
-      onClick={() => startTransition(() => deleteBudgetAction(personId, budgetId))}
-    >
-      Remove
-    </Button>
-  );
+  return <ConfirmDeleteButton action={() => deleteBudgetAction(personId, budgetId)} />;
 }
 
 export function DeleteGiftButton({ personId, giftId }: { personId: string; giftId: string }) {
-  const [pending, startTransition] = useTransition();
-  return (
-    <Button
-      type="button"
-      size="sm"
-      variant="ghost"
-      disabled={pending}
-      onClick={() => startTransition(() => deleteGiftAction(personId, giftId))}
-    >
-      Remove
-    </Button>
-  );
+  return <ConfirmDeleteButton action={() => deleteGiftAction(personId, giftId)} />;
 }
