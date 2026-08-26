@@ -56,7 +56,15 @@ export async function generateWeekendPlanAction(): Promise<WeekendPlanActionStat
       return { error: result.reason };
     }
     if (result.status === "no_candidates") {
-      return { error: "No activities with a home location configured yet — add one under Activities." };
+      // Was misdirecting people to "add one under Activities" — the real
+      // missing input is the household owner's home address (used to
+      // compute travel time/distance to every activity), which lives on
+      // Settings, not per-activity (see generateWeekendPlan in
+      // lib/planner/generate.ts: `home` comes from owner.home_lat/lng,
+      // not from any activity row). Fixed alongside adding that field.
+      return {
+        error: "Add at least one activity, and set your home address under Settings, to generate a weekend plan.",
+      };
     }
   } catch (error) {
     return { error: friendlyMutationError(error, { fallback: "Couldn't generate a weekend plan — please try again." }) };

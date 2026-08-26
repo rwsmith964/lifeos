@@ -6,6 +6,7 @@ import { householdsRepo } from "@/lib/db/repositories/households";
 import { usersRepo } from "@/lib/db/repositories/households";
 import { householdInsertSchema, userInsertSchema } from "@/lib/db/schemas";
 import { friendlyMutationError } from "@/lib/db/errors";
+import { geocodeAddress } from "@/lib/external/geocode";
 
 export interface SettingsFormState {
   error: string | null;
@@ -41,6 +42,19 @@ export async function updateHouseholdSettingsAction(
     return { error: "Max must be at least the minimum.", saved: false };
   }
 
+  // Home address feeds two features that were previously permanently
+  // unreachable with no UI at all: weekend-plan generation ("no
+  // candidates" is really "no home_lat/home_lng on the owner", not
+  // anything to do with Activities — see KNOWN-ISSUES.md) and the
+  // brief's weather forecast (lib/brief/generate.ts). Only re-geocode
+  // when the text actually changed, both to respect Nominatim's usage
+  // policy (avoid hammering it on every unrelated settings save) and so
+  // editing the timezone alone can't accidentally clear/refetch location.
+  const homeAddressInput = formData.get("homeAddress");
+  const homeAddress = homeAddressInput == null ? null : String(homeAddressInput).trim();
+  const currentUser = homeAddress !== null ? await usersRepo.getById(supabase, userId) : null;
+  const previousHomeAddress = currentUser?.home_address ?? "";
+
   try {
     await householdsRepo.update(supabase, household.id, parsedHousehold.data);
 
@@ -48,6 +62,32 @@ export async function updateHouseholdSettingsAction(
     if (timezone) {
       const parsedUser = userInsertSchema.partial().safeParse({ timezone });
       if (parsedUser.success) {
+        await usersRepo.update(supabase, userId, parsedUser.data);
+      }
+    }
+
+    if (homeAddress !== null && homeAddress !== (previousHomeAddress ?? "")) {
+      if (homeAddress === "") {
+        await usersRepo.update(supabase, userId, { home_address: null, home_lat: null, home_lng: null });
+      } else {
+        const geocoded = await geocodeAddress(homeAddress);
+        if (geocoded.status !== "ok") {
+          return {
+            error:
+              geocoded.status === "not_found"
+                ? "Couldn't find that address — try adding a city and state, or a full street address."
+                : "Couldn't look up that address right now — please try again in a moment.",
+            saved: false,
+          };
+        }
+        const parsedUser = userInsertSchema.partial().safeParse({
+          home_address: homeAddress,
+          home_lat: geocoded.result.lat,
+          home_lng: geocoded.result.lng,
+        });
+        if (!parsedUser.success) {
+          return { error: parsedUser.error.issues[0]?.message ?? "Invalid address.", saved: false };
+        }
         await usersRepo.update(supabase, userId, parsedUser.data);
       }
     }
@@ -59,5 +99,7 @@ export async function updateHouseholdSettingsAction(
   }
 
   revalidatePath("/settings");
+  revalidatePath("/calendar");
+  revalidatePath("/");
   return { error: null, saved: true };
 }

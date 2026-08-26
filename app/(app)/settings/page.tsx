@@ -21,7 +21,11 @@ export default async function SettingsPage() {
           </p>
         </CardContent>
       </Card>
-      <SettingsForm household={household} timezone={user?.timezone ?? "America/Los_Angeles"} />
+      <SettingsForm
+        household={household}
+        timezone={user?.timezone ?? "America/Los_Angeles"}
+        homeAddress={user?.home_address ?? ""}
+      />
     </div>
   );
 }

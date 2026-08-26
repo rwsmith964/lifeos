@@ -11,7 +11,15 @@ import { getTimezoneOptions } from "@/lib/timezones";
 
 const initialState: SettingsFormState = { error: null, saved: false };
 
-export function SettingsForm({ household, timezone }: { household: HouseholdRow; timezone: string }) {
+export function SettingsForm({
+  household,
+  timezone,
+  homeAddress,
+}: {
+  household: HouseholdRow;
+  timezone: string;
+  homeAddress: string;
+}) {
   const [state, dispatch, pending] = useActionState(updateHouseholdSettingsAction, initialState);
   const formRef = useRef<HTMLFormElement>(null);
   const [errorDismissed, setErrorDismissed] = useState(false);
@@ -36,8 +44,10 @@ export function SettingsForm({ household, timezone }: { household: HouseholdRow;
   // (bad household name, bad brief time) is rare enough that the generic
   // placement below still covers it.
   const isBudgetError = (message: string) => /budget|max must be/i.test(message);
+  const isAddressError = (message: string) => /address/i.test(message);
   const budgetError = state.error && isBudgetError(state.error) && !errorDismissed ? state.error : null;
-  const otherError = state.error && !isBudgetError(state.error) ? state.error : null;
+  const addressError = state.error && isAddressError(state.error) && !errorDismissed ? state.error : null;
+  const otherError = state.error && !isBudgetError(state.error) && !isAddressError(state.error) ? state.error : null;
 
   // Dispatching manually on click, rather than binding the action to the
   // form's `action` prop, works around a live production bug where Next's
@@ -106,6 +116,23 @@ export function SettingsForm({ household, timezone }: { household: HouseholdRow;
             />
             <p className="text-xs text-muted-foreground">
               How far ahead to look for birthdays and other occasions when suggesting gifts.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="homeAddress">Home address</Label>
+            <Input
+              id="homeAddress"
+              name="homeAddress"
+              placeholder="e.g. 123 Main St, Eugene, OR"
+              defaultValue={homeAddress}
+              aria-invalid={!!addressError || undefined}
+              onChange={() => setErrorDismissed(true)}
+            />
+            {addressError && <p className="text-xs text-destructive">{addressError}</p>}
+            <p className="text-xs text-muted-foreground">
+              Used for weekend-plan suggestions and the weather in your daily brief. We look up the coordinates
+              automatically — no need to know your exact latitude/longitude.
             </p>
           </div>
 

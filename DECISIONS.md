@@ -574,3 +574,19 @@ Fixing `callAi` immediately surfaced the *second* instance: generating a weekend
 **Rationale:** An "audit" backlog item is a request to characterize the current state and fix what's actually broken, not a license to redesign the whole shell without user sign-off on a real multi-column desktop layout. Fixing the one concrete regression (FAB drift) while leaving the larger design question open matches that scope.
 
 **Reversibility:** Trivial — one component's positioning wrapper, no logic or schema changes.
+
+---
+
+## D-050 | 2026-08-26 | Home address field — unblocks weekend planning + brief weather
+
+**Context:** Live-verification of D-048 surfaced that weekend-plan generation always fails with "No activities with a home location configured yet — add one under Activities," even after creating an activity with lat/lng. Traced the actual logic in `generateWeekendPlan` (`lib/planner/generate.ts`): the "home" location it needs comes from the **household owner's `home_lat`/`home_lng`** (columns that have existed on `users` since the initial schema and are already validated in `lib/db/schemas.ts`), not from any activity row. The error message was actively misdirecting people to the wrong screen. Worse: there was **no UI anywhere in the app** — not Settings, not Activities, not onboarding — that could ever set `home_lat`/`home_lng`/`home_address`. This also silently degraded `lib/brief/generate.ts`'s weather section, which reads the exact same `owner.home_lat/home_lng` pair via `getNwsForecast`. This closes out the backlog's "weather provider + location field" item — the weather provider itself (NWS, `lib/external/nws.ts`) was already fully implemented and needs no API key; the location field was the only missing piece.
+
+**What shipped:**
+- New `lib/external/geocode.ts`: a small forward-geocoding adapter using OpenStreetMap's Nominatim (`nominatim.openstreetmap.org/search`) — free, no API key, so this doesn't need a `custom-credentials` round trip. Only called on an explicit "Save settings" click (not a hot/repeated path), respecting Nominatim's usage policy via a descriptive `User-Agent` header. Returns a discriminated `{status: "ok" | "not_found" | "error"}` result rather than throwing, so a typo'd address becomes a clear inline validation message instead of a generic save failure.
+- Settings page/form (`app/(app)/settings/`) gained a "Home address" text field. On save, if the text changed, it's geocoded and `home_address`/`home_lat`/`home_lng` are written to the user's row; clearing the field clears all three. Address-lookup failures surface under the field itself (mirrors the existing budget-min/max inline-error pattern), not as a generic top-of-form error.
+- Fixed the misleading `generateWeekendPlanAction` error message in `app/(app)/calendar/actions.ts` to point at Settings instead of Activities.
+- `revalidatePath` added for `/calendar` and `/` (Brief) alongside the existing `/settings`, since both read `home_lat`/`home_lng` and should reflect a freshly-saved address without a manual reload.
+
+**Verification:** `pnpm typecheck && pnpm lint && pnpm test && pnpm build` all pass (262/262 tests, +6 new for the geocoding adapter covering blank input, a successful match, no-match, HTTP failure, network failure, and the required User-Agent header). Live re-verification (save a real address, confirm weekend-plan generation and brief weather both start working) still pending for next round.
+
+**Reversibility:** Additive — new nullable columns are already in the schema and were simply unreachable before; no migration needed. The geocode adapter is a new, isolated file.
