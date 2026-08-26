@@ -11,7 +11,7 @@ import { scanUpcomingOccasions } from "./occasions";
 import { generateGiftSuggestions } from "./suggest";
 import { householdsRepo } from "../db/repositories/households";
 import { listPeopleForHousehold } from "../db/repositories/people";
-import { giftSuggestionsRepo } from "../db/repositories/gifts";
+import { giftSuggestionsRepo, listActiveSuggestionsForHousehold } from "../db/repositories/gifts";
 import { notificationsRepo } from "../db/repositories/system";
 import { dispatchNotification } from "../notifications/dispatch";
 
@@ -57,9 +57,16 @@ export async function scanHouseholdForGiftOccasions(
     if (result.status === "generated") suggestionsGenerated += result.suggestions.length;
   }
 
-  const dueSuggestions = await giftSuggestionsRepo.list(client, (q) =>
-    q.in("status", ["suggested", "saved"])
-  );
+  // SECURITY (D-053): this previously called giftSuggestionsRepo.list()
+  // filtered only by status, with no household_id scoping — the exact
+  // same cross-household leak pattern found and fixed in
+  // lib/brief/generate.ts, except worse here: since this loop runs once
+  // per household from the cron/script caller and every call used the
+  // service-role client (bypasses RLS), it would generate an order-by
+  // NOTIFICATION for the CURRENT household's shopper about ANOTHER
+  // household's gift suggestion. Switched to the already-existing,
+  // correctly-scoped listActiveSuggestionsForHousehold() helper.
+  const dueSuggestions = await listActiveSuggestionsForHousehold(client, householdId);
 
   let notificationsSent = 0;
   if (shopper) {
@@ -68,8 +75,12 @@ export async function scanHouseholdForGiftOccasions(
       if (!isPastPromptDate(orderByDate, household.gift_prompt_buffer_days, today)) continue;
 
       const linkPath = `/gifts/suggestions/${suggestion.id}`;
+      // link_path already embeds this suggestion's own UUID so this was
+      // never a practical cross-household leak like the two above, but
+      // scoping it explicitly by household_id too is free and consistent
+      // with the D-053 audit of every service-role query in this file.
       const alreadyNotified = await notificationsRepo.list(client, (q) =>
-        q.eq("notification_type", "gift_order_by").eq("link_path", linkPath).limit(1)
+        q.eq("household_id", householdId).eq("notification_type", "gift_order_by").eq("link_path", linkPath).limit(1)
       );
       if (alreadyNotified.length > 0) continue;
 
