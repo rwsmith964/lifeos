@@ -11,6 +11,7 @@
 // magic-link/signup links already out in the wild with no `next` param.
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/db/client-server";
+import { RESET_FLOW_COOKIE, RESET_FLOW_COOKIE_MAX_AGE_SECONDS } from "@/lib/constants";
 
 const ALLOWED_NEXT_PATHS = new Set(["/onboarding", "/reset-password"]);
 
@@ -25,5 +26,22 @@ export async function GET(request: Request) {
     await supabase.auth.exchangeCodeForSession(code);
   }
 
-  return NextResponse.redirect(`${origin}${next}`);
+  const response = NextResponse.redirect(`${origin}${next}`);
+
+  // D-044: mark that this session's authentication just came from a
+  // clicked password-reset link, so updatePasswordAfterReset can tell that
+  // apart from "any already-logged-in session" (which must NOT be allowed
+  // to silently change the password via a direct /reset-password visit).
+  // Short-lived and single-use — cleared by the action on first use.
+  if (next === "/reset-password") {
+    response.cookies.set(RESET_FLOW_COOKIE, "1", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: RESET_FLOW_COOKIE_MAX_AGE_SECONDS,
+      path: "/",
+    });
+  }
+
+  return response;
 }

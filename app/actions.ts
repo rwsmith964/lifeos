@@ -1,8 +1,9 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { headers } from "next/headers";
+import { headers, cookies } from "next/headers";
 import { createSupabaseServerClient } from "@/lib/db/client-server";
+import { RESET_FLOW_COOKIE } from "@/lib/constants";
 
 // Vercel's proxy sets these; localhost dev has no x-forwarded-* headers at
 // all, so falls back to plain http on whatever host was requested. Used to
@@ -102,11 +103,27 @@ export async function sendPasswordResetEmail(
 // exchanging the emailed link's code — there is no separate "current
 // password" check because reaching this action at all already proves
 // control of the account's email inbox.
+//
+// D-044: getUser() returning a user is NOT enough on its own — that's
+// true of any normal logged-in session, not just one freshly created
+// from a clicked reset-password link. Visiting /reset-password while
+// already logged in used to silently change the real password with no
+// error at all. RESET_FLOW_COOKIE (set only by app/auth/callback/route.ts
+// when next=/reset-password) proves this session actually just came
+// through that link; it's short-lived and cleared here on first use so it
+// can't be replayed for a second password change later in the same login.
 export async function updatePasswordAfterReset(
   _prevState: AuthActionState,
   formData: FormData
 ): Promise<AuthActionState> {
   const password = String(formData.get("password") ?? "");
+
+  const cookieStore = await cookies();
+  const hasResetFlowCookie = cookieStore.get(RESET_FLOW_COOKIE) != null;
+  cookieStore.delete(RESET_FLOW_COOKIE);
+  if (!hasResetFlowCookie) {
+    return { error: "That reset link has expired. Request a new one from the sign-in page." };
+  }
 
   const supabase = await createSupabaseServerClient();
   const {

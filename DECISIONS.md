@@ -456,3 +456,34 @@ Fixing `callAi` immediately surfaced the *second* instance: generating a weekend
 **Rationale:** Straightforward "expose an existing setting" + copy fix \u2014 no design decision needed since the field, its validation, and its consumer (`scanUpcomingOccasions`) already existed.
 
 **Reversibility:** Cheap. Additive settings-form field with existing schema validation; the empty-state copy change has no data or schema implications.
+
+---
+
+## D-043 | 2026-08-26 | Custody exception-date UI + gap detection for existing schedules
+
+**Context:** Phase 2 backlog item, deferred since the round-2 brief: the `custody_schedule_exceptions` table and its repository/materialization support (`lib/custody/materialize.ts` already merges exceptions into generated blocks and marks them `block_type: "holiday"`) existed end-to-end on the pure-engine and DB side, but there was no UI for a user to actually add, view, or remove a one-day override on a recurring schedule — the only place `findGaps` ever ran was the schedule-creation preview, so a gap introduced later (e.g. an edited `end_date`, or a custom cycle missing a day index) was never flagged anywhere for an existing schedule.
+
+**Fix:**
+- New page `app/(app)/calendar/custody/[id]/page.tsx` — a schedule detail/management view, linked from a new "Manage" button on each schedule card in `/calendar/custody`. Shows the schedule summary, a gap-detection banner (running `projectCustodySchedule` + `findGaps` over the same `MATERIALIZE_WINDOW_DAYS`-day window `materializeCustodySchedule` actually fills, with existing exceptions applied), the list of exceptions with delete buttons, and an add-exception form.
+- New API routes: `POST /api/calendar/custody/schedules/[id]/exceptions` (validates via the pre-existing `custodyScheduleExceptionInsertSchema`, inserts, then calls `materializeCustodySchedule` so the calendar picks up the change immediately) and `DELETE /api/calendar/custody/schedules/[id]/exceptions/[exceptionId]` (removes the override and re-materializes so the cycle's default assignment takes back over).
+- New client components `exception-form.tsx` and `delete-exception-button.tsx`, following the same direct-`fetch`-with-JSON pattern as the existing schedule create/delete flows (not `useFormPost`, which posts `FormData` — the custody schedule API routes have always taken JSON bodies).
+
+**Verification:** `pnpm typecheck && pnpm lint && pnpm test && pnpm build` all pass (244/244 tests, two new API routes appear in the build's route list). Not yet independently re-verified live in the browser this pass — flagging for the next live-verification round.
+
+**Rationale:** The hard part (recurrence engine + exception merge + materialization) was already built and tested in Phase 2; this was purely the missing UI layer. Folding gap-detection into the same page (rather than a separate backlog item) was a low-cost add-on since `findGaps` and the exact materialize window were already one import away.
+
+**Reversibility:** Cheap. Purely additive UI and API routes; no schema or migration changes (the `custody_schedule_exceptions` table and its Zod schema already existed unused).
+
+---
+
+## D-044 | 2026-08-26 | SECURITY: /reset-password no longer accepts any logged-in session
+
+**Context:** Found during live verification of D-041's forgot-password flow. `updatePasswordAfterReset` only checked that `supabase.auth.getUser()` returned *some* user — true for any normal, already-logged-in session, not just one freshly established from clicking the emailed recovery link. Visiting `/reset-password` directly while already logged in silently changed the real account password with no error message at all, instead of the intended "That reset link has expired" behavior. This was reproduced and immediately reverted during verification (see D-042's live-verification run) — the account's password was momentarily changed and restored, no other data was touched.
+
+**Fix:** Added `RESET_FLOW_COOKIE` (`lib/constants.ts`) — a short-lived (15 min), httpOnly, single-use marker cookie. `app/auth/callback/route.ts` sets it only when the callback's `next` param is `/reset-password` (i.e. only on the actual password-reset redirect path, right after exchanging the emailed link's code for a session). `updatePasswordAfterReset` (`app/actions.ts`) now requires this cookie to be present *in addition to* a valid session, and deletes it immediately so it can't be replayed for a second change later in the same login. A normal login session, lacking this cookie, now correctly hits the "reset link has expired" error instead of silently succeeding.
+
+**Verification:** `pnpm typecheck && pnpm lint && pnpm test && pnpm build` all pass (244/244 tests). Live-verification pending — will re-run the browser_task that originally caught this, checking specifically: (a) direct `/reset-password` visit while logged in now shows the expired-link error and does NOT change the password, (b) the genuine email-link round trip still works once gcal reauth is available.
+
+**Rationale:** This is a real security gap (session confusion between "authenticated" and "authorized via password-reset flow specifically"), so it jumped the backlog queue ahead of other Phase 2/3 items despite not being in the original brief.
+
+**Reversibility:** Cheap, additive-only (a new cookie and a length check); no schema or migration changes. Rolling back means one logged-in session could again silently reset its own password via direct URL visit — not recommended.

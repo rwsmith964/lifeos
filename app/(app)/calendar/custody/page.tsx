@@ -104,7 +104,12 @@ export default async function CustodyHubPage() {
                       {schedule.end_date ? ` to ${format(new Date(`${schedule.end_date}T00:00:00`), "MMM d, yyyy")}` : " · ongoing"}
                     </p>
                   </div>
-                  <DeleteScheduleButton scheduleId={schedule.id} />
+                  <div className="flex flex-col items-end gap-1">
+                    <Button asChild size="sm" variant="outline">
+                      <Link href={`/calendar/custody/${schedule.id}`}>Manage</Link>
+                    </Button>
+                    <DeleteScheduleButton scheduleId={schedule.id} />
+                  </div>
                 </CardContent>
               </Card>
             );
