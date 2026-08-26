@@ -145,14 +145,23 @@ export function CaptureButton() {
 
   return (
     <>
-      <Button
-        onClick={() => setOpen(true)}
-        size="icon"
-        aria-label="Quick capture"
-        className="fixed bottom-20 right-4 z-40 size-12 rounded-full shadow-lg"
-      >
-        <Sparkles className="size-5" />
-      </Button>
+      {/* D-048: fixed positioning is relative to the viewport, not the
+          `max-w-md mx-auto` app shell (app/(app)/layout.tsx) that every
+          other fixed element (the bottom nav) respects by also being
+          max-w-md/mx-auto itself. Without this wrapper, right-4 anchors to
+          the real viewport edge, so on any screen wider than ~448px the
+          button drifts far outside the app's visual "phone frame" instead
+          of sitting in its bottom-right corner. */}
+      <div className="pointer-events-none fixed inset-x-0 bottom-20 z-40 mx-auto flex max-w-md justify-end">
+        <Button
+          onClick={() => setOpen(true)}
+          size="icon"
+          aria-label="Quick capture"
+          className="pointer-events-auto mr-4 size-12 rounded-full shadow-lg"
+        >
+          <Sparkles className="size-5" />
+        </Button>
+      </div>
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40" onClick={closeAndReset}>

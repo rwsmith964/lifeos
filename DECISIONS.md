@@ -558,3 +558,19 @@ Fixing `callAi` immediately surfaced the *second* instance: generating a weekend
 **Rationale:** Splitting an underspecified backlog line into what's concretely provable from the code (and building only those pieces) is safer than guessing at an entire vague feature; the one genuinely ambiguous sub-item ("look-ahead") is called out explicitly rather than silently invented.
 
 **Reversibility:** Cheap. New component + new pure function + one new import/usage each in two existing pages, plus a filter added to one existing computation in `generate.ts`. No schema/migration changes.
+
+---
+
+## D-049 | 2026-08-26 | Responsive shell audit + AI-assistant FAB positioning fix
+
+**Context:** Backlog item "responsive shell audit." Ran a structured visual audit (login as the real account, DevTools device-metrics overrides + `scrollWidth`/`clientWidth` checks + `elementFromPoint` hit-testing, not just screenshots) across Brief, Calendar, People, and Settings at 390px (mobile), 820px (tablet), and 1440px (desktop).
+
+**Findings:**
+- **No functional bugs at any width.** Zero horizontal scrollbars, zero text truncation/overlap, zero unclickable nav/header controls across all 12 page×width combinations tested. The app's shell (`app/(app)/layout.tsx`) is intentionally `max-w-md mx-auto` (~448px), so at 820px/1440px it renders as a narrow centered column with large unused margins on both sides — a deliberate, working consequence of the mobile-first design, not a bug. Whether LifeOS should eventually get a real multi-column desktop layout is a product/design decision, not something to unilaterally build without direction — flagged in KNOWN-ISSUES rather than redesigned.
+- **One genuine CSS bug found and fixed:** the floating AI-assistant "Quick capture" button (`components/capture/capture-button.tsx`) used bare `fixed bottom-20 right-4`, which anchors to the real viewport edge rather than the app's `max-w-md` column edge every other fixed element (the bottom nav) respects. At 820px it drifted ~150px outside the app's right edge; at 1440px, ~430px outside — visually a stray element disconnected from the rest of the "phone frame" UI, though it never overlapped or blocked any other control at any width. Fixed by wrapping it in a `pointer-events-none fixed inset-x-0 mx-auto max-w-md justify-end` strip (mirroring the bottom nav's own centering pattern) with the button itself `pointer-events-auto`.
+
+**Verification:** `pnpm typecheck && pnpm lint && pnpm test && pnpm build` all pass (256/256 tests, no new tests needed — this is a pure CSS/layout fix with no new logic). Live re-verification of the FAB fix at 820px/1440px pending for next round.
+
+**Rationale:** An "audit" backlog item is a request to characterize the current state and fix what's actually broken, not a license to redesign the whole shell without user sign-off on a real multi-column desktop layout. Fixing the one concrete regression (FAB drift) while leaving the larger design question open matches that scope.
+
+**Reversibility:** Trivial — one component's positioning wrapper, no logic or schema changes.
