@@ -262,11 +262,52 @@ export const custodyBlockInsertSchema = z
     ends_at: isoDateTime,
     block_type: custodyBlockTypeSchema.optional(),
     notes: z.string().optional(),
+    location: z.string().nullable().optional(),
+    custody_schedule_id: uuid.nullable().optional(),
   })
   .refine((v) => new Date(v.ends_at) >= new Date(v.starts_at), {
     message: "End date can't be before the start date.",
     path: ["ends_at"],
   });
+
+const custodyCycleAssignmentSchema = z.object({
+  dayIndex: z.number().int().min(0),
+  responsiblePersonId: uuid,
+});
+
+export const custodyScheduleInsertSchema = z
+  .object({
+    household_id: uuid,
+    child_person_id: uuid,
+    name: z.string().optional(),
+    cycle_length_days: z.number().int().min(1).max(90),
+    cycle_assignments: z.array(custodyCycleAssignmentSchema).min(1),
+    anchor_date: isoDate,
+    handover_time: z
+      .string()
+      .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "expected HH:MM 24-hour time")
+      .optional(),
+    handover_location: z.string().nullable().optional(),
+    start_date: isoDate,
+    end_date: isoDate.nullable().optional(),
+    notes: z.string().optional(),
+  })
+  .refine((v) => v.cycle_assignments.every((a) => a.dayIndex < v.cycle_length_days), {
+    message: "Every cycle day must be within the cycle length.",
+    path: ["cycle_assignments"],
+  })
+  .refine((v) => !v.end_date || v.end_date >= v.start_date, {
+    message: "End date can't be before the start date.",
+    path: ["end_date"],
+  });
+export type CustodyScheduleInsertInput = z.infer<typeof custodyScheduleInsertSchema>;
+
+export const custodyScheduleExceptionInsertSchema = z.object({
+  custody_schedule_id: uuid,
+  exception_date: isoDate,
+  responsible_person_id: uuid,
+  reason: z.string().optional(),
+});
 
 export const briefInsertSchema = z.object({
   household_id: uuid,

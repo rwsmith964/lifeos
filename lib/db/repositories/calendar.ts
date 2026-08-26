@@ -99,6 +99,12 @@ export async function listUpcomingEventsForPerson(
     .filter((e): e is CalendarEventRow => e != null);
 }
 
+// Overlap, not "starts in range": .gte("starts_at", X) missed any block
+// that started before the window but extends into it — a 3-day custody
+// span queried for the day after it started would silently vanish. The
+// correct window filter for a range row is starts_at < windowEnd AND
+// ends_at > windowStart (round-2 D-033 regression — see 2.1).
+
 export async function listCustodyBlocksForChildInRange(
   client: SupabaseClient,
   childPersonId: string,
@@ -108,8 +114,8 @@ export async function listCustodyBlocksForChildInRange(
   return custodyBlocksRepo.list(client, (q) =>
     q
       .eq("child_person_id", childPersonId)
-      .gte("starts_at", startsAtISO)
       .lt("starts_at", endsAtISO)
+      .gt("ends_at", startsAtISO)
       .order("starts_at", { ascending: true })
   );
 }
@@ -123,8 +129,8 @@ export async function listCustodyBlocksForHouseholdInRange(
   return custodyBlocksRepo.list(client, (q) =>
     q
       .eq("household_id", householdId)
-      .gte("starts_at", startsAtISO)
       .lt("starts_at", endsAtISO)
+      .gt("ends_at", startsAtISO)
       .order("starts_at", { ascending: true })
   );
 }

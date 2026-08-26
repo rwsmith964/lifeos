@@ -1,10 +1,12 @@
-// POST /api/calendar/custody — create a custody block. A Route Handler
-// rather than a Server Action; see lib/hooks/use-form-post.ts and
-// DECISIONS.md D-031.
+// POST /api/calendar/custody — create a one-off custody block. A Route
+// Handler rather than a Server Action; see lib/hooks/use-form-post.ts and
+// DECISIONS.md D-031. For a repeating pattern, see
+// /api/calendar/custody/schedules instead (DECISIONS.md D-033).
 import { NextResponse } from "next/server";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { custodyBlocksRepo } from "@/lib/db/repositories/calendar";
 import { custodyBlockInsertSchema } from "@/lib/db/schemas";
+import { friendlyMutationError } from "@/lib/db/errors";
 
 export async function POST(request: Request) {
   const { supabase, household } = await requireHouseholdContext();
@@ -12,6 +14,10 @@ export async function POST(request: Request) {
 
   const startDate = String(formData.get("startDate") ?? "");
   const endDate = String(formData.get("endDate") ?? "");
+  // No real handover time was ever collected — every block claimed a
+  // hard-coded 5:00 PM regardless of what actually happened (round-2
+  // brief 2.3). Defaults to 17:00 only if the field is somehow missing.
+  const handoverTime = String(formData.get("handoverTime") ?? "17:00");
 
   if (endDate < startDate) {
     return NextResponse.json({ error: "End date can't be before the start date." }, { status: 400 });
@@ -21,10 +27,11 @@ export async function POST(request: Request) {
     household_id: household.id,
     child_person_id: String(formData.get("childPersonId") ?? ""),
     responsible_person_id: String(formData.get("responsiblePersonId") ?? ""),
-    starts_at: new Date(`${startDate}T17:00:00`).toISOString(),
-    ends_at: new Date(`${endDate}T17:00:00`).toISOString(),
+    starts_at: new Date(`${startDate}T${handoverTime}:00`).toISOString(),
+    ends_at: new Date(`${endDate}T${handoverTime}:00`).toISOString(),
     block_type: String(formData.get("blockType") ?? "regular"),
     notes: String(formData.get("notes") ?? ""),
+    location: String(formData.get("location") ?? "").trim() || null,
   });
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid input." }, { status: 400 });
@@ -34,7 +41,9 @@ export async function POST(request: Request) {
     const block = await custodyBlocksRepo.create(supabase, parsed.data);
     return NextResponse.json({ id: block.id });
   } catch (error) {
-    console.error("POST /api/calendar/custody failed:", error);
-    return NextResponse.json({ error: "Couldn't save this custody block — please try again." }, { status: 500 });
+    return NextResponse.json(
+      { error: friendlyMutationError(error, { fallback: "Couldn't save this custody block — please try again." }) },
+      { status: 500 }
+    );
   }
 }

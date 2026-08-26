@@ -1,9 +1,9 @@
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
 import { filterEligibleResponsibleAdults } from "@/lib/custody/eligible-parents";
-import { NewScheduleForm } from "./new-schedule-form";
+import { CustodyBlockForm } from "./custody-block-form";
 
-export default async function NewCustodyScheduleTypePage() {
+export default async function NewCustodyBlockPage() {
   const { supabase, household } = await requireHouseholdContext();
   const people = await listPeopleForHousehold(supabase, household.id);
 
@@ -12,20 +12,17 @@ export default async function NewCustodyScheduleTypePage() {
 
   return (
     <div className="flex flex-col gap-4 p-4">
-      <h1 className="text-xl font-semibold">New recurring custody schedule</h1>
+      <h1 className="text-xl font-semibold">Add a one-off custody block</h1>
       <p className="text-sm text-muted-foreground">
-        Pick a common pattern, or build a custom cycle. This generates real calendar blocks for the next 90 days and
-        keeps generating as time passes.
+        For a single exception — a holiday swap, a one-time change. For a repeating pattern, use{" "}
+        a recurring schedule instead.
       </p>
       {children.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No children on record yet — add one under People first.</p>
-      ) : responsibleCandidates.length < 2 ? (
         <p className="text-sm text-muted-foreground">
-          You need at least two eligible adults (co-parent, spouse, or partner) on record before building a recurring
-          schedule.
+          No children on record yet — add one under People first.
         </p>
       ) : (
-        <NewScheduleForm childPeople={children} responsibleCandidates={responsibleCandidates} />
+        <CustodyBlockForm childPeople={children} responsibleCandidates={responsibleCandidates} />
       )}
     </div>
   );

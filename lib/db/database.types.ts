@@ -442,14 +442,62 @@ export interface CustodyBlockRow {
   ends_at: string;
   block_type: CustodyBlockType;
   notes: string;
+  location: string | null;
+  custody_schedule_id: string | null;
   created_at: string;
   updated_at: string;
 }
 export type CustodyBlockInsert = Insert<
   CustodyBlockRow,
-  "id" | "block_type" | "notes" | "created_at" | "updated_at"
+  "id" | "block_type" | "notes" | "location" | "custody_schedule_id" | "created_at" | "updated_at"
 >;
 export type CustodyBlockUpdate = Update<CustodyBlockRow>;
+
+// custody_schedules ---------------------------------------------------
+
+export interface CustodyCycleAssignment {
+  dayIndex: number;
+  responsiblePersonId: string;
+}
+
+export interface CustodyScheduleRow {
+  id: string;
+  household_id: string;
+  child_person_id: string;
+  name: string;
+  cycle_length_days: number;
+  cycle_assignments: CustodyCycleAssignment[];
+  anchor_date: string;
+  handover_time: string;
+  handover_location: string | null;
+  start_date: string;
+  end_date: string | null;
+  notes: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+export type CustodyScheduleInsert = Insert<
+  CustodyScheduleRow,
+  "id" | "name" | "handover_time" | "handover_location" | "end_date" | "notes" | "is_active" | "created_at" | "updated_at"
+>;
+export type CustodyScheduleUpdate = Update<CustodyScheduleRow>;
+
+// custody_schedule_exceptions -------------------------------------------
+
+export interface CustodyScheduleExceptionRow {
+  id: string;
+  custody_schedule_id: string;
+  exception_date: string;
+  responsible_person_id: string;
+  reason: string;
+  created_at: string;
+}
+export type CustodyScheduleExceptionInsert = Insert<
+  CustodyScheduleExceptionRow,
+  "id" | "reason" | "created_at"
+>;
+export type CustodyScheduleExceptionUpdate = Update<CustodyScheduleExceptionRow>;
 
 // briefs ------------------------------------------------------------------
 

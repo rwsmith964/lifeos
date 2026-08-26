@@ -21,7 +21,7 @@ export function CustodyBlockForm({
 
   function handleSave() {
     if (!formRef.current || !formRef.current.reportValidity()) return;
-    submit(new FormData(formRef.current), { redirectTo: () => "/calendar" });
+    submit(new FormData(formRef.current), { redirectTo: () => "/calendar/custody" });
   }
 
   return (
@@ -66,20 +66,30 @@ export function CustodyBlockForm({
           <Input id="endDate" name="endDate" type="date" required />
         </div>
       </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="handoverTime">Handover time</Label>
+          <Input id="handoverTime" name="handoverTime" type="time" defaultValue="17:00" required />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="blockType">Type</Label>
+          <select
+            id="blockType"
+            name="blockType"
+            defaultValue="regular"
+            className="border-input h-9 rounded-md border bg-transparent px-3 text-sm"
+          >
+            {BLOCK_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
       <div className="flex flex-col gap-2">
-        <Label htmlFor="blockType">Type</Label>
-        <select
-          id="blockType"
-          name="blockType"
-          defaultValue="regular"
-          className="border-input h-9 rounded-md border bg-transparent px-3 text-sm"
-        >
-          {BLOCK_TYPES.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
+        <Label htmlFor="location">Handover location (optional)</Label>
+        <Input id="location" name="location" placeholder="e.g. School pickup" />
       </div>
       {error && <p className="text-sm text-destructive">{error}</p>}
       <Button type="button" onClick={handleSave} disabled={pending}>
