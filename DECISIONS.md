@@ -442,3 +442,17 @@ Fixing `callAi` immediately surfaced the *second* instance: generating a weekend
 **Rationale:** Both are standard, expected auth/error-page affordances with an obvious one correct shape — no product decision needed.
 
 **Reversibility:** Cheap. 404 page is purely additive. Forgot-password touches `app/auth/callback/route.ts`'s redirect target logic, but the change is backward compatible (defaults to the exact prior behavior for any link without `next` set) — reverting drops the three new pages/actions and callback change with no schema or data implications.
+
+---
+
+## D-042 | 2026-08-26 | Gifts tab empty-state copy; gift scan horizon now editable in settings
+
+**Context:** Phase 3 backlog: "Gifts tab has poor empty-state copy and doesn't expose the scan-horizon setting." `gift_scan_horizon_days` was already a real household column (set once at signup, read by `lib/gifts/scan.ts`), but nothing in the UI let a household change it afterward, and the empty state on `/gifts` was one vague sentence ("...within the scan horizon") that never said what the horizon actually was or what to do if suggestions weren't showing up.
+
+**Fix:** Added a "Gift scan horizon (days)" number field to the settings form (`app/(app)/settings/settings-form.tsx`), wired into `updateHouseholdSettingsAction` (`app/(app)/settings/actions.ts`) via the existing `householdInsertSchema.partial()` parse \u2014 the schema already validated this field (`.int().positive()`), it just had nowhere to come from. Rewrote the Gifts empty state (`app/(app)/gifts/page.tsx`) to name the household's actual configured horizon in days, and to link directly to `/settings` for adjusting it, alongside a reminder to check that people have occasion dates set.
+
+**Verification:** `pnpm typecheck && pnpm lint && pnpm test && pnpm build` all pass (244/244 tests). Not yet independently re-verified live in the browser this pass.
+
+**Rationale:** Straightforward "expose an existing setting" + copy fix \u2014 no design decision needed since the field, its validation, and its consumer (`scanUpcomingOccasions`) already existed.
+
+**Reversibility:** Cheap. Additive settings-form field with existing schema validation; the empty-state copy change has no data or schema implications.

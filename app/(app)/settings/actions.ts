@@ -23,6 +23,11 @@ export async function updateHouseholdSettingsAction(
     default_gift_budget_min_cents: Math.round(Number(formData.get("budgetMin") ?? 0) * 100) || null,
     default_gift_budget_max_cents: Math.round(Number(formData.get("budgetMax") ?? 0) * 100) || null,
     brief_time: String(formData.get("briefTime") ?? household.brief_time),
+    // Was set only at signup time with no way to change it afterward
+    // (Phase 3 backlog: "Gifts tab doesn't expose the scan horizon
+    // setting") — households that wanted a longer or shorter lead time on
+    // gift suggestions had no self-service path to adjust it.
+    gift_scan_horizon_days: Number(formData.get("giftScanHorizonDays") ?? household.gift_scan_horizon_days),
   });
   if (!parsedHousehold.success) {
     return { error: parsedHousehold.error.issues[0]?.message ?? "Invalid input.", saved: false };

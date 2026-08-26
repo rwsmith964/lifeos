@@ -95,6 +95,21 @@ export function SettingsForm({ household, timezone }: { household: HouseholdRow;
           </div>
 
           <div className="flex flex-col gap-2">
+            <Label htmlFor="giftScanHorizonDays">Gift scan horizon (days)</Label>
+            <Input
+              id="giftScanHorizonDays"
+              name="giftScanHorizonDays"
+              type="number"
+              min={1}
+              step={1}
+              defaultValue={household.gift_scan_horizon_days}
+            />
+            <p className="text-xs text-muted-foreground">
+              How far ahead to look for birthdays and other occasions when suggesting gifts.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-2">
             <Label htmlFor="timezone">Timezone</Label>
             <select
               id="timezone"

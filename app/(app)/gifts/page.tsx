@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { Gift } from "lucide-react";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { listActiveSuggestionsForHousehold } from "@/lib/db/repositories/gifts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,10 +17,26 @@ export default async function GiftsPage() {
       <h1 className="text-xl font-semibold">Gift suggestions</h1>
 
       {suggestions.length === 0 ? (
+        // Was a single generic sentence with no indication of *why* nothing
+        // showed up, or what to actually do about it (Phase 3 backlog: "poor
+        // empty-state copy"). Now names the household's actual configured
+        // horizon (instead of the vague "the scan horizon") and gives two
+        // concrete next steps: add people/occasions, or adjust the horizon
+        // if it seems too short.
         <Card>
-          <CardContent className="text-sm text-muted-foreground">
-            No open gift suggestions. They&apos;ll appear here as occasions come up within the scan
-            horizon.
+          <CardContent className="flex flex-col items-center gap-3 py-8 text-center">
+            <Gift className="size-8 text-muted-foreground" aria-hidden="true" />
+            <p className="text-sm text-muted-foreground">
+              No open gift suggestions right now. We look {household.gift_scan_horizon_days} days ahead for
+              birthdays and other occasions — suggestions will show up here as those dates get closer.
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Make sure the people you want suggestions for have a birthday or occasion date set, or{" "}
+              <Link href="/settings" className="underline underline-offset-2">
+                adjust the scan horizon
+              </Link>{" "}
+              in settings.
+            </p>
           </CardContent>
         </Card>
       ) : (
