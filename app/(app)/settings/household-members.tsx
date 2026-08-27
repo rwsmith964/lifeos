@@ -2,11 +2,11 @@
 
 import { useActionState, useState } from "react";
 import {
-  initialInviteState,
   leaveHouseholdAction,
   removeMemberAction,
   revokeHouseholdInviteAction,
   sendHouseholdInviteAction,
+  type HouseholdInviteFormState,
 } from "./household-invite-actions";
 import type { HouseholdInviteRow, HouseholdRole } from "@/lib/db/database.types";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,15 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ConfirmDeleteButton } from "@/components/ui/confirm-delete-button";
 import { useConfirmDelete } from "@/lib/hooks/use-confirm-delete";
+
+// Kept here rather than in household-invite-actions.ts: a "use server" file
+// may only export async functions at runtime (type-only exports like
+// HouseholdInviteFormState are fine since they're erased at compile time,
+// but a real object constant like this one is not) — Next.js throws
+// "A 'use server' file can only export async functions, found object" the
+// moment that module is evaluated. Found live via production verification
+// (D-055 follow-up): every invite-send attempt 500'd because of this.
+const initialInviteState: HouseholdInviteFormState = { error: null, sent: false };
 
 export interface HouseholdMemberDisplay {
   memberId: string;

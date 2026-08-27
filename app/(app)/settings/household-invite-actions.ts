@@ -26,8 +26,6 @@ export interface HouseholdInviteFormState {
   sent: boolean;
 }
 
-export const initialInviteState: HouseholdInviteFormState = { error: null, sent: false };
-
 /**
  * Owner/adult-only guard shared by every mutating action in this file.
  * household_members' own INSERT/UPDATE policies already enforce this
