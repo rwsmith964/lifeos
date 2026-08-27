@@ -24,7 +24,7 @@ import { useConfirmDelete } from "@/lib/hooks/use-confirm-delete";
 // "A 'use server' file can only export async functions, found object" the
 // moment that module is evaluated. Found live via production verification
 // (D-055 follow-up): every invite-send attempt 500'd because of this.
-const initialInviteState: HouseholdInviteFormState = { error: null, sent: false };
+const initialInviteState: HouseholdInviteFormState = { error: null, sent: false, inviteUrl: null };
 
 export interface HouseholdMemberDisplay {
   memberId: string;
@@ -50,6 +50,7 @@ const roleBadgeVariant: Record<HouseholdRole, "default" | "secondary" | "outline
 
 function InviteForm() {
   const [state, dispatch, pending] = useActionState(sendHouseholdInviteAction, initialInviteState);
+  const [copied, setCopied] = useState(false);
 
   return (
     <form action={dispatch} className="flex flex-col gap-3 sm:flex-row sm:items-end">
@@ -73,8 +74,31 @@ function InviteForm() {
         {pending ? "Sending…" : "Send invite"}
       </Button>
       {state.error && <p className="text-sm text-destructive sm:basis-full">{state.error}</p>}
-      {state.sent && !state.error && (
+      {state.sent && !state.error && !state.inviteUrl && (
         <p className="text-sm text-muted-foreground sm:basis-full">Invite sent.</p>
+      )}
+      {state.sent && !state.error && state.inviteUrl && (
+        <div className="flex flex-col gap-1 sm:basis-full">
+          <p className="text-sm text-muted-foreground">
+            Invite created, but email delivery isn&apos;t set up yet — copy this link and send it to them
+            yourself:
+          </p>
+          <div className="flex items-center gap-2">
+            <Input readOnly value={state.inviteUrl} className="font-mono text-xs" onFocus={(e) => e.currentTarget.select()} />
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={async () => {
+                await navigator.clipboard.writeText(state.inviteUrl ?? "");
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              }}
+            >
+              {copied ? "Copied!" : "Copy link"}
+            </Button>
+          </div>
+        </div>
       )}
     </form>
   );

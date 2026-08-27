@@ -24,6 +24,12 @@ import { sendHouseholdInviteEmail } from "@/lib/notifications/invite-email";
 export interface HouseholdInviteFormState {
   error: string | null;
   sent: boolean;
+  // Populated only when the email channel didn't actually deliver (e.g. no
+  // RESEND_API_KEY configured, or the send call itself failed) so the UI
+  // can offer a "copy invite link" fallback — the invite row is fully
+  // valid either way, this just avoids a dead end where the only copy of
+  // the accept link is a server console log the owner can't reach.
+  inviteUrl: string | null;
 }
 
 /**
@@ -52,7 +58,7 @@ export async function sendHouseholdInviteAction(
   try {
     ctx = await requireOwnerOrAdult();
   } catch (error) {
-    return { error: error instanceof Error ? error.message : "Not allowed.", sent: false };
+    return { error: error instanceof Error ? error.message : "Not allowed.", sent: false, inviteUrl: null };
   }
   const { supabase, household, userId } = ctx;
 
@@ -61,7 +67,7 @@ export async function sendHouseholdInviteAction(
     role: String(formData.get("role") ?? "adult"),
   });
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid input.", sent: false };
+    return { error: parsed.error.issues[0]?.message ?? "Invalid input.", sent: false, inviteUrl: null };
   }
 
   // Inviting someone already a member is almost always a mistake (they'd
@@ -69,7 +75,7 @@ export async function sendHouseholdInviteAction(
   // with a clear message rather than silently sending a pointless email.
   const memberEmails = await listHouseholdMemberEmails(supabase, household.id);
   if ([...memberEmails.values()].some((email) => email.toLowerCase() === parsed.data.invited_email)) {
-    return { error: "That person is already a member of this household.", sent: false };
+    return { error: "That person is already a member of this household.", sent: false, inviteUrl: null };
   }
 
   let invite;
@@ -89,16 +95,18 @@ export async function sendHouseholdInviteAction(
         fallback: "Couldn't send that invite — please try again.",
       }),
       sent: false,
+      inviteUrl: null,
     };
   }
 
   const inviter = await usersRepo.getById(supabase, userId);
   const origin = await getSiteOrigin();
+  const acceptUrl = `${origin}/invite/${invite.token}`;
   const emailResult = await sendHouseholdInviteEmail({
     to: invite.invited_email,
     householdName: household.name,
     inviterName: inviter?.display_name ?? "A household member",
-    acceptUrl: `${origin}/invite/${invite.token}`,
+    acceptUrl,
   });
   if (!emailResult.delivered) {
     // Not a hard failure — the invite row exists and is fully valid
@@ -109,7 +117,7 @@ export async function sendHouseholdInviteAction(
   }
 
   revalidatePath("/settings");
-  return { error: null, sent: true };
+  return { error: null, sent: true, inviteUrl: emailResult.delivered ? null : acceptUrl };
 }
 
 export interface HouseholdMutationState {

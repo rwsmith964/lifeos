@@ -123,7 +123,18 @@ export async function getHouseholdInvitePreview(
   const { data, error } = await client
     .rpc("get_household_invite_preview", { p_token: token })
     .maybeSingle();
-  if (error) throw error;
+  if (error) {
+    // p_token is a `uuid`-typed RPC arg — a syntactically invalid token in
+    // the URL (e.g. a guessed/typo'd link, not just an unknown-but-valid
+    // uuid) makes Postgres/PostgREST reject the cast (22P02 invalid input
+    // syntax for type uuid) *before* the function body even runs, which
+    // otherwise surfaced as an uncaught crash on this public, logged-out
+    // route instead of the page's existing "Invite not found" state.
+    // Treat any lookup failure here as "no such invite" rather than
+    // propagating a raw DB error to an unauthenticated visitor.
+    if (error.code === "22P02") return null;
+    throw error;
+  }
   return (data as HouseholdInvitePreview | null) ?? null;
 }
 
