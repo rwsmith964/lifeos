@@ -9,10 +9,12 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireHouseholdContext } from "@/lib/auth/session";
+import { createSupabaseServerClient } from "@/lib/db/client-server";
 import {
   householdInvitesRepo,
   householdMembersRepo,
   listHouseholdMemberEmails,
+  listHouseholdMembershipsForUser,
   listMembersOfHousehold,
   usersRepo,
 } from "@/lib/db/repositories/households";
@@ -187,4 +189,42 @@ export async function leaveHouseholdAction(): Promise<HouseholdMutationState> {
     return { error: friendlyMutationError(error, { fallback: "Couldn't leave that household." }) };
   }
   redirect("/onboarding");
+}
+
+/**
+ * D-055 household switching: lets a user who belongs to more than one
+ * household (e.g. their own personal household plus one they accepted an
+ * invite into) pick which one requireHouseholdContext() resolves as
+ * "theirs" everywhere in the app. Deliberately NOT gated through
+ * requireHouseholdContext() itself — that function resolves to exactly
+ * ONE household already, which is the thing we're trying to change here.
+ * Instead this re-derives the caller's full membership list directly, the
+ * same way requireHouseholdContext() does, and validates the target
+ * household is genuinely one of them before writing anything.
+ */
+export async function switchActiveHouseholdAction(householdId: string): Promise<HouseholdMutationState> {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { error: "Not signed in." };
+  }
+  const memberships = await listHouseholdMembershipsForUser(supabase, user.id);
+  if (!memberships.some((m) => m.household.id === householdId)) {
+    return { error: "You're not a member of that household." };
+  }
+  const { error } = await supabase
+    .from("users")
+    .update({ active_household_id: householdId })
+    .eq("id", user.id);
+  if (error) {
+    return { error: friendlyMutationError(error, { fallback: "Couldn't switch households." }) };
+  }
+  // requireHouseholdContext() is memoized per-request via React's cache(),
+  // not across requests, so a full navigation (rather than just
+  // revalidatePath on the current route) is what actually picks up the
+  // new active_household_id everywhere — header, nav, every page.
+  revalidatePath("/", "layout");
+  redirect("/");
 }

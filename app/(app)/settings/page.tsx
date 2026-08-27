@@ -2,13 +2,19 @@ import { requireHouseholdContext } from "@/lib/auth/session";
 import { listInvitesForHousehold, listMembersOfHousehold, usersRepo } from "@/lib/db/repositories/households";
 import { SettingsForm } from "./settings-form";
 import { HouseholdMembers, type HouseholdMemberDisplay } from "./household-members";
+import { HouseholdSwitcher, type HouseholdSwitcherItem } from "./household-switcher";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 
 export default async function SettingsPage() {
-  const { supabase, household, userId } = await requireHouseholdContext();
+  const { supabase, household, userId, memberships } = await requireHouseholdContext();
   const user = await usersRepo.getById(supabase, userId);
+  const switcherItems: HouseholdSwitcherItem[] = memberships.map((m) => ({
+    householdId: m.household.id,
+    householdName: m.household.name,
+    role: m.role,
+  }));
 
   const [members, invites] = await Promise.all([
     listMembersOfHousehold(supabase, household.id),
@@ -42,6 +48,7 @@ export default async function SettingsPage() {
         timezone={user?.timezone ?? "America/Los_Angeles"}
         homeAddress={user?.home_address ?? ""}
       />
+      <HouseholdSwitcher households={switcherItems} activeHouseholdId={household.id} />
       <HouseholdMembers
         members={memberDisplays}
         invites={invites}

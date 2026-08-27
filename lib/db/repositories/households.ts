@@ -62,6 +62,34 @@ export async function listHouseholdsForUser(
   return ((data ?? []) as unknown as { household: HouseholdRow }[]).map((row) => row.household);
 }
 
+export interface HouseholdMembership {
+  household: HouseholdRow;
+  role: HouseholdMemberRow["role"];
+  membershipCreatedAt: string;
+}
+
+/**
+ * Like listHouseholdsForUser but also carries the caller's role in each
+ * household and when they joined it — used by requireHouseholdContext()
+ * to pick a sensible default active household (D-055 household switching)
+ * and by the Settings household switcher to render "Smith Household —
+ * Adult" style rows.
+ */
+export async function listHouseholdMembershipsForUser(
+  client: SupabaseClient,
+  userId: string
+): Promise<HouseholdMembership[]> {
+  const { data, error } = await client
+    .from("household_members")
+    .select("role, created_at, household:households(*)")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return ((data ?? []) as unknown as { role: HouseholdMemberRow["role"]; created_at: string; household: HouseholdRow }[]).map(
+    (row) => ({ household: row.household, role: row.role, membershipCreatedAt: row.created_at })
+  );
+}
+
 /**
  * Onboarding: create a household and self-join as its owner in one call.
  *

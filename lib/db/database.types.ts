@@ -107,12 +107,24 @@ export interface UserRow {
   home_lat: number | null;
   home_lng: number | null;
   timezone: string;
+  // Which of this user's household_members rows is currently "active" -
+  // i.e. what requireHouseholdContext() resolves to and every page shows.
+  // Null for the common single-household case (falls back to their only
+  // membership); only meaningfully used once a user belongs to >1
+  // household (D-055 household switching, 20260827000002).
+  active_household_id: string | null;
   created_at: string;
   updated_at: string;
 }
 export type UserInsert = Insert<
   UserRow,
-  "home_address" | "home_lat" | "home_lng" | "timezone" | "created_at" | "updated_at"
+  | "home_address"
+  | "home_lat"
+  | "home_lng"
+  | "timezone"
+  | "active_household_id"
+  | "created_at"
+  | "updated_at"
 >;
 export type UserUpdate = Update<UserRow>;
 
