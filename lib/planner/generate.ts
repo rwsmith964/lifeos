@@ -243,14 +243,26 @@ export async function generateWeekendPlan(
   const content: WeekendPlanAiResponse = JSON.parse(tokenMap.restoreRealNames(JSON.stringify(rawContent)));
   const markdown = renderWeekendPlanMarkdown(content);
 
+  // Previously this only wrote a row when none existed yet for the date,
+  // which meant a manual "regenerate" trigger (e.g. after adding a new
+  // activity) silently recomputed a plan in memory but never persisted or
+  // displayed it — the UI only ever reads back whatever's stored via
+  // getWeekendPlanForDate. Always upsert now so a rerun genuinely
+  // regenerates the visible plan, matching the brief's regenerate
+  // behavior (D-057).
   const existing = await getWeekendPlanForDate(client, householdId, forDate);
-  if (!existing) {
+  const planFields = {
+    content_json: content,
+    content_markdown: markdown,
+    model_version: aiResponse ? AI_MODEL : "template-fallback",
+  };
+  if (existing) {
+    await weekendPlansRepo.update(client, existing.id, planFields);
+  } else {
     await weekendPlansRepo.create(client, {
       household_id: householdId,
       for_date: forDate,
-      content_json: content,
-      content_markdown: markdown,
-      model_version: aiResponse ? AI_MODEL : "template-fallback",
+      ...planFields,
     });
   }
 

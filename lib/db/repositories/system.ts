@@ -15,6 +15,7 @@ import type {
   NotificationUpdate,
   WeekendPlanInsert,
   WeekendPlanRow,
+  WeekendPlanUpdate,
 } from "../database.types";
 
 export const briefsRepo = createRepository<BriefRow, BriefInsert, BriefUpdate>("briefs");
@@ -39,7 +40,7 @@ export const notificationsRepo = createRepository<
   NotificationUpdate
 >("notifications");
 
-export const weekendPlansRepo = createRepository<WeekendPlanRow, WeekendPlanInsert, never>(
+export const weekendPlansRepo = createRepository<WeekendPlanRow, WeekendPlanInsert, WeekendPlanUpdate>(
   "weekend_plans"
 );
 

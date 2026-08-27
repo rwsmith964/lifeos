@@ -237,7 +237,12 @@ export default async function CalendarPage({
           </CardHeader>
           <CardContent className="flex flex-col gap-2">
             {weekendPlan ? (
-              <RenderedMarkdown content={weekendPlan.content_markdown} className="flex flex-col gap-1.5 text-sm text-muted-foreground" />
+              <>
+                <RenderedMarkdown content={weekendPlan.content_markdown} className="flex flex-col gap-1.5 text-sm text-muted-foreground" />
+                <div>
+                  <GenerateWeekendPlanButton variant="regenerate" />
+                </div>
+              </>
             ) : (
               <>
                 <p className="text-sm text-muted-foreground">No plan generated yet.</p>

@@ -632,6 +632,7 @@ export interface WeekendPlanRow {
   model_version: string;
 }
 export type WeekendPlanInsert = Insert<WeekendPlanRow, "id" | "generated_at">;
+export type WeekendPlanUpdate = Update<WeekendPlanRow>;
 
 // gift_shipping_windows -------------------------------------------------
 
