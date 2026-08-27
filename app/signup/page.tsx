@@ -2,7 +2,9 @@
 
 import { useActionState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { signUpWithPassword, type AuthActionState } from "../actions";
+import { isSafeRedirectPath } from "@/lib/http/safe-redirect";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,6 +15,12 @@ const initialState: AuthActionState = { error: null };
 
 export default function SignupPage() {
   const [state, action, pending] = useActionState(signUpWithPassword, initialState);
+  // See app/login/page.tsx's identical comment — carries the household-
+  // invite `next` target through signup too, so a brand-new account
+  // created from an invite link lands on the invite's accept screen
+  // instead of the normal "create your own household" onboarding.
+  const rawNext = useSearchParams().get("next");
+  const next = isSafeRedirectPath(rawNext) ? rawNext : null;
 
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center gap-6 p-6">
@@ -25,6 +33,7 @@ export default function SignupPage() {
         </CardHeader>
         <CardContent>
           <form action={action} className="flex flex-col gap-4">
+            {next && <input type="hidden" name="next" value={next} />}
             <div className="flex flex-col gap-2">
               <Label htmlFor="displayName">Your name</Label>
               <Input id="displayName" name="displayName" autoComplete="name" required />
@@ -45,7 +54,7 @@ export default function SignupPage() {
 
           <p className="mt-4 text-sm text-muted-foreground">
             Already have an account?{" "}
-            <Link href="/login" className="underline underline-offset-4">
+            <Link href={next ? `/login?next=${encodeURIComponent(next)}` : "/login"} className="underline underline-offset-4">
               Sign in
             </Link>
           </p>

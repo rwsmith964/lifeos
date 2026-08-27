@@ -118,6 +118,15 @@ export const householdLinkInsertSchema = z.object({
   status: householdLinkStatusSchema.optional(),
 });
 
+// 'owner' and 'child' deliberately excluded — see the check constraint's
+// comment in 20260827000001_household_invites.sql for why.
+export const householdInviteRoleSchema = z.enum(["adult", "viewer"]);
+
+export const householdInviteInsertSchema = z.object({
+  invited_email: z.string().trim().toLowerCase().email({ message: "Enter a valid email address." }),
+  role: householdInviteRoleSchema,
+});
+
 export const personInsertSchema = z.object({
   household_id: uuid,
   user_id: uuid.nullable().optional(),

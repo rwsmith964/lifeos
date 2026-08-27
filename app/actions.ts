@@ -1,22 +1,11 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { headers, cookies } from "next/headers";
+import { cookies } from "next/headers";
 import { createSupabaseServerClient } from "@/lib/db/client-server";
 import { RESET_FLOW_COOKIE } from "@/lib/constants";
-
-// Vercel's proxy sets these; localhost dev has no x-forwarded-* headers at
-// all, so falls back to plain http on whatever host was requested. Used to
-// build the absolute redirect URL Supabase needs for the password-reset
-// email link, the same way a Route Handler gets `origin` for free from
-// `new URL(request.url)` — Server Actions have no request object, so this
-// is the equivalent for that context.
-async function getSiteOrigin(): Promise<string> {
-  const h = await headers();
-  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
-  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
-  return `${proto}://${host}`;
-}
+import { getSiteOrigin } from "@/lib/http/site-origin";
+import { isSafeRedirectPath } from "@/lib/http/safe-redirect";
 
 export interface AuthActionState {
   error: string | null;
@@ -33,7 +22,13 @@ export async function signInWithPassword(
   const { error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) return { error: error.message };
 
-  redirect("/");
+  // `next` is a hidden field the login form fills from its own `?next=`
+  // query param (see app/login/page.tsx) — used by the household-invite
+  // flow so a logged-out invitee ends up back on /invite/[token] instead
+  // of the normal home page after signing in. isSafeRedirectPath guards
+  // against this being turned into an open redirect via a crafted link.
+  const next = formData.get("next");
+  redirect(isSafeRedirectPath(next?.toString()) ? next!.toString() : "/");
 }
 
 export async function signUpWithPassword(
@@ -52,7 +47,14 @@ export async function signUpWithPassword(
   });
   if (error) return { error: error.message };
 
-  redirect("/onboarding");
+  // A signup reached via an invite link (`?next=/invite/[token]`) must
+  // NOT be funneled into the normal "create your own household" onboarding
+  // — this person is joining an existing household, not starting one.
+  // Route them back to the invite landing page instead, where the "logged
+  // in with matching email" branch shows the accept button directly.
+  // Anything else falls back to the normal onboarding path unchanged.
+  const next = formData.get("next")?.toString();
+  redirect(next && isSafeRedirectPath(next) && next.startsWith("/invite/") ? next : "/onboarding");
 }
 
 export async function sendMagicLink(

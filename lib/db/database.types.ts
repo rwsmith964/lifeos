@@ -128,6 +128,38 @@ export interface HouseholdMemberRow {
 export type HouseholdMemberInsert = Insert<HouseholdMemberRow, "id" | "role" | "created_at">;
 export type HouseholdMemberUpdate = Update<HouseholdMemberRow>;
 
+// household_invites -------------------------------------------------------
+
+export type HouseholdInviteStatus = "pending" | "accepted" | "revoked" | "expired";
+
+export interface HouseholdInviteRow {
+  id: string;
+  household_id: string;
+  invited_email: string;
+  role: HouseholdRole;
+  invited_by_user_id: string;
+  token: string;
+  status: HouseholdInviteStatus;
+  accepted_by_user_id: string | null;
+  created_at: string;
+  updated_at: string;
+  expires_at: string;
+}
+export type HouseholdInviteInsert = Insert<
+  HouseholdInviteRow,
+  "id" | "token" | "status" | "accepted_by_user_id" | "created_at" | "updated_at" | "expires_at"
+>;
+export type HouseholdInviteUpdate = Update<HouseholdInviteRow>;
+
+export interface HouseholdInvitePreview {
+  household_name: string;
+  invited_email: string;
+  inviter_name: string;
+  role: HouseholdRole;
+  status: HouseholdInviteStatus;
+  expires_at: string;
+}
+
 // household_links -----------------------------------------------------
 
 export interface HouseholdLinkRow {

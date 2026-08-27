@@ -313,4 +313,179 @@ describe("RLS end-to-end (PGlite, real migrations + real seed data)", () => {
       expect((outsiderSees.rows[0] as { n: number }).n).toBe(0);
     });
   });
+
+  describe("household_invites (D-055, invite/accept flow)", () => {
+    const INVITEE_USER = "90000000-0000-0000-0000-000000000030";
+    const INVITEE_EMAIL = "invitee@example.com";
+
+    beforeAll(async () => {
+      await asServiceRole(db, () =>
+        db.exec(`insert into auth.users (id, email) values ('${INVITEE_USER}', '${INVITEE_EMAIL}');`)
+      );
+    });
+
+    it("an owner can create an invite, an outsider cannot read it directly", async () => {
+      const created = await asUser(db, RICHARD_USER, () =>
+        db.query(
+          `insert into household_invites (household_id, invited_email, role, invited_by_user_id) values ('${SEEDED_HOUSEHOLD}', '${INVITEE_EMAIL}', 'adult', '${RICHARD_USER}') returning id, token;`
+        )
+      );
+      expect(created.rows).toHaveLength(1);
+
+      const outsiderSees = await asUser(db, OUTSIDER_USER, () =>
+        db.query("select count(*)::int as n from household_invites where household_id = $1;", [SEEDED_HOUSEHOLD])
+      );
+      expect((outsiderSees.rows[0] as { n: number }).n).toBe(0);
+    });
+
+    it("a non-owner adult cannot directly insert an invite (server action enforces this in app code, but RLS is the real backstop)", async () => {
+      await expect(
+        asUser(db, CHILD_USER, () =>
+          db.exec(
+            `insert into household_invites (household_id, invited_email, role, invited_by_user_id) values ('${SEEDED_HOUSEHOLD}', 'someone-else@example.com', 'adult', '${CHILD_USER}');`
+          )
+        )
+      ).rejects.toThrow();
+    });
+
+    it("household_member_emails only returns emails for a household the caller belongs to", async () => {
+      const richardSees = await asUser(db, RICHARD_USER, () =>
+        db.query("select email from household_member_emails($1);", [SEEDED_HOUSEHOLD])
+      );
+      expect((richardSees.rows as { email: string }[]).map((r) => r.email)).toContain("richard@example.com");
+
+      const outsiderSees = await asUser(db, OUTSIDER_USER, () =>
+        db.query("select email from household_member_emails($1);", [SEEDED_HOUSEHOLD])
+      );
+      expect(outsiderSees.rows).toHaveLength(0);
+    });
+
+    it("accept_household_invite adds the invited (correct-email) user as a member and flips invite to accepted", async () => {
+      // The first test in this describe block already created a still-pending
+      // invite for INVITEE_EMAIL, and the partial unique index only allows one
+      // pending invite per (household, email) — use a distinct address here.
+      const acceptEmail = "invitee-accept@example.com";
+      await asServiceRole(db, () =>
+        db.exec(`insert into auth.users (id, email) values ('${INVITEE_USER}', '${acceptEmail}') on conflict (id) do update set email = excluded.email;`)
+      );
+      const created = await asUser(db, RICHARD_USER, () =>
+        db.query<{ token: string }>(
+          `insert into household_invites (household_id, invited_email, role, invited_by_user_id) values ('${SEEDED_HOUSEHOLD}', '${acceptEmail}', 'viewer', '${RICHARD_USER}') returning token;`
+        )
+      );
+      const token = (created.rows[0] as { token: string }).token;
+
+      const accepted = await asUser(db, INVITEE_USER, () =>
+        db.query("select * from accept_household_invite($1);", [token])
+      );
+      expect(accepted.rows).toHaveLength(1);
+
+      const memberRow = await asUser(db, INVITEE_USER, () =>
+        db.query("select role from household_members where household_id = $1 and user_id = $2;", [
+          SEEDED_HOUSEHOLD,
+          INVITEE_USER,
+        ])
+      );
+      expect((memberRow.rows[0] as { role: string }).role).toBe("viewer");
+
+      const inviteRow = await asUser(db, RICHARD_USER, () =>
+        db.query("select status from household_invites where token = $1;", [token])
+      );
+      expect((inviteRow.rows[0] as { status: string }).status).toBe("accepted");
+    });
+
+    it("accept_household_invite rejects a caller whose auth email doesn't match the invite (wrong-account case)", async () => {
+      const created = await asUser(db, RICHARD_USER, () =>
+        db.query<{ token: string }>(
+          `insert into household_invites (household_id, invited_email, role, invited_by_user_id) values ('${SEEDED_HOUSEHOLD}', 'someone-else@example.com', 'viewer', '${RICHARD_USER}') returning token;`
+        )
+      );
+      const token = (created.rows[0] as { token: string }).token;
+
+      let caughtError: unknown;
+      try {
+        await asUser(db, OUTSIDER_USER, () => db.query("select * from accept_household_invite($1);", [token]));
+      } catch (error) {
+        caughtError = error;
+      }
+      expect((caughtError as { code?: string } | undefined)?.code).toBe("42501");
+    });
+
+    it("accept_household_invite rejects an already-accepted invite (re-use case)", async () => {
+      const created = await asUser(db, RICHARD_USER, () =>
+        db.query<{ token: string }>(
+          `insert into household_invites (household_id, invited_email, role, invited_by_user_id) values ('${SEEDED_HOUSEHOLD}', 'reuse-test@example.com', 'viewer', '${RICHARD_USER}') returning token;`
+        )
+      );
+      const token = (created.rows[0] as { token: string }).token;
+      await asServiceRole(db, () =>
+        db.exec(`insert into auth.users (id, email) values (gen_random_uuid(), 'reuse-test@example.com');`)
+      );
+      const reuseUserRow = await asServiceRole(db, () =>
+        db.query<{ id: string }>("select id from auth.users where email = 'reuse-test@example.com';")
+      );
+      const reuseUser = (reuseUserRow.rows[0] as { id: string }).id;
+
+      await asUser(db, reuseUser, () => db.query("select * from accept_household_invite($1);", [token]));
+
+      let caughtError: unknown;
+      try {
+        await asUser(db, reuseUser, () => db.query("select * from accept_household_invite($1);", [token]));
+      } catch (error) {
+        caughtError = error;
+      }
+      expect((caughtError as { code?: string } | undefined)?.code).toBe("22023");
+    });
+
+    it("accept_household_invite rejects an unknown token", async () => {
+      let caughtError: unknown;
+      try {
+        await asUser(db, OUTSIDER_USER, () =>
+          db.query("select * from accept_household_invite($1);", ["00000000-0000-0000-0000-000000000099"])
+        );
+      } catch (error) {
+        caughtError = error;
+      }
+      expect((caughtError as { code?: string } | undefined)?.code).toBe("P0002");
+    });
+
+    it("a non-owner member can leave the household voluntarily via the new DELETE policy", async () => {
+      const membershipRow = await asUser(db, INVITEE_USER, () =>
+        db.query("select id from household_members where household_id = $1 and user_id = $2;", [
+          SEEDED_HOUSEHOLD,
+          INVITEE_USER,
+        ])
+      );
+      const membershipId = (membershipRow.rows[0] as { id: string }).id;
+
+      await asUser(db, INVITEE_USER, () =>
+        db.exec(`delete from household_members where id = '${membershipId}';`)
+      );
+
+      const stillThere = await asServiceRole(db, () =>
+        db.query("select count(*)::int as n from household_members where id = $1;", [membershipId])
+      );
+      expect((stillThere.rows[0] as { n: number }).n).toBe(0);
+    });
+
+    it("an owner cannot be removed by the leave-household DELETE policy (no self-service path for owners)", async () => {
+      const ownerRow = await asServiceRole(db, () =>
+        db.query("select id from household_members where household_id = $1 and user_id = $2;", [
+          SEEDED_HOUSEHOLD,
+          RICHARD_USER,
+        ])
+      );
+      const ownerMembershipId = (ownerRow.rows[0] as { id: string }).id;
+
+      const result = await asUser(db, RICHARD_USER, () =>
+        db.exec(`delete from household_members where id = '${ownerMembershipId}';`)
+      );
+      void result;
+
+      const stillOwner = await asServiceRole(db, () =>
+        db.query("select count(*)::int as n from household_members where id = $1;", [ownerMembershipId])
+      );
+      expect((stillOwner.rows[0] as { n: number }).n, "owner row must survive — app code blocks this too").toBe(1);
+    });
+  });
 });

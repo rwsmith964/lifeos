@@ -2,7 +2,9 @@
 
 import { useActionState, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { sendMagicLink, signInWithPassword, type AuthActionState } from "../actions";
+import { isSafeRedirectPath } from "@/lib/http/safe-redirect";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +18,13 @@ export default function LoginPage() {
   const [passwordState, passwordAction, passwordPending] = useActionState(signInWithPassword, initialState);
   const [magicLinkState, magicLinkAction, magicLinkPending] = useActionState(sendMagicLink, initialState);
   const [magicLinkSent, setMagicLinkSent] = useState(false);
+  // Carries a `?next=/invite/[token]` link (household-invite flow, see
+  // app/actions.ts's signInWithPassword) through the form so a logged-out
+  // invitee returns to the invite landing page after signing in instead of
+  // the default home page. isSafeRedirectPath rejects anything else so a
+  // stray/crafted query param can't end up in the form at all.
+  const rawNext = useSearchParams().get("next");
+  const next = isSafeRedirectPath(rawNext) ? rawNext : null;
 
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center gap-6 p-6">
@@ -31,6 +40,7 @@ export default function LoginPage() {
         <CardContent className="flex flex-col gap-4">
           {mode === "password" ? (
             <form action={passwordAction} className="flex flex-col gap-4">
+              {next && <input type="hidden" name="next" value={next} />}
               <div className="flex flex-col gap-2">
                 <Label htmlFor="email">Email</Label>
                 <Input id="email" name="email" type="email" autoComplete="email" required />
@@ -79,7 +89,7 @@ export default function LoginPage() {
 
           <p className="text-sm text-muted-foreground">
             No account?{" "}
-            <Link href="/signup" className="underline underline-offset-4">
+            <Link href={next ? `/signup?next=${encodeURIComponent(next)}` : "/signup"} className="underline underline-offset-4">
               Sign up
             </Link>
           </p>

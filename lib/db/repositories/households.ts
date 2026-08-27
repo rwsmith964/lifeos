@@ -2,6 +2,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createRepository } from "../repository";
 import type {
   HouseholdInsert,
+  HouseholdInviteInsert,
+  HouseholdInvitePreview,
+  HouseholdInviteRow,
+  HouseholdInviteUpdate,
   HouseholdLinkInsert,
   HouseholdLinkRow,
   HouseholdLinkUpdate,
@@ -32,6 +36,12 @@ export const householdLinksRepo = createRepository<
   HouseholdLinkInsert,
   HouseholdLinkUpdate
 >("household_links");
+
+export const householdInvitesRepo = createRepository<
+  HouseholdInviteRow,
+  HouseholdInviteInsert,
+  HouseholdInviteUpdate
+>("household_invites");
 
 export async function listMembersOfHousehold(
   client: SupabaseClient,
@@ -78,6 +88,81 @@ export async function createHouseholdWithOwner(
     .single();
   if (error) throw error;
   return data as HouseholdRow;
+}
+
+/**
+ * Pending + past invites for a household's Settings > Household members
+ * list. Ordered newest-first so a freshly-sent invite appears at the top.
+ */
+export async function listInvitesForHousehold(
+  client: SupabaseClient,
+  householdId: string
+): Promise<HouseholdInviteRow[]> {
+  const { data, error } = await client
+    .from("household_invites")
+    .select("*")
+    .eq("household_id", householdId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as HouseholdInviteRow[];
+}
+
+/**
+ * Pre-auth invite-landing-page lookup by token — calls the SECURITY
+ * DEFINER `get_household_invite_preview` RPC (migration
+ * 20260827000001_household_invites.sql) rather than selecting from
+ * household_invites directly, since a logged-out or not-yet-a-member
+ * visitor can never pass that table's own "members can read" RLS policy.
+ * Returns null for an unknown token instead of throwing, so the page can
+ * render a plain "invite not found" state.
+ */
+export async function getHouseholdInvitePreview(
+  client: SupabaseClient,
+  token: string
+): Promise<HouseholdInvitePreview | null> {
+  const { data, error } = await client
+    .rpc("get_household_invite_preview", { p_token: token })
+    .maybeSingle();
+  if (error) throw error;
+  return (data as HouseholdInvitePreview | null) ?? null;
+}
+
+/**
+ * Accepts an invite as the CALLING (already-authenticated) user by calling
+ * the SECURITY DEFINER `accept_household_invite` RPC — see that function's
+ * comment in the migration for why a direct household_members insert
+ * can't do this (the invitee isn't a member of the target household yet,
+ * so no ordinary RLS-checked insert policy can let them add themselves).
+ * The RPC itself re-validates the invite's status/expiry/email match
+ * server-side, so this is safe to call with only a token.
+ */
+export async function acceptHouseholdInvite(
+  client: SupabaseClient,
+  token: string
+): Promise<HouseholdMemberRow> {
+  const { data, error } = await client.rpc("accept_household_invite", { p_token: token }).single();
+  if (error) throw error;
+  return data as HouseholdMemberRow;
+}
+
+/**
+ * Emails for a household's current members, keyed by user_id. The public
+ * `users` table has no email column (it lives only on Supabase's own
+ * auth.users, which PostgREST doesn't expose directly) — calls the
+ * `household_member_emails` SECURITY DEFINER RPC instead, which is scoped
+ * to require the CALLING user already be a member of `householdId` before
+ * returning anything (see that function's comment in
+ * 20260827000001_household_invites.sql). Used only by the invite form's
+ * "already a member" duplicate check.
+ */
+export async function listHouseholdMemberEmails(
+  client: SupabaseClient,
+  householdId: string
+): Promise<Map<string, string>> {
+  const { data, error } = await client.rpc("household_member_emails", { p_household_id: householdId });
+  if (error) throw error;
+  const rows = (data ?? []) as { user_id: string; email: string }[];
+  return new Map(rows.map((r) => [r.user_id, r.email]));
 }
 
 export async function listActiveLinksForHousehold(

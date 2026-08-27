@@ -1,6 +1,7 @@
 import { requireHouseholdContext } from "@/lib/auth/session";
-import { usersRepo } from "@/lib/db/repositories/households";
+import { listInvitesForHousehold, listMembersOfHousehold, usersRepo } from "@/lib/db/repositories/households";
 import { SettingsForm } from "./settings-form";
+import { HouseholdMembers, type HouseholdMemberDisplay } from "./household-members";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -8,6 +9,21 @@ import { Label } from "@/components/ui/label";
 export default async function SettingsPage() {
   const { supabase, household, userId } = await requireHouseholdContext();
   const user = await usersRepo.getById(supabase, userId);
+
+  const [members, invites] = await Promise.all([
+    listMembersOfHousehold(supabase, household.id),
+    listInvitesForHousehold(supabase, household.id),
+  ]);
+  const memberUsers = await Promise.all(members.map((m) => usersRepo.getById(supabase, m.user_id)));
+  const memberDisplays: HouseholdMemberDisplay[] = members.map((m, i) => ({
+    memberId: m.id,
+    userId: m.user_id,
+    displayName: memberUsers[i]?.display_name ?? "Unknown",
+    role: m.role,
+    isSelf: m.user_id === userId,
+  }));
+  const selfMembership = members.find((m) => m.user_id === userId);
+  const canManage = selfMembership?.role === "owner" || selfMembership?.role === "adult";
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -25,6 +41,12 @@ export default async function SettingsPage() {
         household={household}
         timezone={user?.timezone ?? "America/Los_Angeles"}
         homeAddress={user?.home_address ?? ""}
+      />
+      <HouseholdMembers
+        members={memberDisplays}
+        invites={invites}
+        canManage={canManage}
+        currentUserId={userId}
       />
     </div>
   );
