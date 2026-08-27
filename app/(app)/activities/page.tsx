@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, Pencil } from "lucide-react";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { listActivitiesWithLocations } from "@/lib/db/repositories/activities";
 import { Card, CardContent } from "@/components/ui/card";
@@ -49,7 +49,14 @@ export default async function ActivitiesPage() {
                     </Badge>
                   )}
                 </div>
-                <DeactivateActivityButton activityId={activity.id} />
+                <div className="flex items-center gap-1">
+                  <Button asChild size="icon" variant="ghost" className="size-8">
+                    <Link href={`/activities/${activity.id}/edit`} aria-label="Edit activity">
+                      <Pencil className="size-4" />
+                    </Link>
+                  </Button>
+                  <DeactivateActivityButton activityId={activity.id} />
+                </div>
               </CardContent>
             </Card>
           ))}

@@ -1,6 +1,6 @@
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
-import { NewActivityForm } from "./new-activity-form";
+import { ActivityForm } from "../activity-form";
 
 export default async function NewActivityPage() {
   const { supabase, household } = await requireHouseholdContext();
@@ -10,7 +10,13 @@ export default async function NewActivityPage() {
   return (
     <div className="flex flex-col gap-4 p-4">
       <h1 className="text-xl font-semibold">Add an activity</h1>
-      <NewActivityForm possibleCompanions={possibleCompanions} />
+      <ActivityForm
+        possibleCompanions={possibleCompanions}
+        endpoint="/api/activities"
+        redirectTo="/activities"
+        submitLabel="Save activity"
+        pendingLabel="Saving…"
+      />
     </div>
   );
 }

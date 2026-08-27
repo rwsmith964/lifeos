@@ -16,6 +16,11 @@ import { useRouter } from "next/navigation";
 interface UseFormPostOptions {
   onSuccess?: (data: Record<string, unknown>) => void;
   redirectTo?: (data: Record<string, unknown>) => string;
+  // D-056: edit forms reuse this same hook against a PATCH endpoint
+  // instead of duplicating the fetch/error-state plumbing for a second
+  // "update" variant. Defaults to POST so every existing call site is
+  // unaffected.
+  method?: "POST" | "PATCH";
 }
 
 export function useFormPost(endpoint: string) {
@@ -37,7 +42,7 @@ export function useFormPost(endpoint: string) {
     setErrorField(null);
     let data: Record<string, unknown> = {};
     try {
-      const res = await fetch(endpoint, { method: "POST", body: formData });
+      const res = await fetch(endpoint, { method: opts.method ?? "POST", body: formData });
       data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setError(typeof data.error === "string" ? data.error : "Something went wrong. Please try again.");

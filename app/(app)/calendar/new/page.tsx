@@ -1,6 +1,6 @@
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
-import { NewEventForm } from "./new-event-form";
+import { EventForm } from "../event-form";
 
 export default async function NewCalendarEventPage({
   searchParams,
@@ -21,7 +21,16 @@ export default async function NewCalendarEventPage({
   return (
     <div className="flex flex-col gap-4 p-4">
       <h1 className="text-xl font-semibold">Add event</h1>
-      <NewEventForm people={people} defaultDate={isValidDate ? date : undefined} />
+      <EventForm
+        people={people}
+        endpoint="/api/calendar/events"
+        defaults={isValidDate ? { date } : undefined}
+        redirectTo={(savedDate) =>
+          savedDate ? `/calendar?month=${savedDate.slice(0, 7)}&day=${savedDate}#selected-day` : "/calendar"
+        }
+        submitLabel="Save event"
+        pendingLabel="Saving…"
+      />
     </div>
   );
 }

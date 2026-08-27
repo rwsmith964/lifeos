@@ -30,6 +30,7 @@ import { RenderedMarkdown } from "@/components/ui/rendered-markdown";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { DeleteCalendarItemButton } from "./delete-item-button";
+import { Pencil } from "lucide-react";
 import { GenerateWeekendPlanButton } from "./generate-weekend-plan-button";
 
 const MONTH_PARAM_FORMAT = "yyyy-MM";
@@ -337,6 +338,13 @@ export default async function CalendarPage({
                 </div>
                 <div className="flex items-center gap-2">
                   <Badge variant="outline">{humanizeChipLabel(item.subtitle)}</Badge>
+                  {item.kind === "event" && (
+                    <Button asChild size="icon" variant="ghost" className="size-8">
+                      <Link href={`/calendar/${item.id}/edit`} aria-label="Edit event">
+                        <Pencil className="size-4" />
+                      </Link>
+                    </Button>
+                  )}
                   <DeleteCalendarItemButton id={item.id} kind={item.kind} />
                 </div>
               </CardContent>

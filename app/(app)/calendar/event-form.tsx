@@ -18,24 +18,44 @@ function isTimeRangeError(message: string): boolean {
   return /start time|starts_at/i.test(message);
 }
 
-export function NewEventForm({ people, defaultDate }: { people: PersonRow[]; defaultDate?: string }) {
-  const { submit, pending, error } = useFormPost("/api/calendar/events");
-  const [allDay, setAllDay] = useState(false);
+// Shared by both /calendar/new and /calendar/[id]/edit (D-056) — same
+// fields, same validation, same submit plumbing via useFormPost; only the
+// endpoint/method/defaults/redirect differ between create and edit.
+export interface EventFormDefaults {
+  title: string;
+  date: string;
+  allDay: boolean;
+  startTime: string;
+  endTime: string;
+  location: string;
+  eventType: string;
+  visibility: string;
+  attendeePersonIds: string[];
+}
+
+interface EventFormProps {
+  people: PersonRow[];
+  endpoint: string;
+  method?: "POST" | "PATCH";
+  redirectTo: (date: string) => string;
+  submitLabel: string;
+  pendingLabel: string;
+  defaults?: Partial<EventFormDefaults>;
+}
+
+export function EventForm({ people, endpoint, method, redirectTo, submitLabel, pendingLabel, defaults }: EventFormProps) {
+  const { submit, pending, error } = useFormPost(endpoint);
+  const [allDay, setAllDay] = useState(defaults?.allDay ?? false);
   const [errorDismissed, setErrorDismissed] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
+  const attendeeSet = new Set(defaults?.attendeePersonIds ?? []);
 
   function handleSave() {
     if (!formRef.current || !formRef.current.reportValidity()) return;
     setErrorDismissed(false);
     const formData = new FormData(formRef.current);
-    // Land back on the day the event was actually created for (and the
-    // right month), instead of always bouncing to /calendar's default of
-    // "today" — losing the date you just picked, and any month you'd
-    // navigated to, was the "no post-create redirect" half of the Phase 3
-    // backlog item.
     const savedDate = String(formData.get("date") ?? "");
-    const target = savedDate ? `/calendar?month=${savedDate.slice(0, 7)}&day=${savedDate}#selected-day` : "/calendar";
-    submit(formData, { redirectTo: () => target });
+    submit(formData, { method, redirectTo: () => redirectTo(savedDate) });
   }
 
   const timeRangeError = error && isTimeRangeError(error) && !errorDismissed ? error : null;
@@ -45,11 +65,11 @@ export function NewEventForm({ people, defaultDate }: { people: PersonRow[]; def
     <form ref={formRef} className="flex flex-col gap-4">
       <div className="flex flex-col gap-2">
         <Label htmlFor="title">Title</Label>
-        <Input id="title" name="title" required />
+        <Input id="title" name="title" required defaultValue={defaults?.title} />
       </div>
       <div className="flex flex-col gap-2">
         <Label htmlFor="date">Date</Label>
-        <Input id="date" name="date" type="date" required defaultValue={defaultDate} />
+        <Input id="date" name="date" type="date" required defaultValue={defaults?.date} />
       </div>
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" name="allDay" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} /> All
@@ -63,7 +83,7 @@ export function NewEventForm({ people, defaultDate }: { people: PersonRow[]; def
               id="startTime"
               name="startTime"
               type="time"
-              defaultValue="09:00"
+              defaultValue={defaults?.startTime ?? "09:00"}
               onChange={() => setErrorDismissed(true)}
             />
           </div>
@@ -73,7 +93,7 @@ export function NewEventForm({ people, defaultDate }: { people: PersonRow[]; def
               id="endTime"
               name="endTime"
               type="time"
-              defaultValue="10:00"
+              defaultValue={defaults?.endTime ?? "10:00"}
               aria-invalid={!!timeRangeError || undefined}
               onChange={() => setErrorDismissed(true)}
             />
@@ -83,14 +103,14 @@ export function NewEventForm({ people, defaultDate }: { people: PersonRow[]; def
       )}
       <div className="flex flex-col gap-2">
         <Label htmlFor="location">Location (optional)</Label>
-        <Input id="location" name="location" />
+        <Input id="location" name="location" defaultValue={defaults?.location} />
       </div>
       <div className="flex flex-col gap-2">
         <Label htmlFor="eventType">Type</Label>
         <select
           id="eventType"
           name="eventType"
-          defaultValue="personal"
+          defaultValue={defaults?.eventType ?? "personal"}
           className="border-input h-9 rounded-md border bg-transparent px-3 text-sm"
         >
           {EVENT_TYPES.map((t) => (
@@ -105,7 +125,7 @@ export function NewEventForm({ people, defaultDate }: { people: PersonRow[]; def
         <select
           id="visibility"
           name="visibility"
-          defaultValue="private"
+          defaultValue={defaults?.visibility ?? "private"}
           className="border-input h-9 rounded-md border bg-transparent px-3 text-sm"
         >
           {VISIBILITY_OPTIONS.map((v) => (
@@ -122,7 +142,12 @@ export function NewEventForm({ people, defaultDate }: { people: PersonRow[]; def
           <div className="flex flex-col gap-1">
             {people.map((person) => (
               <label key={person.id} className="flex items-center gap-2 text-sm">
-                <input type="checkbox" name="attendeePersonIds" value={person.id} />
+                <input
+                  type="checkbox"
+                  name="attendeePersonIds"
+                  value={person.id}
+                  defaultChecked={attendeeSet.has(person.id)}
+                />
                 {person.full_name}
               </label>
             ))}
@@ -132,7 +157,7 @@ export function NewEventForm({ people, defaultDate }: { people: PersonRow[]; def
 
       {otherError && <p className="text-sm text-destructive">{otherError}</p>}
       <Button type="button" onClick={handleSave} disabled={pending}>
-        {pending ? "Saving…" : "Save event"}
+        {pending ? pendingLabel : submitLabel}
       </Button>
     </form>
   );

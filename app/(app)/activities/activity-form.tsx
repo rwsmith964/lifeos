@@ -7,19 +7,54 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-export function NewActivityForm({ possibleCompanions }: { possibleCompanions: PersonRow[] }) {
-  const { submit, pending, error, errorField, clearErrorField } = useFormPost("/api/activities");
+// Shared by both /activities/new and /activities/[id]/edit (D-056) — same
+// fields, same validation, same submit plumbing via useFormPost; only the
+// endpoint/method/defaults/redirect differ between create and edit.
+export interface ActivityFormDefaults {
+  activityType: string;
+  enjoymentRank: number;
+  typicalDurationMinutes: number;
+  requiresPrep: boolean;
+  prepLeadTimeHours: number | null;
+  preferredCompanionIds: string[];
+  locationName: string;
+  locationLat: number | null;
+  locationLng: number | null;
+  usgsGauge: string;
+  odfwZoneUrl: string;
+  noaaStation: string;
+}
+
+interface ActivityFormProps {
+  possibleCompanions: PersonRow[];
+  endpoint: string;
+  method?: "POST" | "PATCH";
+  redirectTo: string;
+  submitLabel: string;
+  pendingLabel: string;
+  defaults?: Partial<ActivityFormDefaults>;
+}
+
+export function ActivityForm({
+  possibleCompanions,
+  endpoint,
+  method,
+  redirectTo,
+  submitLabel,
+  pendingLabel,
+  defaults,
+}: ActivityFormProps) {
+  const { submit, pending, error, errorField, clearErrorField } = useFormPost(endpoint);
   const formRef = useRef<HTMLFormElement>(null);
 
   function handleSave() {
     if (!formRef.current || !formRef.current.reportValidity()) return;
-    submit(new FormData(formRef.current), { redirectTo: () => "/activities" });
+    submit(new FormData(formRef.current), { method, redirectTo: () => redirectTo });
   }
 
-  // Only the errors the server can tag to a specific field (via `field`
-  // in the JSON response, see app/api/activities/route.ts) render inline;
-  // anything untagged falls through to the generic message near Save.
   const fieldError = (name: string) => (errorField === name ? error : null);
+  const d = defaults ?? ({} as Partial<ActivityFormDefaults>);
+  const companionSet = new Set(d.preferredCompanionIds ?? []);
 
   return (
     <form ref={formRef} className="flex flex-col gap-4">
@@ -30,6 +65,7 @@ export function NewActivityForm({ possibleCompanions }: { possibleCompanions: Pe
           name="activityType"
           placeholder="golf, fishing, hiking, gym…"
           required
+          defaultValue={d.activityType}
           aria-invalid={!!fieldError("activityType") || undefined}
           onChange={() => clearErrorField("activityType")}
         />
@@ -44,7 +80,7 @@ export function NewActivityForm({ possibleCompanions }: { possibleCompanions: Pe
             type="number"
             min={1}
             max={10}
-            defaultValue={7}
+            defaultValue={d.enjoymentRank ?? 7}
             required
             aria-invalid={!!fieldError("enjoymentRank") || undefined}
             onChange={() => clearErrorField("enjoymentRank")}
@@ -58,7 +94,7 @@ export function NewActivityForm({ possibleCompanions }: { possibleCompanions: Pe
             name="typicalDurationMinutes"
             type="number"
             min={15}
-            defaultValue={120}
+            defaultValue={d.typicalDurationMinutes ?? 120}
             required
             aria-invalid={!!fieldError("typicalDurationMinutes") || undefined}
             onChange={() => clearErrorField("typicalDurationMinutes")}
@@ -69,7 +105,7 @@ export function NewActivityForm({ possibleCompanions }: { possibleCompanions: Pe
         </div>
       </div>
       <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" name="requiresPrep" /> Requires prep beforehand
+        <input type="checkbox" name="requiresPrep" defaultChecked={d.requiresPrep} /> Requires prep beforehand
       </label>
       <div className="flex flex-col gap-2">
         <Label htmlFor="prepLeadTimeHours">Prep lead time (hours, if any)</Label>
@@ -78,6 +114,7 @@ export function NewActivityForm({ possibleCompanions }: { possibleCompanions: Pe
           name="prepLeadTimeHours"
           type="number"
           min={0}
+          defaultValue={d.prepLeadTimeHours ?? undefined}
           aria-invalid={!!fieldError("prepLeadTimeHours") || undefined}
           onChange={() => clearErrorField("prepLeadTimeHours")}
         />
@@ -93,7 +130,12 @@ export function NewActivityForm({ possibleCompanions }: { possibleCompanions: Pe
           <div className="flex flex-col gap-1">
             {possibleCompanions.map((person) => (
               <label key={person.id} className="flex items-center gap-2 text-sm">
-                <input type="checkbox" name="preferredCompanionIds" value={person.id} />
+                <input
+                  type="checkbox"
+                  name="preferredCompanionIds"
+                  value={person.id}
+                  defaultChecked={companionSet.has(person.id)}
+                />
                 {person.full_name}
               </label>
             ))}
@@ -103,34 +145,40 @@ export function NewActivityForm({ possibleCompanions }: { possibleCompanions: Pe
 
       <div className="flex flex-col gap-2">
         <Label htmlFor="locationName">Usual location (optional)</Label>
-        <Input id="locationName" name="locationName" placeholder="e.g. Dexter Reservoir" />
+        <Input id="locationName" name="locationName" placeholder="e.g. Dexter Reservoir" defaultValue={d.locationName} />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-2">
           <Label htmlFor="locationLat">Latitude</Label>
-          <Input id="locationLat" name="locationLat" type="number" step="any" />
+          <Input id="locationLat" name="locationLat" type="number" step="any" defaultValue={d.locationLat ?? undefined} />
         </div>
         <div className="flex flex-col gap-2">
           <Label htmlFor="locationLng">Longitude</Label>
-          <Input id="locationLng" name="locationLng" type="number" step="any" />
+          <Input id="locationLng" name="locationLng" type="number" step="any" defaultValue={d.locationLng ?? undefined} />
         </div>
       </div>
       <div className="flex flex-col gap-2">
         <Label htmlFor="usgsGauge">USGS gauge ID (optional, for river/stream conditions)</Label>
-        <Input id="usgsGauge" name="usgsGauge" placeholder="e.g. 14150000" />
+        <Input id="usgsGauge" name="usgsGauge" placeholder="e.g. 14150000" defaultValue={d.usgsGauge} />
       </div>
       <div className="flex flex-col gap-2">
         <Label htmlFor="odfwZoneUrl">ODFW recreation report URL (optional, Oregon fishing spots)</Label>
-        <Input id="odfwZoneUrl" name="odfwZoneUrl" type="url" placeholder="https://myodfw.com/recreation-report/..." />
+        <Input
+          id="odfwZoneUrl"
+          name="odfwZoneUrl"
+          type="url"
+          placeholder="https://myodfw.com/recreation-report/..."
+          defaultValue={d.odfwZoneUrl}
+        />
       </div>
       <div className="flex flex-col gap-2">
         <Label htmlFor="noaaStation">NOAA tide station ID (optional, coastal spots only)</Label>
-        <Input id="noaaStation" name="noaaStation" placeholder="e.g. 9432780" />
+        <Input id="noaaStation" name="noaaStation" placeholder="e.g. 9432780" defaultValue={d.noaaStation} />
       </div>
 
       {error && !errorField && <p className="text-sm text-destructive">{error}</p>}
       <Button type="button" onClick={handleSave} disabled={pending}>
-        {pending ? "Saving…" : "Save activity"}
+        {pending ? pendingLabel : submitLabel}
       </Button>
     </form>
   );

@@ -248,10 +248,50 @@ export const activityLocationInsertSchema = z.object({
   external_ids: z.record(z.string(), z.string()).optional(),
 });
 
+// Update variants (D-056): same field rules as insert, but household_id
+// and person_id are immutable once created (an activity doesn't change
+// which household or person it belongs to via an edit form), so those
+// two keys are omitted rather than made optional-but-editable.
+export const userActivityUpdateSchema = userActivityInsertSchema.omit({
+  household_id: true,
+  person_id: true,
+});
+
+export const activityLocationUpdateSchema = activityLocationInsertSchema.omit({
+  user_activity_id: true,
+});
+
 export const calendarEventInsertSchema = z
   .object({
     household_id: uuid,
     created_by_person_id: uuid,
+    title: z.string().min(1),
+    description: z.string().nullable().optional(),
+    starts_at: isoDateTime,
+    ends_at: isoDateTime,
+    all_day: z.boolean().optional(),
+    location: z.string().nullable().optional(),
+    location_lat: z.number().min(-90).max(90).nullable().optional(),
+    location_lng: z.number().min(-180).max(180).nullable().optional(),
+    travel_time_before_minutes: z.number().int().min(0).nullable().optional(),
+    prep_time_before_minutes: z.number().int().min(0).nullable().optional(),
+    event_type: calendarEventTypeSchema.optional(),
+    visibility: eventVisibilitySchema.optional(),
+    external_source: z.string().nullable().optional(),
+    external_id: z.string().nullable().optional(),
+    related_activity_id: uuid.nullable().optional(),
+  })
+  .refine((v) => new Date(v.ends_at) >= new Date(v.starts_at), {
+    message: "End time must be after the start time.",
+    path: ["ends_at"],
+  });
+
+// D-056: household_id/created_by_person_id are immutable on edit (same
+// rationale as userActivityUpdateSchema above); the refine() rule still
+// needs re-declaring since .omit() on a ZodEffects isn't available —
+// simplest to redeclare the object shape directly.
+export const calendarEventUpdateSchema = z
+  .object({
     title: z.string().min(1),
     description: z.string().nullable().optional(),
     starts_at: isoDateTime,
