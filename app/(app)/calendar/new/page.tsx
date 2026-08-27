@@ -25,9 +25,6 @@ export default async function NewCalendarEventPage({
         people={people}
         endpoint="/api/calendar/events"
         defaults={isValidDate ? { date } : undefined}
-        redirectTo={(savedDate) =>
-          savedDate ? `/calendar?month=${savedDate.slice(0, 7)}&day=${savedDate}#selected-day` : "/calendar"
-        }
         submitLabel="Save event"
         pendingLabel="Saving…"
       />

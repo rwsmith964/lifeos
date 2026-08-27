@@ -46,9 +46,6 @@ export default async function EditCalendarEventPage({ params }: { params: Promis
         endpoint={`/api/calendar/events/${id}`}
         method="PATCH"
         defaults={defaults}
-        redirectTo={(savedDate) =>
-          savedDate ? `/calendar?month=${savedDate.slice(0, 7)}&day=${savedDate}#selected-day` : "/calendar"
-        }
         submitLabel="Save changes"
         pendingLabel="Saving…"
       />

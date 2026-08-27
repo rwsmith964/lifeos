@@ -37,13 +37,25 @@ interface EventFormProps {
   people: PersonRow[];
   endpoint: string;
   method?: "POST" | "PATCH";
-  redirectTo: (date: string) => string;
   submitLabel: string;
   pendingLabel: string;
   defaults?: Partial<EventFormDefaults>;
 }
 
-export function EventForm({ people, endpoint, method, redirectTo, submitLabel, pendingLabel, defaults }: EventFormProps) {
+// Redirect target is computed here, entirely on the client, rather than
+// accepted as a `redirectTo` function prop from the caller's server
+// component page. A function value can't cross the Server->Client
+// component boundary (it isn't serializable as RSC payload), which is
+// exactly what broke /calendar/new and /calendar/[id]/edit in production
+// with a generic "Server Components render" error (D-058) even though it
+// typechecked and built fine locally — the failure only happens at
+// request time, not at build time, since these routes render dynamically
+// per-request rather than being statically analyzed.
+function buildRedirectTarget(savedDate: string): string {
+  return savedDate ? `/calendar?month=${savedDate.slice(0, 7)}&day=${savedDate}#selected-day` : "/calendar";
+}
+
+export function EventForm({ people, endpoint, method, submitLabel, pendingLabel, defaults }: EventFormProps) {
   const { submit, pending, error } = useFormPost(endpoint);
   const [allDay, setAllDay] = useState(defaults?.allDay ?? false);
   const [errorDismissed, setErrorDismissed] = useState(false);
@@ -55,7 +67,7 @@ export function EventForm({ people, endpoint, method, redirectTo, submitLabel, p
     setErrorDismissed(false);
     const formData = new FormData(formRef.current);
     const savedDate = String(formData.get("date") ?? "");
-    submit(formData, { method, redirectTo: () => redirectTo(savedDate) });
+    submit(formData, { method, redirectTo: () => buildRedirectTarget(savedDate) });
   }
 
   const timeRangeError = error && isTimeRangeError(error) && !errorDismissed ? error : null;
