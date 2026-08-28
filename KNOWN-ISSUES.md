@@ -74,3 +74,11 @@ The `ConfirmDeleteButton` shared component (used by the Trip Ideas delete contro
 Provider tagging on People, request creation, and the public no-auth accept/decline page are all live-verified working end to end in production, including the computed drive-time and post-acceptance "suggested departure" display. See D-060 in DECISIONS.md for full detail and the exact verification steps (including a direct database read confirming the accept action actually persisted server-side, not just optimistic UI). Email delivery itself remains stubbed to a server console log (no `RESEND_API_KEY` configured) — same pre-existing, already-documented limitation as household invites (D-055), not a new gap introduced by this feature.
 
 **Test data left in place:** a "Grandma Test" person (tagged childcare provider) and one now-accepted test childcare request for 2026-09-02 remain in Richard's real Smith Household data, per the same standing test-account policy noted in earlier D-0XX entries. Harmless and clearly named; safe to delete manually or leave until D-066's real-data ingestion pass.
+
+## Fixed and verified live this pass (D-061 — opportunity detection engine)
+
+The detection cron, Brief card, Calendar nudge, and new `/opportunities` page are all live-verified working end to end in production, including a manual production cron trigger that produced 20 real opportunities from Richard's actual activities/calendar/live forecast, and a real Dismiss action that updated the database and all three surfaces live. See D-061 in DECISIONS.md for full detail.
+
+**Known limitation, not a bug:** trip ideas have no location field (by design, per D-059), so trip-idea opportunities always score weather against the household's home coordinates rather than the trip's actual destination — reasonable for "someday" ideas without a fixed place yet, but worth revisiting if trip ideas ever gain a location field later.
+
+**No CRON_SECRET configured in production** (same as the gift-scan and weekend-plan crons before it) — the new `/api/cron/opportunities` route is technically callable by anyone who knows the URL, with no auth. Same pre-existing, already-accepted risk posture as the other two crons; not a new gap introduced by this feature. Worth a single pass to set `CRON_SECRET` for all three/four cron routes at once if this ever needs hardening.
