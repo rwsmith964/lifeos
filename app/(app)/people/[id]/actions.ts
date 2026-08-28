@@ -9,6 +9,7 @@ import {
   personGiftBudgetsRepo,
   personGiftSitesRepo,
 } from "@/lib/db/repositories/people";
+import { workSchedulesRepo, timeOffEntriesRepo } from "@/lib/db/repositories/work-schedule";
 import { giftsRepo } from "@/lib/db/repositories/gifts";
 import {
   contactCadencesRepo,
@@ -23,6 +24,8 @@ import {
   giftInsertSchema,
   contactCadenceInsertSchema,
   interactionInsertSchema,
+  workScheduleInsertSchema,
+  timeOffEntryInsertSchema,
 } from "@/lib/db/schemas";
 import { friendlyMutationError } from "@/lib/db/errors";
 import { applyGiftFeedback } from "@/lib/gifts/feedback";
@@ -134,6 +137,87 @@ export async function deleteGiftSiteAction(personId: string, siteId: string): Pr
     return { error: friendlyMutationError(error, { fallback: "Couldn't remove that site — please try again." }) };
   }
   revalidatePath(`/people/${personId}`);
+  return { error: null };
+}
+
+// work_schedules + time_off_entries (D-064) --------------------------------
+
+export async function addWorkScheduleAction(
+  personId: string,
+  _prevState: SimpleFormState,
+  formData: FormData
+): Promise<SimpleFormState> {
+  const { supabase } = await requireHouseholdContext();
+
+  const parsed = workScheduleInsertSchema.safeParse({
+    person_id: personId,
+    day_of_week: Number(formData.get("dayOfWeek") ?? -1),
+    start_time: String(formData.get("startTime") ?? ""),
+    end_time: String(formData.get("endTime") ?? ""),
+    label: String(formData.get("label") ?? "Work"),
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
+
+  try {
+    await workSchedulesRepo.create(supabase, parsed.data);
+  } catch (error) {
+    return { error: friendlyMutationError(error, { fallback: "Couldn't save that shift — please try again." }) };
+  }
+  revalidatePath(`/people/${personId}`);
+  revalidatePath("/calendar");
+  return { error: null };
+}
+
+export async function deleteWorkScheduleAction(personId: string, scheduleId: string): Promise<SimpleFormState> {
+  const { supabase } = await requireHouseholdContext();
+  try {
+    await workSchedulesRepo.remove(supabase, scheduleId);
+  } catch (error) {
+    return { error: friendlyMutationError(error, { fallback: "Couldn't remove that shift — please try again." }) };
+  }
+  revalidatePath(`/people/${personId}`);
+  revalidatePath("/calendar");
+  return { error: null };
+}
+
+export async function addTimeOffAction(
+  personId: string,
+  _prevState: SimpleFormState,
+  formData: FormData
+): Promise<SimpleFormState> {
+  const { supabase } = await requireHouseholdContext();
+
+  const startDate = String(formData.get("startDate") ?? "");
+  const parsed = timeOffEntryInsertSchema.safeParse({
+    person_id: personId,
+    start_date: startDate,
+    // An empty "end date" field means a single-day entry — default it to
+    // the start date rather than making the field required, since most
+    // time off requested this way (a sick day, an appointment) is one day.
+    end_date: String(formData.get("endDate") || startDate),
+    reason: String(formData.get("reason") ?? ""),
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
+
+  try {
+    await timeOffEntriesRepo.create(supabase, parsed.data);
+  } catch (error) {
+    return { error: friendlyMutationError(error, { fallback: "Couldn't save that time off — please try again." }) };
+  }
+  revalidatePath(`/people/${personId}`);
+  revalidatePath("/calendar");
+  return { error: null };
+}
+
+export async function deleteTimeOffAction(personId: string, entryId: string): Promise<SimpleFormState> {
+  const { supabase } = await requireHouseholdContext();
+  try {
+    await timeOffEntriesRepo.remove(supabase, entryId);
+  } catch (error) {
+    return { error: friendlyMutationError(error, { fallback: "Couldn't remove that time off — please try again." }) };
+  }
+  revalidatePath(`/people/${personId}`);
+  revalidatePath("/calendar");
   return { error: null };
 }
 

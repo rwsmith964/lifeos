@@ -15,6 +15,10 @@ import {
   deleteGiftSiteAction,
   deleteGiftAction,
   generateSuggestionsAction,
+  addWorkScheduleAction,
+  deleteWorkScheduleAction,
+  addTimeOffAction,
+  deleteTimeOffAction,
   type SimpleFormState,
   type GenerateSuggestionsState,
 } from "./actions";
@@ -28,6 +32,9 @@ const initialState: SimpleFormState = { error: null };
 const OCCASION_OPTIONS = ["birthday", "christmas", "anniversary", "graduation", "just_because", "default"] as const;
 const REACTION_OPTIONS = ["", "loved_it", "liked_it", "neutral", "missed"] as const;
 const STRENGTH_OPTIONS = ["casual", "regular", "passionate"] as const;
+// index = day_of_week (0 = Sunday .. 6 = Saturday), matches Date#getDay()
+// and work_schedules.day_of_week -- see lib/calendar/work-schedule.ts.
+const DAY_OF_WEEK_LABELS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
 
 // Every form below dispatches useActionState's action manually on button
 // click, reading FormData from a ref, rather than binding it to the form's
@@ -433,6 +440,199 @@ export function DeleteGiftSiteButton({ personId, siteId }: { personId: string; s
       ariaLabel="Remove gift site"
       className="ml-1"
       action={() => deleteGiftSiteAction(personId, siteId)}
+    />
+  );
+}
+
+// D-064: a recurring weekly work shift ("works Wednesdays 9am-5pm"). Mirrors
+// AddGiftSiteForm's manual dispatch() pattern (D-031) exactly.
+export function AddWorkScheduleForm({ personId }: { personId: string }) {
+  const action = addWorkScheduleAction.bind(null, personId);
+  const [state, dispatch, pending] = useActionState(action, initialState);
+  const formRef = useRef<HTMLFormElement>(null);
+  const justSubmittedRef = useRef(false);
+  const [errorDismissed, setErrorDismissed] = useState(false);
+
+  function handleAdd() {
+    if (!formRef.current || !formRef.current.reportValidity()) return;
+    justSubmittedRef.current = true;
+    setErrorDismissed(false);
+    dispatch(new FormData(formRef.current));
+  }
+
+  useEffect(() => {
+    if (justSubmittedRef.current && !state.error) {
+      formRef.current?.reset();
+    }
+    justSubmittedRef.current = false;
+  }, [state]);
+
+  const showError = state.error && !errorDismissed;
+
+  return (
+    <form ref={formRef} className="flex flex-wrap items-end gap-2">
+      <div className="flex flex-col gap-1">
+        <Label htmlFor={`work-day-${personId}`} className="text-xs">
+          Day
+        </Label>
+        <select
+          id={`work-day-${personId}`}
+          name="dayOfWeek"
+          defaultValue="1"
+          aria-label="Day of the week"
+          className="border-input h-8 rounded-md border bg-transparent px-2 text-sm"
+          onChange={() => setErrorDismissed(true)}
+        >
+          {DAY_OF_WEEK_LABELS.map((day, index) => (
+            <option key={day} value={index}>
+              {day}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="flex flex-col gap-1">
+        <Label htmlFor={`work-start-${personId}`} className="text-xs">
+          Start
+        </Label>
+        <Input
+          id={`work-start-${personId}`}
+          name="startTime"
+          type="time"
+          required
+          defaultValue="09:00"
+          className="h-8 w-28"
+          aria-invalid={!!showError || undefined}
+          onChange={() => setErrorDismissed(true)}
+        />
+      </div>
+      <div className="flex flex-col gap-1">
+        <Label htmlFor={`work-end-${personId}`} className="text-xs">
+          End
+        </Label>
+        <Input
+          id={`work-end-${personId}`}
+          name="endTime"
+          type="time"
+          required
+          defaultValue="17:00"
+          className="h-8 w-28"
+          aria-invalid={!!showError || undefined}
+          onChange={() => setErrorDismissed(true)}
+        />
+      </div>
+      <div className="flex flex-col gap-1">
+        <Label htmlFor={`work-label-${personId}`} className="text-xs">
+          Label
+        </Label>
+        <Input
+          id={`work-label-${personId}`}
+          name="label"
+          placeholder="Work"
+          defaultValue="Work"
+          required
+          className="h-8 w-24"
+          onChange={() => setErrorDismissed(true)}
+        />
+      </div>
+      {showError && <p className="text-xs text-destructive">{state.error}</p>}
+      <Button type="button" size="sm" onClick={handleAdd} disabled={pending}>
+        Add shift
+      </Button>
+    </form>
+  );
+}
+
+export function DeleteWorkScheduleButton({ personId, scheduleId }: { personId: string; scheduleId: string }) {
+  return (
+    <ConfirmDeleteButton
+      variant="icon"
+      ariaLabel="Remove shift"
+      className="ml-1"
+      action={() => deleteWorkScheduleAction(personId, scheduleId)}
+    />
+  );
+}
+
+// D-064: a specific dated time-off entry (vacation, sick day, appointment).
+// Same manual-dispatch pattern (D-031).
+export function AddTimeOffForm({ personId }: { personId: string }) {
+  const action = addTimeOffAction.bind(null, personId);
+  const [state, dispatch, pending] = useActionState(action, initialState);
+  const formRef = useRef<HTMLFormElement>(null);
+  const justSubmittedRef = useRef(false);
+  const [errorDismissed, setErrorDismissed] = useState(false);
+
+  function handleAdd() {
+    if (!formRef.current || !formRef.current.reportValidity()) return;
+    justSubmittedRef.current = true;
+    setErrorDismissed(false);
+    dispatch(new FormData(formRef.current));
+  }
+
+  useEffect(() => {
+    if (justSubmittedRef.current && !state.error) {
+      formRef.current?.reset();
+    }
+    justSubmittedRef.current = false;
+  }, [state]);
+
+  const showError = state.error && !errorDismissed;
+
+  return (
+    <form ref={formRef} className="flex flex-wrap items-end gap-2">
+      <div className="flex flex-col gap-1">
+        <Label htmlFor={`timeoff-start-${personId}`} className="text-xs">
+          From
+        </Label>
+        <Input
+          id={`timeoff-start-${personId}`}
+          name="startDate"
+          type="date"
+          required
+          className="h-8 w-36"
+          aria-invalid={!!showError || undefined}
+          onChange={() => setErrorDismissed(true)}
+        />
+      </div>
+      <div className="flex flex-col gap-1">
+        <Label htmlFor={`timeoff-end-${personId}`} className="text-xs">
+          Through (optional)
+        </Label>
+        <Input
+          id={`timeoff-end-${personId}`}
+          name="endDate"
+          type="date"
+          className="h-8 w-36"
+          onChange={() => setErrorDismissed(true)}
+        />
+      </div>
+      <div className="flex flex-col gap-1">
+        <Label htmlFor={`timeoff-reason-${personId}`} className="text-xs">
+          Reason (optional)
+        </Label>
+        <Input
+          id={`timeoff-reason-${personId}`}
+          name="reason"
+          placeholder="Vacation"
+          className="h-8 w-36"
+          onChange={() => setErrorDismissed(true)}
+        />
+      </div>
+      {showError && <p className="text-xs text-destructive">{state.error}</p>}
+      <Button type="button" size="sm" onClick={handleAdd} disabled={pending}>
+        Add time off
+      </Button>
+    </form>
+  );
+}
+
+export function DeleteTimeOffButton({ personId, entryId }: { personId: string; entryId: string }) {
+  return (
+    <ConfirmDeleteButton
+      variant="icon"
+      ariaLabel="Remove time off"
+      className="ml-1"
+      action={() => deleteTimeOffAction(personId, entryId)}
     />
   );
 }

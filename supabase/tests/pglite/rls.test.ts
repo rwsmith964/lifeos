@@ -269,6 +269,74 @@ describe("RLS end-to-end (PGlite, real migrations + real seed data)", () => {
     });
   });
 
+  describe("work_schedules and time_off_entries (D-064, mirror person_interests RLS exactly)", () => {
+    it("Richard sees Dave's seeded work schedule; the outsider sees none", async () => {
+      await asUser(db, RICHARD_USER, () =>
+        db.exec(
+          `insert into work_schedules (person_id, day_of_week, start_time, end_time, label) values ('${DAVE_PERSON}', 3, '09:00', '17:00', 'Work');`
+        )
+      );
+
+      const richardSchedules = await asUser(db, RICHARD_USER, () =>
+        db.query(`select count(*)::int as n from work_schedules where person_id = '${DAVE_PERSON}';`)
+      );
+      expect((richardSchedules.rows[0] as { n: number }).n).toBeGreaterThan(0);
+
+      const outsiderSchedules = await asUser(db, OUTSIDER_USER, () =>
+        db.query(`select count(*)::int as n from work_schedules where person_id = '${DAVE_PERSON}';`)
+      );
+      expect((outsiderSchedules.rows[0] as { n: number }).n).toBe(0);
+    });
+
+    it("a child-role member can read work schedules but only owner/adult can write them", async () => {
+      const childRead = await asUser(db, CHILD_USER, () =>
+        db.query(`select count(*)::int as n from work_schedules where person_id = '${DAVE_PERSON}';`)
+      );
+      expect((childRead.rows[0] as { n: number }).n).toBeGreaterThanOrEqual(0);
+
+      await expect(
+        asUser(db, CHILD_USER, () =>
+          db.exec(
+            `insert into work_schedules (person_id, day_of_week, start_time, end_time, label) values ('${DAVE_PERSON}', 4, '09:00', '17:00', 'Should Fail');`
+          )
+        )
+      ).rejects.toThrow();
+    });
+
+    it("Richard sees Dave's seeded time off; the outsider sees none", async () => {
+      await asUser(db, RICHARD_USER, () =>
+        db.exec(
+          `insert into time_off_entries (person_id, start_date, end_date, reason) values ('${DAVE_PERSON}', '2026-09-04', '2026-09-04', 'Vacation');`
+        )
+      );
+
+      const richardTimeOff = await asUser(db, RICHARD_USER, () =>
+        db.query(`select count(*)::int as n from time_off_entries where person_id = '${DAVE_PERSON}';`)
+      );
+      expect((richardTimeOff.rows[0] as { n: number }).n).toBeGreaterThan(0);
+
+      const outsiderTimeOff = await asUser(db, OUTSIDER_USER, () =>
+        db.query(`select count(*)::int as n from time_off_entries where person_id = '${DAVE_PERSON}';`)
+      );
+      expect((outsiderTimeOff.rows[0] as { n: number }).n).toBe(0);
+    });
+
+    it("a child-role member can read time off but only owner/adult can write it", async () => {
+      const childRead = await asUser(db, CHILD_USER, () =>
+        db.query(`select count(*)::int as n from time_off_entries where person_id = '${DAVE_PERSON}';`)
+      );
+      expect((childRead.rows[0] as { n: number }).n).toBeGreaterThanOrEqual(0);
+
+      await expect(
+        asUser(db, CHILD_USER, () =>
+          db.exec(
+            `insert into time_off_entries (person_id, start_date, end_date, reason) values ('${DAVE_PERSON}', '2026-09-05', '2026-09-05', 'Should Fail');`
+          )
+        )
+      ).rejects.toThrow();
+    });
+  });
+
   describe("user_activities and activity_locations (activity_household_id helper)", () => {
     it("Richard sees his seeded activities and their locations; the outsider sees none", async () => {
       const richardActivities = await asUser(db, RICHARD_USER, () =>

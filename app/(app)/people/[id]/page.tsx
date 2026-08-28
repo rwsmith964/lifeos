@@ -5,6 +5,7 @@ import { ArrowLeft, Mail, Pencil, Phone } from "lucide-react";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { peopleRepo } from "@/lib/db/repositories/people";
 import { listInterestsForPerson, listBudgetsForPerson, listGiftSitesForPerson } from "@/lib/db/repositories/people";
+import { listWorkSchedulesForPerson, listTimeOffForPerson } from "@/lib/db/repositories/work-schedule";
 import { listGiftsForPerson } from "@/lib/db/repositories/gifts";
 import { getCadenceForPerson, listInteractionsForPerson } from "@/lib/db/repositories/contact";
 import {
@@ -20,11 +21,15 @@ import {
   AddBudgetForm,
   AddGiftSiteForm,
   AddInterestForm,
+  AddTimeOffForm,
+  AddWorkScheduleForm,
   CadenceForm,
   DeleteBudgetButton,
   DeleteGiftButton,
   DeleteGiftSiteButton,
   DeleteInterestButton,
+  DeleteTimeOffButton,
+  DeleteWorkScheduleButton,
   GenerateSuggestionsForm,
   LogInteractionButton,
   RecordGiftForm,
@@ -39,19 +44,31 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
 
   const now = new Date();
   const isChild = person.relationship_type === "child";
+  const todayStr = format(now, "yyyy-MM-dd");
+  // index = day_of_week (0 = Sunday .. 6 = Saturday) -- matches
+  // work_schedules.day_of_week (see lib/calendar/work-schedule.ts).
+  const DAY_OF_WEEK_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
-  const [interests, budgets, giftSites, gifts, cadence, interactions, upcomingEvents, custodyBlocks] = await Promise.all([
-    listInterestsForPerson(supabase, id),
-    listBudgetsForPerson(supabase, id),
-    listGiftSitesForPerson(supabase, id),
-    listGiftsForPerson(supabase, id, 10),
-    getCadenceForPerson(supabase, id),
-    listInteractionsForPerson(supabase, id, 5),
-    listUpcomingEventsForPerson(supabase, id, now.toISOString(), 5),
-    isChild
-      ? listCustodyBlocksForChildInRange(supabase, id, now.toISOString(), new Date(now.getTime() + 14 * 86400000).toISOString())
-      : Promise.resolve([]),
-  ]);
+  const [interests, budgets, giftSites, gifts, cadence, interactions, upcomingEvents, custodyBlocks, workSchedules, timeOffEntries] =
+    await Promise.all([
+      listInterestsForPerson(supabase, id),
+      listBudgetsForPerson(supabase, id),
+      listGiftSitesForPerson(supabase, id),
+      listGiftsForPerson(supabase, id, 10),
+      getCadenceForPerson(supabase, id),
+      listInteractionsForPerson(supabase, id, 5),
+      listUpcomingEventsForPerson(supabase, id, now.toISOString(), 5),
+      isChild
+        ? listCustodyBlocksForChildInRange(supabase, id, now.toISOString(), new Date(now.getTime() + 14 * 86400000).toISOString())
+        : Promise.resolve([]),
+      listWorkSchedulesForPerson(supabase, id),
+      listTimeOffForPerson(supabase, id),
+    ]);
+
+  // Only show time off that hasn't fully passed yet -- past entries stay
+  // in the table (informational history, same as gift history below) but
+  // clutter this card without adding value.
+  const upcomingTimeOff = timeOffEntries.filter((entry) => entry.end_date >= todayStr);
 
   const responsiblePeople = new Map<string, string>();
   for (const block of custodyBlocks) {
@@ -136,6 +153,68 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
                 <p className="text-xs text-muted-foreground">{format(new Date(block.starts_at), "EEE, MMM d, h:mm a")}</p>
               </div>
             ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {!isChild && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Work schedule</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <p className="text-muted-foreground text-xs">
+              This person&apos;s usual weekly shifts. Used to figure out when they&apos;re free for plans and to skip
+              generating a shift on any day they&apos;ve booked off below.
+            </p>
+            {workSchedules.length > 0 && (
+              <div className="flex flex-col gap-1">
+                {workSchedules.map((schedule) => (
+                  <div key={schedule.id} className="flex items-center justify-between text-sm">
+                    <p>
+                      <span className="font-medium">{DAY_OF_WEEK_LABELS[schedule.day_of_week]}</span>{" "}
+                      <span className="text-muted-foreground">
+                        {schedule.label} {schedule.start_time}–{schedule.end_time}
+                      </span>
+                    </p>
+                    <DeleteWorkScheduleButton personId={id} scheduleId={schedule.id} />
+                  </div>
+                ))}
+              </div>
+            )}
+            <AddWorkScheduleForm personId={id} />
+          </CardContent>
+        </Card>
+      )}
+
+      {!isChild && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Time off</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <p className="text-muted-foreground text-xs">
+              Vacation, sick days, or anything else that takes this person off their usual work schedule. You can
+              also add these by just describing them in Quick Capture -- e.g. “I’m off next Friday.”
+            </p>
+            {upcomingTimeOff.length > 0 && (
+              <div className="flex flex-col gap-1">
+                {upcomingTimeOff.map((entry) => (
+                  <div key={entry.id} className="flex items-center justify-between text-sm">
+                    <p>
+                      <span className="font-medium">
+                        {entry.start_date === entry.end_date
+                          ? format(new Date(`${entry.start_date}T00:00:00`), "MMM d")
+                          : `${format(new Date(`${entry.start_date}T00:00:00`), "MMM d")}–${format(new Date(`${entry.end_date}T00:00:00`), "MMM d")}`}
+                      </span>{" "}
+                      {entry.reason && <span className="text-muted-foreground">{entry.reason}</span>}
+                    </p>
+                    <DeleteTimeOffButton personId={id} entryId={entry.id} />
+                  </div>
+                ))}
+              </div>
+            )}
+            <AddTimeOffForm personId={id} />
           </CardContent>
         </Card>
       )}

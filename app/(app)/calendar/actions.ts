@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { calendarEventsRepo, custodyBlocksRepo } from "@/lib/db/repositories/calendar";
+import { timeOffEntriesRepo } from "@/lib/db/repositories/work-schedule";
 import { createSupabaseServiceRoleClient } from "@/lib/db/client-service-role";
 import { generateWeekendPlan } from "@/lib/planner/generate";
 import { friendlyMutationError } from "@/lib/db/errors";
@@ -28,6 +29,23 @@ export async function deleteCustodyBlockAction(blockId: string): Promise<DeleteA
     await custodyBlocksRepo.remove(supabase, blockId);
   } catch (error) {
     return { error: friendlyMutationError(error, { fallback: "Couldn't delete this custody block — please try again." }) };
+  }
+  revalidatePath("/calendar");
+  return { error: null };
+}
+
+// D-064: time off is the one computed-calendar item that's still a real,
+// deletable row (work shifts are computed-only, like birthdays, so they
+// have no delete action at all). This calendar-scoped action mirrors
+// deleteTimeOffAction on the person page (app/(app)/people/[id]/actions.ts)
+// but only revalidates /calendar, since it's invoked from the calendar
+// grid where there's no personId in scope to also revalidate a person page.
+export async function deleteTimeOffFromCalendarAction(entryId: string): Promise<DeleteActionState> {
+  const { supabase } = await requireHouseholdContext();
+  try {
+    await timeOffEntriesRepo.remove(supabase, entryId);
+  } catch (error) {
+    return { error: friendlyMutationError(error, { fallback: "Couldn't delete this time off entry — please try again." }) };
   }
   revalidatePath("/calendar");
   return { error: null };

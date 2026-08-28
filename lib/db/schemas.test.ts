@@ -9,8 +9,10 @@ import {
   personGiftSiteInsertSchema,
   personInsertSchema,
   personInterestInsertSchema,
+  timeOffEntryInsertSchema,
   tripIdeaInsertSchema,
   userActivityInsertSchema,
+  workScheduleInsertSchema,
 } from "./schemas";
 
 const PERSON_ID = "11111111-1111-4111-8111-111111111111";
@@ -135,6 +137,91 @@ describe("personGiftSiteInsertSchema", () => {
       person_id: PERSON_ID,
       label: "Etsy",
       url: "not a url",
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("workScheduleInsertSchema", () => {
+  it("accepts a valid weekday shift", () => {
+    const result = workScheduleInsertSchema.safeParse({
+      person_id: PERSON_ID,
+      day_of_week: 3,
+      start_time: "09:00",
+      end_time: "17:00",
+      label: "Work",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects an end time before the start time", () => {
+    const result = workScheduleInsertSchema.safeParse({
+      person_id: PERSON_ID,
+      day_of_week: 3,
+      start_time: "17:00",
+      end_time: "09:00",
+      label: "Work",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a day_of_week outside 0-6", () => {
+    const result = workScheduleInsertSchema.safeParse({
+      person_id: PERSON_ID,
+      day_of_week: 7,
+      start_time: "09:00",
+      end_time: "17:00",
+      label: "Work",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a malformed time string", () => {
+    const result = workScheduleInsertSchema.safeParse({
+      person_id: PERSON_ID,
+      day_of_week: 3,
+      start_time: "9am",
+      end_time: "17:00",
+      label: "Work",
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("timeOffEntryInsertSchema", () => {
+  it("accepts a single-day entry", () => {
+    const result = timeOffEntryInsertSchema.safeParse({
+      person_id: PERSON_ID,
+      start_date: "2026-09-04",
+      end_date: "2026-09-04",
+      reason: "Dentist",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts a multi-day entry with no reason given", () => {
+    const result = timeOffEntryInsertSchema.safeParse({
+      person_id: PERSON_ID,
+      start_date: "2026-09-04",
+      end_date: "2026-09-08",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects an end_date before the start_date", () => {
+    const result = timeOffEntryInsertSchema.safeParse({
+      person_id: PERSON_ID,
+      start_date: "2026-09-08",
+      end_date: "2026-09-04",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a malformed date string", () => {
+    const result = timeOffEntryInsertSchema.safeParse({
+      person_id: PERSON_ID,
+      start_date: "09/04/2026",
+      end_date: "09/04/2026",
     });
     expect(result.success).toBe(false);
   });

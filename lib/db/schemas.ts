@@ -527,3 +527,29 @@ export const childcareRequestUpdateSchema = withCareTimeOrderRefinement(
     provider_person_id: true,
   })
 );
+
+// work_schedules + time_off_entries (D-064) --------------------------------
+
+export const workScheduleInsertSchema = z.object({
+  person_id: uuid,
+  day_of_week: z.number().int().min(0, "Pick a day of the week.").max(6, "Pick a day of the week."),
+  start_time: timeOfDay,
+  end_time: timeOfDay,
+  // .trim() before .min(1) for the same reason as personGiftSiteInsertSchema
+  // above -- a whitespace-only label must fail length validation.
+  label: z.string().trim().min(1, "Give this shift a short label.").max(40, "Keep the label under 40 characters."),
+}).refine((v) => v.end_time > v.start_time, {
+  message: "End time must be after the start time.",
+  path: ["end_time"],
+});
+
+export const timeOffEntryInsertSchema = z.object({
+  person_id: uuid,
+  start_date: isoDate,
+  end_date: isoDate,
+  reason: z.string().trim().max(80, "Keep the reason under 80 characters.").optional().default(""),
+  source: z.enum(["manual", "quick_capture"]).optional().default("manual"),
+}).refine((v) => v.end_date >= v.start_date, {
+  message: "End date can't be before the start date.",
+  path: ["end_date"],
+});

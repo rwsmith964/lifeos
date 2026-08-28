@@ -17,13 +17,14 @@ Rules:
 4. Never fabricate a date, price, or fact the user didn't state. Resolve relative dates ("next Tuesday", "in two weeks") against today's date, given below.
 5. If the note doesn't correspond to anything actionable in this app (not about a person, event, or gift), set status to "unrecognized" and briefly say so in confirmationMessage.
 6. Once a clarifying question has been answered, use the full conversation so far to decide — don't re-ask something already answered earlier in the thread.
+7. Exception to rule 1: for add_time_off, if the user doesn't name a specific person ("I'm off Friday", "taking next week off"), do NOT ask who — default personId to whichever household person has relationship_type "self" in the list below. An unqualified time-off statement is near-certainly about the speaker's own job. Still ask a clarifying question if the user DOES name someone else and that name is ambiguous or unresolvable, exactly as rule 1 says for every other action type.
 
 Return ONLY a single JSON object with exactly this shape (no prose, no markdown fences):
 {
   "status": "ready" | "needs_clarification" | "unrecognized",
   "question": string | null,
   "action": {
-    "type": "add_interest" | "log_interaction" | "record_gift" | "create_calendar_event" | "append_person_note" | "add_gift_budget",
+    "type": "add_interest" | "log_interaction" | "record_gift" | "create_calendar_event" | "append_person_note" | "add_gift_budget" | "add_time_off",
     "personId": string | null,
     "interest": string | null,
     "interestStrength": "casual" | "regular" | "passionate" | null,
@@ -40,11 +41,14 @@ Return ONLY a single JSON object with exactly this shape (no prose, no markdown 
     "noteText": string | null,
     "budgetOccasionType": "birthday" | "christmas" | "anniversary" | "graduation" | "just_because" | "default" | null,
     "budgetMinDollars": number | null,
-    "budgetMaxDollars": number | null
+    "budgetMaxDollars": number | null,
+    "timeOffStartDate": string | null,
+    "timeOffEndDate": string | null,
+    "timeOffReason": string | null
   } | null,
   "confirmationMessage": string | null
 }
-personId is required for every action type except create_calendar_event, where it identifies the household member the event is about/with, if any (null if the event isn't tied to a specific person — e.g. "team standup every Tuesday"). record_gift always records a gift IDEA (status "idea"), never a completed transaction — for something already given, tell the user to use "Record gift" on the person's page instead, via an "unrecognized" status.
+personId is required for every action type except create_calendar_event, where it identifies the household member the event is about/with, if any (null if the event isn't tied to a specific person — e.g. "team standup every Tuesday"), and except add_time_off, where an unnamed person defaults to "self" per rule 7 above rather than being left null. record_gift always records a gift IDEA (status "idea"), never a completed transaction — for something already given, tell the user to use "Record gift" on the person's page instead, via an "unrecognized" status. For add_time_off, timeOffStartDate and timeOffEndDate must be plain "YYYY-MM-DD" strings (no time component) resolved against today's date given below — timeOffEndDate may equal timeOffStartDate for a single day off, or be omitted (null) for a single day off; timeOffReason is optional freeform text (e.g. "Vacation", "Sick") and may be null if the user didn't say why.
 
 Only populate the fields relevant to the chosen action.type; set every other action field to null. When status is "needs_clarification" or "unrecognized", action must be null and question (or confirmationMessage, for "unrecognized") must be set. When status is "ready", action must be set and confirmationMessage must be a short (under 20 words) human-readable summary phrased as already-done, e.g. "Added 'fly fishing' to Dave's interests" or "Logged a call with Mom today".`;
 
@@ -62,6 +66,7 @@ export const captureActionSchema = z.object({
         "create_calendar_event",
         "append_person_note",
         "add_gift_budget",
+        "add_time_off",
       ]),
       personId: z.string().nullable(),
       interest: z.string().nullable(),
@@ -80,6 +85,9 @@ export const captureActionSchema = z.object({
       budgetOccasionType: occasionTypeSchema.nullable(),
       budgetMinDollars: z.number().nullable(),
       budgetMaxDollars: z.number().nullable(),
+      timeOffStartDate: z.string().nullable(),
+      timeOffEndDate: z.string().nullable(),
+      timeOffReason: z.string().nullable(),
     })
     .nullable(),
   confirmationMessage: z.string().nullable(),

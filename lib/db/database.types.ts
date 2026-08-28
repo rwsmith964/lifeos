@@ -328,6 +328,36 @@ export interface PersonGiftSiteRow {
 export type PersonGiftSiteInsert = Insert<PersonGiftSiteRow, "id" | "created_at" | "updated_at">;
 export type PersonGiftSiteUpdate = Update<PersonGiftSiteRow>;
 
+// work_schedules (D-064) --------------------------------------------------
+
+export interface WorkScheduleRow {
+  id: string;
+  person_id: string;
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+  label: string;
+  created_at: string;
+  updated_at: string;
+}
+export type WorkScheduleInsert = Insert<WorkScheduleRow, "id" | "created_at" | "updated_at">;
+export type WorkScheduleUpdate = Update<WorkScheduleRow>;
+
+// time_off_entries (D-064) -------------------------------------------------
+
+export interface TimeOffEntryRow {
+  id: string;
+  person_id: string;
+  start_date: string;
+  end_date: string;
+  reason: string;
+  source: "manual" | "quick_capture";
+  created_at: string;
+  updated_at: string;
+}
+export type TimeOffEntryInsert = Insert<TimeOffEntryRow, "id" | "created_at" | "updated_at">;
+export type TimeOffEntryUpdate = Update<TimeOffEntryRow>;
+
 // person_gift_budgets ---------------------------------------------------
 
 export interface PersonGiftBudgetRow {

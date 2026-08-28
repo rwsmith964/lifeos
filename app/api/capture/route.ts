@@ -21,6 +21,7 @@ import { listPeopleForHousehold, peopleRepo, personGiftBudgetsRepo, personIntere
 import { giftsRepo } from "@/lib/db/repositories/gifts";
 import { interactionsRepo, recordContactForCadence } from "@/lib/db/repositories/contact";
 import { calendarEventsRepo, eventAttendeesRepo } from "@/lib/db/repositories/calendar";
+import { timeOffEntriesRepo } from "@/lib/db/repositories/work-schedule";
 import { friendlyMutationError } from "@/lib/db/errors";
 import type { PersonRow } from "@/lib/db/database.types";
 
@@ -111,6 +112,27 @@ async function executeAction(
           person_id: action.personId,
         });
       }
+      return;
+    }
+    case "add_time_off": {
+      if (!action.timeOffStartDate) throw new Error("Missing time off start date");
+      // Rule 7 in CAPTURE_SYSTEM_PROMPT: an unnamed person defaults to the
+      // household's "self" person for this action type specifically — the
+      // one deliberate exception to "never guess which person" elsewhere
+      // in this switch. selfPerson is already resolved by
+      // requireHouseholdContext(), same client-trusted value used above
+      // for create_calendar_event's created_by_person_id.
+      const personId = action.personId ?? selfPerson.id;
+      const startDate = action.timeOffStartDate;
+      const endDate = action.timeOffEndDate ?? startDate;
+      if (endDate < startDate) throw new Error("Time off end date is before the start date");
+      await timeOffEntriesRepo.create(supabase, {
+        person_id: personId,
+        start_date: startDate,
+        end_date: endDate,
+        reason: action.timeOffReason ?? "",
+        source: "quick_capture",
+      });
       return;
     }
   }

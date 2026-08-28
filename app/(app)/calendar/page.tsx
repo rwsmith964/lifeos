@@ -22,9 +22,11 @@ import {
   listEventsInRange,
 } from "@/lib/db/repositories/calendar";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
+import { listWorkSchedulesForPeople, listTimeOffForPeopleInRange } from "@/lib/db/repositories/work-schedule";
 import { getWeekendPlanForDate } from "@/lib/db/repositories/system";
 import { listOpenOpportunitiesForHouseholdInDateRange } from "@/lib/db/repositories/opportunities";
 import { birthdaysInRange, birthdayTitle } from "@/lib/calendar/birthdays";
+import { workShiftsInRange, timeOffInRange, workShiftTitle, timeOffTitle } from "@/lib/calendar/work-schedule";
 import { buildChildColorMap } from "@/lib/custody/colors";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -60,6 +62,8 @@ const BLOCK_TYPE_LABELS: Record<string, string> = {
 };
 const OTHER_CHIP_LABELS: Record<string, string> = {
   birthday: "Birthday",
+  work_shift: "Work",
+  time_off: "Time off",
 };
 function humanizeChipLabel(raw: string): string {
   return (
@@ -87,7 +91,7 @@ function parseDayParam(raw: string | undefined, monthDate: Date): Date {
 
 interface DayItem {
   id: string;
-  kind: "event" | "custody" | "birthday";
+  kind: "event" | "custody" | "birthday" | "work_shift" | "time_off";
   startsAt: Date;
   endsAt: Date;
   title: string;
@@ -119,6 +123,11 @@ export default async function CalendarPage({
     listEventsInRange(supabase, household.id, gridStart.toISOString(), gridEnd.toISOString()),
     listCustodyBlocksForHouseholdInRange(supabase, household.id, gridStart.toISOString(), gridEnd.toISOString()),
     listPeopleForHousehold(supabase, household.id),
+  ]);
+  const householdPersonIds = people.map((p) => p.id);
+  const [workSchedules, timeOffEntries] = await Promise.all([
+    listWorkSchedulesForPeople(supabase, householdPersonIds),
+    listTimeOffForPeopleInRange(supabase, householdPersonIds, format(gridStart, DAY_PARAM_FORMAT), format(gridEnd, DAY_PARAM_FORMAT)),
   ]);
   const attendeesByEvent = await listAttendeeNamesForEvents(
     supabase,
@@ -178,10 +187,52 @@ export default async function CalendarPage({
     dotClassName: "bg-pink-500",
   }));
 
+  // D-064: work shifts are computed the same way birthdays are — expanded
+  // fresh from each person's weekly work_schedules rows for the visible
+  // range, never stored as individual dated rows (see
+  // lib/calendar/work-schedule.ts). Time off entries ARE real dated rows,
+  // so they're fetched directly and expanded per-day the same way the
+  // shifts are, purely so both share one merge/sort/group pipeline below.
+  // Neither belongs in the custody-only view, same reasoning as birthdays.
+  // Raw DB/schedule ids are reused as the DayItem id even though a single
+  // work_schedules row (weekly recurring) or time_off_entries row
+  // (multi-day span) produces one item per matching calendar day — same
+  // precedent as custody blocks above, which also keep one shared id
+  // across every day they span. Safe because each day's list is a
+  // separate bucket in `byDay`, so ids only need to be unique within a
+  // single day's rendered list, not globally.
+  const workShiftItems: DayItem[] = workShiftsInRange(workSchedules, timeOffEntries, people, gridStart, gridEnd).map((s) => ({
+    id: s.scheduleId,
+    kind: "work_shift",
+    startsAt: s.date,
+    endsAt: s.date,
+    title: workShiftTitle(s),
+    subtitle: "work_shift",
+    allDay: false,
+    attendees: [],
+    location: null,
+    dotClassName: "bg-slate-400",
+  }));
+
+  const timeOffItems: DayItem[] = timeOffInRange(timeOffEntries, people, gridStart, gridEnd).map((t) => ({
+    id: t.entryId,
+    kind: "time_off",
+    startsAt: t.date,
+    endsAt: t.date,
+    title: timeOffTitle(t),
+    subtitle: "time_off",
+    allDay: true,
+    attendees: [],
+    location: null,
+    dotClassName: "bg-amber-500",
+  }));
+
   const items =
     view === "custody"
       ? custodyItems
-      : [...eventItems, ...custodyItems, ...birthdayItems].sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
+      : [...eventItems, ...custodyItems, ...birthdayItems, ...workShiftItems, ...timeOffItems].sort(
+          (a, b) => a.startsAt.getTime() - b.startsAt.getTime()
+        );
 
   // A block/event is a span, not a point — index it under every calendar
   // day it covers, not just the day it starts. Missing this was why a
@@ -399,7 +450,9 @@ export default async function CalendarPage({
                       </Link>
                     </Button>
                   )}
-                  {item.kind !== "birthday" && <DeleteCalendarItemButton id={item.id} kind={item.kind} />}
+                  {(item.kind === "event" || item.kind === "custody" || item.kind === "time_off") && (
+                    <DeleteCalendarItemButton id={item.id} kind={item.kind} />
+                  )}
                 </div>
               </CardContent>
             </Card>
