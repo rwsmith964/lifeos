@@ -82,3 +82,9 @@ The detection cron, Brief card, Calendar nudge, and new `/opportunities` page ar
 **Known limitation, not a bug:** trip ideas have no location field (by design, per D-059), so trip-idea opportunities always score weather against the household's home coordinates rather than the trip's actual destination — reasonable for "someday" ideas without a fixed place yet, but worth revisiting if trip ideas ever gain a location field later.
 
 **No CRON_SECRET configured in production** (same as the gift-scan and weekend-plan crons before it) — the new `/api/cron/opportunities` route is technically callable by anyone who knows the URL, with no auth. Same pre-existing, already-accepted risk posture as the other two crons; not a new gap introduced by this feature. Worth a single pass to set `CRON_SECRET` for all three/four cron routes at once if this ever needs hardening.
+
+## Fixed and verified live this pass (D-062 — birthdays auto-populate on the calendar)
+
+Birthdays now render as computed, non-editable all-day items on the calendar month grid and selected-day list, correctly excluded from the custody-only view. No schema change, no migration, no new cron — purely a render-time computation from the pre-existing `people.birthdate`/`birth_year_known` fields. Live-verified against a real birthday (Callan "Cal" Smith, Aug 27) in production: correct dot on the correct day only, correct "Cal turns 4" title with no edit/delete controls, correctly absent from adjacent days and from the custody view, zero console errors. See D-062 in DECISIONS.md for full detail.
+
+**Known gap, not a regression:** the Smith Household's real July/August 2026 data has no custody blocks at all, so this pass couldn't exercise a birthday rendering *alongside* a real custody-block item on the same day — only the custody view's empty-state shell was confirmed. Custody-block rendering itself is unchanged by D-062 and was already verified independently in earlier passes.
