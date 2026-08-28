@@ -17,6 +17,8 @@ export interface ActivityFormDefaults {
   requiresPrep: boolean;
   prepLeadTimeHours: number | null;
   preferredCompanionIds: string[];
+  typicalDriveMinutes: number | null;
+  bigTripMaxDriveMinutes: number | null;
   locationName: string;
   locationLat: number | null;
   locationLng: number | null;
@@ -120,6 +122,45 @@ export function ActivityForm({
         />
         {fieldError("prepLeadTimeHours") && <p className="text-xs text-destructive">{fieldError("prepLeadTimeHours")}</p>}
       </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="typicalDriveMinutes">Typical drive time (min)</Label>
+          <Input
+            id="typicalDriveMinutes"
+            name="typicalDriveMinutes"
+            type="number"
+            min={0}
+            placeholder="e.g. 45"
+            defaultValue={d.typicalDriveMinutes ?? undefined}
+            aria-invalid={!!fieldError("typicalDriveMinutes") || undefined}
+            onChange={() => clearErrorField("typicalDriveMinutes")}
+          />
+          {fieldError("typicalDriveMinutes") && (
+            <p className="text-xs text-destructive">{fieldError("typicalDriveMinutes")}</p>
+          )}
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="bigTripMaxDriveMinutes">Max for a bigger trip (min)</Label>
+          <Input
+            id="bigTripMaxDriveMinutes"
+            name="bigTripMaxDriveMinutes"
+            type="number"
+            min={0}
+            placeholder="e.g. 90"
+            defaultValue={d.bigTripMaxDriveMinutes ?? undefined}
+            aria-invalid={!!fieldError("bigTripMaxDriveMinutes") || undefined}
+            onChange={() => clearErrorField("bigTripMaxDriveMinutes")}
+          />
+          {fieldError("bigTripMaxDriveMinutes") && (
+            <p className="text-xs text-destructive">{fieldError("bigTripMaxDriveMinutes")}</p>
+          )}
+        </div>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Typical is how far you&apos;d normally drive for this. The bigger-trip max is how far you&apos;d go for a
+        specifically great outing.
+      </p>
 
       {possibleCompanions.length > 0 && (
         <div className="flex flex-col gap-2">

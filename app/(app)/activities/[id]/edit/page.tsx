@@ -26,6 +26,8 @@ export default async function EditActivityPage({ params }: { params: Promise<{ i
     requiresPrep: activity.requires_prep ?? false,
     prepLeadTimeHours: activity.prep_lead_time_hours,
     preferredCompanionIds: activity.preferred_companions ?? [],
+    typicalDriveMinutes: activity.typical_drive_minutes,
+    bigTripMaxDriveMinutes: activity.big_trip_max_drive_minutes,
     locationName: location?.name ?? "",
     locationLat: location?.lat ?? null,
     locationLng: location?.lng ?? null,

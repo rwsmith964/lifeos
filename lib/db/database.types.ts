@@ -374,6 +374,12 @@ export interface UserActivityRow {
   requires_prep: boolean;
   prep_lead_time_hours: number | null;
   preferred_companions: string[];
+  // D-059: drive-time willingness for this activity. `typical_drive_minutes`
+  // is the normal max for a routine outing; `big_trip_max_drive_minutes` is
+  // how far the person would go for an exceptional/once-in-a-while outing
+  // (e.g. a specifically great fishing spot worth the extra drive).
+  typical_drive_minutes: number | null;
+  big_trip_max_drive_minutes: number | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -384,11 +390,44 @@ export type UserActivityInsert = Insert<
   | "requires_prep"
   | "prep_lead_time_hours"
   | "preferred_companions"
+  | "typical_drive_minutes"
+  | "big_trip_max_drive_minutes"
   | "is_active"
   | "created_at"
   | "updated_at"
 >;
 export type UserActivityUpdate = Update<UserActivityRow>;
+
+// trip_ideas -------------------------------------------------------------
+// D-059: someday/bucket-list bigger trips (e.g. "Alaska fishing trip"),
+// separate from routine UserActivityRow entries since they carry a target
+// timeframe and companion picker rather than a recurring cadence.
+
+export interface TripIdeaRow {
+  id: string;
+  household_id: string;
+  created_by_person_id: string;
+  title: string;
+  activity_type: string | null;
+  description: string | null;
+  target_timeframe: string | null;
+  companion_person_ids: string[];
+  status: "idea" | "planned" | "booked" | "done" | "abandoned";
+  created_at: string;
+  updated_at: string;
+}
+export type TripIdeaInsert = Insert<
+  TripIdeaRow,
+  | "id"
+  | "activity_type"
+  | "description"
+  | "target_timeframe"
+  | "companion_person_ids"
+  | "status"
+  | "created_at"
+  | "updated_at"
+>;
+export type TripIdeaUpdate = Update<TripIdeaRow>;
 
 // activity_locations ------------------------------------------------
 

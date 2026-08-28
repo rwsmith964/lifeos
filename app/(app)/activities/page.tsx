@@ -2,14 +2,21 @@ import Link from "next/link";
 import { Plus, Pencil } from "lucide-react";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { listActivitiesWithLocations } from "@/lib/db/repositories/activities";
+import { listTripIdeasForHousehold } from "@/lib/db/repositories/trip-ideas";
+import { listPeopleForHousehold } from "@/lib/db/repositories/people";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DeactivateActivityButton } from "./deactivate-button";
+import { TripIdeasSection } from "./trip-ideas-section";
 
 export default async function ActivitiesPage() {
   const { supabase, household } = await requireHouseholdContext();
-  const activities = await listActivitiesWithLocations(supabase, household.id);
+  const [activities, tripIdeas, people] = await Promise.all([
+    listActivitiesWithLocations(supabase, household.id),
+    listTripIdeasForHousehold(supabase, household.id),
+    listPeopleForHousehold(supabase, household.id),
+  ]);
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -43,6 +50,12 @@ export default async function ActivitiesPage() {
                     Enjoyment {activity.enjoyment_rank}/10 · {activity.typical_duration_minutes} min
                     {activity.requires_prep && ` · prep ${activity.prep_lead_time_hours}h ahead`}
                   </p>
+                  {(activity.typical_drive_minutes || activity.big_trip_max_drive_minutes) && (
+                    <p className="text-xs text-muted-foreground">
+                      Drive: {activity.typical_drive_minutes ?? "?"} min typical
+                      {activity.big_trip_max_drive_minutes && `, up to ${activity.big_trip_max_drive_minutes} min for a big trip`}
+                    </p>
+                  )}
                   {activity.locations[0] && (
                     <Badge variant="outline" className="mt-1">
                       {activity.locations[0].name}
@@ -62,6 +75,10 @@ export default async function ActivitiesPage() {
           ))}
         </div>
       )}
+
+      <div className="mt-4 border-t pt-4">
+        <TripIdeasSection tripIdeas={tripIdeas} people={people} />
+      </div>
     </div>
   );
 }

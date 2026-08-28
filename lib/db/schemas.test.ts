@@ -8,6 +8,7 @@ import {
   personGiftBudgetInsertSchema,
   personInsertSchema,
   personInterestInsertSchema,
+  tripIdeaInsertSchema,
   userActivityInsertSchema,
 } from "./schemas";
 
@@ -174,6 +175,64 @@ describe("userActivityInsertSchema", () => {
       activity_type: "golf",
       enjoyment_rank: 11,
       typical_duration_minutes: 240,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts a typical + big-trip drive time where big-trip >= typical", () => {
+    const result = userActivityInsertSchema.safeParse({
+      household_id: HOUSEHOLD_ID,
+      person_id: PERSON_ID,
+      activity_type: "fishing",
+      enjoyment_rank: 9,
+      typical_duration_minutes: 180,
+      typical_drive_minutes: 45,
+      big_trip_max_drive_minutes: 90,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects a big-trip drive time smaller than the typical drive time", () => {
+    const result = userActivityInsertSchema.safeParse({
+      household_id: HOUSEHOLD_ID,
+      person_id: PERSON_ID,
+      activity_type: "fishing",
+      enjoyment_rank: 9,
+      typical_duration_minutes: 180,
+      typical_drive_minutes: 90,
+      big_trip_max_drive_minutes: 45,
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("tripIdeaInsertSchema", () => {
+  it("accepts a minimal trip idea with a title only", () => {
+    const result = tripIdeaInsertSchema.safeParse({
+      household_id: HOUSEHOLD_ID,
+      created_by_person_id: PERSON_ID,
+      title: "Alaska fishing trip",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts companions and a target timeframe", () => {
+    const result = tripIdeaInsertSchema.safeParse({
+      household_id: HOUSEHOLD_ID,
+      created_by_person_id: PERSON_ID,
+      title: "Alaska fishing trip",
+      target_timeframe: "Summer 2027",
+      companion_person_ids: [PERSON_ID],
+      status: "idea",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects a blank title", () => {
+    const result = tripIdeaInsertSchema.safeParse({
+      household_id: HOUSEHOLD_ID,
+      created_by_person_id: PERSON_ID,
+      title: "",
     });
     expect(result.success).toBe(false);
   });

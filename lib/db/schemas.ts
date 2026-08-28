@@ -218,7 +218,10 @@ export const interactionInsertSchema = z.object({
   activity_id: uuid.nullable().optional(),
 });
 
-export const userActivityInsertSchema = z.object({
+// Base shape without .refine() so both the insert and update variants can
+// still use .omit() below (a Zod object loses .omit() once .refine() has
+// been applied to it).
+const userActivityBaseSchema = z.object({
   household_id: uuid,
   person_id: uuid,
   activity_type: z.string().min(1),
@@ -234,8 +237,32 @@ export const userActivityInsertSchema = z.object({
   requires_prep: z.boolean().optional(),
   prep_lead_time_hours: z.number().int().min(0).nullable().optional(),
   preferred_companions: z.array(uuid).optional(),
+  // D-059: drive-time willingness. typical = normal max for a routine
+  // outing; big_trip_max = how far they'd go for an exceptional outing.
+  typical_drive_minutes: z.number().int().min(0).nullable().optional(),
+  big_trip_max_drive_minutes: z.number().int().min(0).nullable().optional(),
   is_active: z.boolean().optional(),
 });
+
+// When both drive-time fields are set, the big-trip max must be at least
+// the typical one — otherwise "bigger trip" tolerance would be smaller
+// than the routine tolerance, which doesn't make sense.
+function withDriveTimeOrderRefinement<
+  T extends z.ZodType<{ typical_drive_minutes?: number | null; big_trip_max_drive_minutes?: number | null }>
+>(schema: T) {
+  return schema.refine(
+    (v) =>
+      v.typical_drive_minutes == null ||
+      v.big_trip_max_drive_minutes == null ||
+      v.big_trip_max_drive_minutes >= v.typical_drive_minutes,
+    {
+      message: "The bigger-trip max drive time must be at least the typical drive time.",
+      path: ["big_trip_max_drive_minutes"],
+    }
+  );
+}
+
+export const userActivityInsertSchema = withDriveTimeOrderRefinement(userActivityBaseSchema);
 
 export const activityLocationInsertSchema = z.object({
   user_activity_id: uuid,
@@ -252,10 +279,12 @@ export const activityLocationInsertSchema = z.object({
 // and person_id are immutable once created (an activity doesn't change
 // which household or person it belongs to via an edit form), so those
 // two keys are omitted rather than made optional-but-editable.
-export const userActivityUpdateSchema = userActivityInsertSchema.omit({
-  household_id: true,
-  person_id: true,
-});
+export const userActivityUpdateSchema = withDriveTimeOrderRefinement(
+  userActivityBaseSchema.omit({
+    household_id: true,
+    person_id: true,
+  })
+);
 
 export const activityLocationUpdateSchema = activityLocationInsertSchema.omit({
   user_activity_id: true,
@@ -414,4 +443,24 @@ export const notificationInsertSchema = z.object({
   body: z.string().min(1),
   link_path: z.string().nullable().optional(),
   channels: z.array(notificationChannelSchema).optional(),
+});
+
+// trip_ideas (D-059) ------------------------------------------------------
+
+export const tripIdeaStatusSchema = z.enum(["idea", "planned", "booked", "done", "abandoned"]);
+
+export const tripIdeaInsertSchema = z.object({
+  household_id: uuid,
+  created_by_person_id: uuid,
+  title: z.string().min(1, "Give this trip idea a name."),
+  activity_type: z.string().nullable().optional(),
+  description: z.string().nullable().optional(),
+  target_timeframe: z.string().nullable().optional(),
+  companion_person_ids: z.array(uuid).optional(),
+  status: tripIdeaStatusSchema.optional(),
+});
+
+export const tripIdeaUpdateSchema = tripIdeaInsertSchema.omit({
+  household_id: true,
+  created_by_person_id: true,
 });

@@ -32,6 +32,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     requires_prep: formData.get("requiresPrep") === "on",
     prep_lead_time_hours: formData.get("prepLeadTimeHours") ? Number(formData.get("prepLeadTimeHours")) : null,
     preferred_companions: preferredCompanions,
+    typical_drive_minutes: formData.get("typicalDriveMinutes") ? Number(formData.get("typicalDriveMinutes")) : null,
+    big_trip_max_drive_minutes: formData.get("bigTripMaxDriveMinutes")
+      ? Number(formData.get("bigTripMaxDriveMinutes"))
+      : null,
   });
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
@@ -40,6 +44,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       enjoyment_rank: "enjoymentRank",
       typical_duration_minutes: "typicalDurationMinutes",
       prep_lead_time_hours: "prepLeadTimeHours",
+      typical_drive_minutes: "typicalDriveMinutes",
+      big_trip_max_drive_minutes: "bigTripMaxDriveMinutes",
     };
     const field = issue?.path[0] ? fieldMap[String(issue.path[0])] : undefined;
     return NextResponse.json({ error: issue?.message ?? "Invalid input.", field }, { status: 400 });
