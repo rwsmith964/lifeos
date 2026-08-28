@@ -6,6 +6,7 @@ import {
   giftInsertSchema,
   giftSuggestionInsertSchema,
   personGiftBudgetInsertSchema,
+  personGiftSiteInsertSchema,
   personInsertSchema,
   personInterestInsertSchema,
   tripIdeaInsertSchema,
@@ -98,6 +99,44 @@ describe("personGiftBudgetInsertSchema", () => {
       max_cents: 7500,
     });
     expect(result.success).toBe(true);
+  });
+});
+
+describe("personGiftSiteInsertSchema", () => {
+  it("accepts a valid label and URL", () => {
+    const result = personGiftSiteInsertSchema.safeParse({
+      person_id: PERSON_ID,
+      label: "Etsy",
+      url: "https://www.etsy.com/shop/somefavoriteshop",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("trims a whitespace-padded label", () => {
+    const result = personGiftSiteInsertSchema.parse({
+      person_id: PERSON_ID,
+      label: "  Etsy  ",
+      url: "https://www.etsy.com",
+    });
+    expect(result.label).toBe("Etsy");
+  });
+
+  it("rejects a whitespace-only label", () => {
+    const result = personGiftSiteInsertSchema.safeParse({
+      person_id: PERSON_ID,
+      label: "   ",
+      url: "https://www.etsy.com",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a non-URL string", () => {
+    const result = personGiftSiteInsertSchema.safeParse({
+      person_id: PERSON_ID,
+      label: "Etsy",
+      url: "not a url",
+    });
+    expect(result.success).toBe(false);
   });
 });
 

@@ -176,6 +176,15 @@ export const personGiftBudgetInsertSchema = z
     path: ["max_cents"],
   });
 
+export const personGiftSiteInsertSchema = z.object({
+  person_id: uuid,
+  // .trim() before .min(1) for the same reason as personInterestInsertSchema
+  // above -- a whitespace-only label must fail length validation, not pass
+  // it and get silently blanked by a later transform.
+  label: z.string().trim().min(1, "Give this site a short label.").max(60, "Keep the label under 60 characters."),
+  url: z.url({ message: "Enter a valid URL, including https://" }),
+});
+
 export const giftInsertSchema = z.object({
   person_id: uuid,
   given_by_person_id: uuid.nullable().optional(),

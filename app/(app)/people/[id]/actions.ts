@@ -3,7 +3,12 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireHouseholdContext } from "@/lib/auth/session";
-import { peopleRepo, personInterestsRepo, personGiftBudgetsRepo } from "@/lib/db/repositories/people";
+import {
+  peopleRepo,
+  personInterestsRepo,
+  personGiftBudgetsRepo,
+  personGiftSitesRepo,
+} from "@/lib/db/repositories/people";
 import { giftsRepo } from "@/lib/db/repositories/gifts";
 import {
   contactCadencesRepo,
@@ -14,6 +19,7 @@ import {
 import {
   personInterestInsertSchema,
   personGiftBudgetInsertSchema,
+  personGiftSiteInsertSchema,
   giftInsertSchema,
   contactCadenceInsertSchema,
   interactionInsertSchema,
@@ -86,6 +92,46 @@ export async function addInterestAction(
     await personInterestsRepo.upsert(supabase, parsed.data, "person_id,interest");
   } catch (error) {
     return { error: friendlyMutationError(error, { fallback: "Couldn't add that interest — please try again." }) };
+  }
+  revalidatePath(`/people/${personId}`);
+  return { error: null };
+}
+
+// D-063: the "save site" action — bookmarks a preferred gift-shopping site
+// for this person, later preferred over Amazon when generating gift
+// suggestions (see lib/gifts/suggest.ts).
+export async function addGiftSiteAction(
+  personId: string,
+  _prevState: SimpleFormState,
+  formData: FormData
+): Promise<SimpleFormState> {
+  const { supabase } = await requireHouseholdContext();
+
+  const parsed = personGiftSiteInsertSchema.safeParse({
+    person_id: personId,
+    label: String(formData.get("label") ?? ""),
+    url: String(formData.get("url") ?? ""),
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
+
+  try {
+    // Upsert, not insert: re-saving a site already bookmarked for this
+    // person (person_id, url) is a unique constraint — same D-032
+    // rationale as addInterestAction above, just update the label.
+    await personGiftSitesRepo.upsert(supabase, parsed.data, "person_id,url");
+  } catch (error) {
+    return { error: friendlyMutationError(error, { fallback: "Couldn't save that site — please try again." }) };
+  }
+  revalidatePath(`/people/${personId}`);
+  return { error: null };
+}
+
+export async function deleteGiftSiteAction(personId: string, siteId: string): Promise<SimpleFormState> {
+  const { supabase } = await requireHouseholdContext();
+  try {
+    await personGiftSitesRepo.remove(supabase, siteId);
+  } catch (error) {
+    return { error: friendlyMutationError(error, { fallback: "Couldn't remove that site — please try again." }) };
   }
   revalidatePath(`/people/${personId}`);
   return { error: null };

@@ -4,6 +4,9 @@ import type {
   PersonGiftBudgetInsert,
   PersonGiftBudgetRow,
   PersonGiftBudgetUpdate,
+  PersonGiftSiteInsert,
+  PersonGiftSiteRow,
+  PersonGiftSiteUpdate,
   PersonInsert,
   PersonInterestInsert,
   PersonInterestRow,
@@ -25,6 +28,12 @@ export const personGiftBudgetsRepo = createRepository<
   PersonGiftBudgetInsert,
   PersonGiftBudgetUpdate
 >("person_gift_budgets");
+
+export const personGiftSitesRepo = createRepository<
+  PersonGiftSiteRow,
+  PersonGiftSiteInsert,
+  PersonGiftSiteUpdate
+>("person_gift_sites");
 
 export async function listPeopleForHousehold(
   client: SupabaseClient,
@@ -52,6 +61,13 @@ export async function listBudgetsForPerson(
   personId: string
 ): Promise<PersonGiftBudgetRow[]> {
   return personGiftBudgetsRepo.list(client, (q) => q.eq("person_id", personId));
+}
+
+export async function listGiftSitesForPerson(
+  client: SupabaseClient,
+  personId: string
+): Promise<PersonGiftSiteRow[]> {
+  return personGiftSitesRepo.list(client, (q) => q.eq("person_id", personId).order("created_at", { ascending: true }));
 }
 
 /**

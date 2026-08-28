@@ -6,11 +6,13 @@ import { ConfirmDeleteButton } from "@/components/ui/confirm-delete-button";
 import {
   addInterestAction,
   addBudgetAction,
+  addGiftSiteAction,
   recordGiftAction,
   setCadenceAction,
   logInteractionAction,
   deleteInterestAction,
   deleteBudgetAction,
+  deleteGiftSiteAction,
   deleteGiftAction,
   generateSuggestionsAction,
   type SimpleFormState,
@@ -356,6 +358,81 @@ export function DeleteBudgetButton({ personId, budgetId }: { personId: string; b
   return <ConfirmDeleteButton action={() => deleteBudgetAction(personId, budgetId)} />;
 }
 
+// D-063: the "save site" action from the spec — bookmarking a preferred
+// gift-shopping site for this person. Mirrors AddInterestForm exactly
+// (manual dispatch() on click, not native form action — D-031).
+export function AddGiftSiteForm({ personId }: { personId: string }) {
+  const action = addGiftSiteAction.bind(null, personId);
+  const [state, dispatch, pending] = useActionState(action, initialState);
+  const formRef = useRef<HTMLFormElement>(null);
+  const justSubmittedRef = useRef(false);
+  const [errorDismissed, setErrorDismissed] = useState(false);
+
+  function handleAdd() {
+    if (!formRef.current || !formRef.current.reportValidity()) return;
+    justSubmittedRef.current = true;
+    setErrorDismissed(false);
+    dispatch(new FormData(formRef.current));
+  }
+
+  useEffect(() => {
+    if (justSubmittedRef.current && !state.error) {
+      formRef.current?.reset();
+    }
+    justSubmittedRef.current = false;
+  }, [state]);
+
+  const showError = state.error && !errorDismissed;
+
+  return (
+    <form ref={formRef} className="flex flex-wrap items-end gap-2">
+      <div className="flex flex-col gap-1">
+        <Label htmlFor={`gift-site-label-${personId}`} className="text-xs">
+          Site name
+        </Label>
+        <Input
+          id={`gift-site-label-${personId}`}
+          name="label"
+          placeholder="Etsy"
+          required
+          className="h-8 w-32"
+          onChange={() => setErrorDismissed(true)}
+        />
+      </div>
+      <div className="flex flex-col gap-1">
+        <Label htmlFor={`gift-site-url-${personId}`} className="text-xs">
+          URL
+        </Label>
+        <Input
+          id={`gift-site-url-${personId}`}
+          name="url"
+          type="url"
+          placeholder="https://www.etsy.com"
+          required
+          className="h-8 w-56"
+          aria-invalid={!!showError || undefined}
+          onChange={() => setErrorDismissed(true)}
+        />
+      </div>
+      {showError && <p className="text-xs text-destructive">{state.error}</p>}
+      <Button type="button" size="sm" onClick={handleAdd} disabled={pending}>
+        Save site
+      </Button>
+    </form>
+  );
+}
+
 export function DeleteGiftButton({ personId, giftId }: { personId: string; giftId: string }) {
   return <ConfirmDeleteButton action={() => deleteGiftAction(personId, giftId)} />;
+}
+
+export function DeleteGiftSiteButton({ personId, siteId }: { personId: string; siteId: string }) {
+  return (
+    <ConfirmDeleteButton
+      variant="icon"
+      ariaLabel="Remove gift site"
+      className="ml-1"
+      action={() => deleteGiftSiteAction(personId, siteId)}
+    />
+  );
 }

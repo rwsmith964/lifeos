@@ -23,10 +23,16 @@ import {
   listDismissedSuggestionTitles,
   listGiftsForPerson,
 } from "../db/repositories/gifts";
-import { listBudgetsForPerson, listInterestsForPerson, listPeopleForHousehold, peopleRepo } from "../db/repositories/people";
+import {
+  listBudgetsForPerson,
+  listGiftSitesForPerson,
+  listInterestsForPerson,
+  listPeopleForHousehold,
+  peopleRepo,
+} from "../db/repositories/people";
 import { resolveGiftBudget } from "./budget";
 import { computeOrderByDate } from "./leadtime";
-import { buildAmazonSearchLink } from "./retailer-links";
+import { buildAmazonSearchLink, buildPreferredSiteSearchLink } from "./retailer-links";
 
 export type GenerateGiftSuggestionsResult =
   | { status: "generated"; suggestions: GiftSuggestionRow[] }
@@ -54,12 +60,13 @@ export async function generateGiftSuggestions(
   if (!person) throw new Error(`Person ${params.personId} not found`);
   if (!household) throw new Error(`Household ${params.householdId} not found`);
 
-  const [interests, recentGifts, dismissedTitles, budgets, householdPeople] = await Promise.all([
+  const [interests, recentGifts, dismissedTitles, budgets, householdPeople, giftSites] = await Promise.all([
     listInterestsForPerson(client, person.id),
     listGiftsForPerson(client, person.id, 5),
     listDismissedSuggestionTitles(client, person.id),
     listBudgetsForPerson(client, person.id),
     listPeopleForHousehold(client, params.householdId),
+    listGiftSitesForPerson(client, person.id),
   ]);
 
   const budget = resolveGiftBudget(budgets, params.occasionType, household);
@@ -122,6 +129,7 @@ export async function generateGiftSuggestions(
   const occasionDateStr = format(params.occasionDate, ISO_DATE_FORMAT);
 
   const created: GiftSuggestionRow[] = [];
+  let suggestionIndex = 0;
   for (const suggestion of validated.data) {
     const windowDays =
       shippingWindows.find((w) => w.category === suggestion.category)?.shipping_window_days ?? 5;
@@ -134,7 +142,16 @@ export async function generateGiftSuggestions(
 
     const title = tokenMap.restoreRealNames(suggestion.title);
     const reasoning = tokenMap.restoreRealNames(suggestion.reasoning);
-    const link = buildAmazonSearchLink(title);
+    // D-063: once this person has at least one saved preferred gift site,
+    // route each suggestion's deep link there (round-robin across however
+    // many sites they've saved) instead of defaulting straight to a
+    // generic Amazon search -- a site they've actually shopped for this
+    // person before is a stronger default than an arbitrary Amazon query.
+    const link =
+      giftSites.length > 0
+        ? buildPreferredSiteSearchLink(giftSites[suggestionIndex % giftSites.length], title)
+        : buildAmazonSearchLink(title);
+    suggestionIndex += 1;
 
     const row = await giftSuggestionsRepo.create(client, {
       person_id: person.id,

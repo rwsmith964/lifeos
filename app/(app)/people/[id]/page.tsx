@@ -4,7 +4,7 @@ import { addDays, format } from "date-fns";
 import { ArrowLeft, Mail, Pencil, Phone } from "lucide-react";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { peopleRepo } from "@/lib/db/repositories/people";
-import { listInterestsForPerson, listBudgetsForPerson } from "@/lib/db/repositories/people";
+import { listInterestsForPerson, listBudgetsForPerson, listGiftSitesForPerson } from "@/lib/db/repositories/people";
 import { listGiftsForPerson } from "@/lib/db/repositories/gifts";
 import { getCadenceForPerson, listInteractionsForPerson } from "@/lib/db/repositories/contact";
 import {
@@ -18,10 +18,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   AddBudgetForm,
+  AddGiftSiteForm,
   AddInterestForm,
   CadenceForm,
   DeleteBudgetButton,
   DeleteGiftButton,
+  DeleteGiftSiteButton,
   DeleteInterestButton,
   GenerateSuggestionsForm,
   LogInteractionButton,
@@ -38,9 +40,10 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
   const now = new Date();
   const isChild = person.relationship_type === "child";
 
-  const [interests, budgets, gifts, cadence, interactions, upcomingEvents, custodyBlocks] = await Promise.all([
+  const [interests, budgets, giftSites, gifts, cadence, interactions, upcomingEvents, custodyBlocks] = await Promise.all([
     listInterestsForPerson(supabase, id),
     listBudgetsForPerson(supabase, id),
+    listGiftSitesForPerson(supabase, id),
     listGiftsForPerson(supabase, id, 10),
     getCadenceForPerson(supabase, id),
     listInteractionsForPerson(supabase, id, 5),
@@ -226,6 +229,36 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
             </div>
           )}
           <AddBudgetForm personId={id} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">Preferred gift sites</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <p className="text-muted-foreground text-xs">
+            Sites that have worked well for this person before. Once at least one is saved, gift suggestions
+            link here instead of a generic Amazon search.
+          </p>
+          {giftSites.length > 0 && (
+            <div className="flex flex-col gap-1">
+              {giftSites.map((site) => (
+                <div key={site.id} className="flex items-center justify-between text-sm">
+                  <a
+                    href={site.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="truncate font-medium underline-offset-2 hover:underline"
+                  >
+                    {site.label}
+                  </a>
+                  <DeleteGiftSiteButton personId={id} siteId={site.id} />
+                </div>
+              ))}
+            </div>
+          )}
+          <AddGiftSiteForm personId={id} />
         </CardContent>
       </Card>
 

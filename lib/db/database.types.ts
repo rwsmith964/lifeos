@@ -315,6 +315,19 @@ export type PersonInterestInsert = Insert<
 >;
 export type PersonInterestUpdate = Update<PersonInterestRow>;
 
+// person_gift_sites (D-063) ----------------------------------------------
+
+export interface PersonGiftSiteRow {
+  id: string;
+  person_id: string;
+  label: string;
+  url: string;
+  created_at: string;
+  updated_at: string;
+}
+export type PersonGiftSiteInsert = Insert<PersonGiftSiteRow, "id" | "created_at" | "updated_at">;
+export type PersonGiftSiteUpdate = Update<PersonGiftSiteRow>;
+
 // person_gift_budgets ---------------------------------------------------
 
 export interface PersonGiftBudgetRow {

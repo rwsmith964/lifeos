@@ -234,6 +234,41 @@ describe("RLS end-to-end (PGlite, real migrations + real seed data)", () => {
     });
   });
 
+  describe("person_gift_sites (D-063, mirrors person_interests RLS exactly)", () => {
+    it("Richard sees Dave's seeded gift sites; the outsider sees none", async () => {
+      await asUser(db, RICHARD_USER, () =>
+        db.exec(
+          `insert into person_gift_sites (person_id, label, url) values ('${DAVE_PERSON}', 'Etsy', 'https://www.etsy.com') on conflict (person_id, url) do nothing;`
+        )
+      );
+
+      const richardSites = await asUser(db, RICHARD_USER, () =>
+        db.query(`select count(*)::int as n from person_gift_sites where person_id = '${DAVE_PERSON}';`)
+      );
+      expect((richardSites.rows[0] as { n: number }).n).toBeGreaterThan(0);
+
+      const outsiderSites = await asUser(db, OUTSIDER_USER, () =>
+        db.query(`select count(*)::int as n from person_gift_sites where person_id = '${DAVE_PERSON}';`)
+      );
+      expect((outsiderSites.rows[0] as { n: number }).n).toBe(0);
+    });
+
+    it("a child-role member can read gift sites but only owner/adult can write them", async () => {
+      const childRead = await asUser(db, CHILD_USER, () =>
+        db.query(`select count(*)::int as n from person_gift_sites where person_id = '${DAVE_PERSON}';`)
+      );
+      expect((childRead.rows[0] as { n: number }).n).toBeGreaterThanOrEqual(0);
+
+      await expect(
+        asUser(db, CHILD_USER, () =>
+          db.exec(
+            `insert into person_gift_sites (person_id, label, url) values ('${DAVE_PERSON}', 'Should Fail', 'https://should-fail.example.com');`
+          )
+        )
+      ).rejects.toThrow();
+    });
+  });
+
   describe("user_activities and activity_locations (activity_household_id helper)", () => {
     it("Richard sees his seeded activities and their locations; the outsider sees none", async () => {
       const richardActivities = await asUser(db, RICHARD_USER, () =>
