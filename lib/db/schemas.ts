@@ -141,6 +141,10 @@ export const personInsertSchema = z.object({
   photo_url: z.url().nullable().optional(),
   notes: z.string().optional(),
   is_archived: z.boolean().optional(),
+  is_childcare_provider: z.boolean().optional(),
+  address: z.string().nullable().optional(),
+  address_lat: z.number().min(-90).max(90).nullable().optional(),
+  address_lng: z.number().min(-180).max(180).nullable().optional(),
 });
 
 export const personInterestInsertSchema = z.object({
@@ -464,3 +468,53 @@ export const tripIdeaUpdateSchema = tripIdeaInsertSchema.omit({
   household_id: true,
   created_by_person_id: true,
 });
+
+// childcare_requests (D-060) ----------------------------------------------
+
+const timeOfDay = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "expected HH:MM 24-hour time");
+
+export const childcareRequestStatusSchema = z.enum([
+  "pending",
+  "accepted",
+  "declined",
+  "cancelled",
+  "expired",
+]);
+
+const childcareRequestBaseSchema = z.object({
+  household_id: uuid,
+  requested_by_person_id: uuid,
+  provider_person_id: uuid,
+  child_person_ids: z.array(uuid).min(1, "Pick at least one child this request covers."),
+  care_date: isoDate,
+  care_start_time: timeOfDay,
+  care_end_time: timeOfDay,
+  event_title: z.string().nullable().optional(),
+  custom_note: z.string().nullable().optional(),
+  status: childcareRequestStatusSchema.optional(),
+  drive_minutes_to_provider: z.number().int().min(0).nullable().optional(),
+  drive_time_source: z.string().nullable().optional(),
+  expires_at: isoDateTime,
+});
+
+// Same .refine()-doesn't-compose-with-.omit() constraint as
+// withDriveTimeOrderRefinement above — a shared helper so both the insert
+// and update variants get the same cross-field check.
+function withCareTimeOrderRefinement<
+  T extends z.ZodType<{ care_start_time: string; care_end_time: string }>
+>(schema: T) {
+  return schema.refine((v) => v.care_end_time > v.care_start_time, {
+    message: "Care end time must be after the start time.",
+    path: ["care_end_time"],
+  });
+}
+
+export const childcareRequestInsertSchema = withCareTimeOrderRefinement(childcareRequestBaseSchema);
+
+export const childcareRequestUpdateSchema = withCareTimeOrderRefinement(
+  childcareRequestBaseSchema.omit({
+    household_id: true,
+    requested_by_person_id: true,
+    provider_person_id: true,
+  })
+);

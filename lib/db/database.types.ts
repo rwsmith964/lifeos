@@ -206,6 +206,12 @@ export interface PersonRow {
   photo_url: string | null;
   notes: string;
   is_archived: boolean;
+  // D-060: childcare provider tagging + optional address for drive-time
+  // estimates on childcare requests (see childcare_requests below).
+  is_childcare_provider: boolean;
+  address: string | null;
+  address_lat: number | null;
+  address_lng: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -222,10 +228,73 @@ export type PersonInsert = Insert<
   | "photo_url"
   | "notes"
   | "is_archived"
+  | "is_childcare_provider"
+  | "address"
+  | "address_lat"
+  | "address_lng"
   | "created_at"
   | "updated_at"
 >;
 export type PersonUpdate = Update<PersonRow>;
+
+// childcare_requests (D-060) --------------------------------------------
+
+export type ChildcareRequestStatus = "pending" | "accepted" | "declined" | "cancelled" | "expired";
+
+export interface ChildcareRequestRow {
+  id: string;
+  household_id: string;
+  requested_by_person_id: string;
+  provider_person_id: string;
+  child_person_ids: string[];
+  care_date: string;
+  care_start_time: string;
+  care_end_time: string;
+  event_title: string | null;
+  custom_note: string | null;
+  status: ChildcareRequestStatus;
+  token: string;
+  drive_minutes_to_provider: number | null;
+  drive_time_source: string | null;
+  responded_at: string | null;
+  created_at: string;
+  updated_at: string;
+  expires_at: string;
+}
+export type ChildcareRequestInsert = Insert<
+  ChildcareRequestRow,
+  | "id"
+  | "child_person_ids"
+  | "event_title"
+  | "custom_note"
+  | "status"
+  | "token"
+  | "drive_minutes_to_provider"
+  | "drive_time_source"
+  | "responded_at"
+  | "created_at"
+  | "updated_at"
+>;
+export type ChildcareRequestUpdate = Update<ChildcareRequestRow>;
+
+// Shape returned by the get_childcare_request_preview() RPC — deliberately
+// narrower than ChildcareRequestRow (no household_id or person ids), same
+// intent as HouseholdInvitePreview below: safe to show an unauthenticated
+// visitor who followed the emailed accept/decline link.
+export interface ChildcareRequestPreview {
+  household_name: string;
+  requester_name: string;
+  provider_name: string;
+  child_names: string[];
+  care_date: string;
+  care_start_time: string;
+  care_end_time: string;
+  event_title: string | null;
+  custom_note: string | null;
+  status: ChildcareRequestStatus;
+  expires_at: string;
+  drive_minutes_to_provider: number | null;
+}
 
 // person_interests ------------------------------------------------------
 

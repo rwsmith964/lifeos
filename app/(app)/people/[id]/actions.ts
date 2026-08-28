@@ -21,6 +21,7 @@ import {
 import { friendlyMutationError } from "@/lib/db/errors";
 import { applyGiftFeedback } from "@/lib/gifts/feedback";
 import { generateGiftSuggestions } from "@/lib/gifts/suggest";
+import { geocodeAddress } from "@/lib/external/geocode";
 import type { OccasionType } from "@/lib/db/database.types";
 
 export interface SimpleFormState {
@@ -211,6 +212,34 @@ export async function updatePersonAction(
     return { error: "Birthdate can't be in the future." };
   }
 
+  // Childcare provider address (D-060) feeds the drive-time estimate on a
+  // childcare request — same "only re-geocode when the text actually
+  // changed" pattern as the household owner's home address in
+  // app/(app)/settings/actions.ts, so toggling the checkbox alone or
+  // editing an unrelated field can't accidentally clear/refetch location.
+  const isChildcareProvider = formData.get("isChildcareProvider") === "on";
+  const addressInput = formData.get("address");
+  const address = addressInput == null ? null : String(addressInput).trim();
+  const previousAddress = existing.address ?? "";
+
+  let addressFields: { address: string | null; address_lat: number | null; address_lng: number | null } | null = null;
+  if (address !== null && address !== previousAddress) {
+    if (address === "") {
+      addressFields = { address: null, address_lat: null, address_lng: null };
+    } else {
+      const geocoded = await geocodeAddress(address);
+      if (geocoded.status !== "ok") {
+        return {
+          error:
+            geocoded.status === "not_found"
+              ? "Couldn't find that address — try adding a city and state, or a full street address."
+              : "Couldn't look up that address right now — please try again in a moment.",
+        };
+      }
+      addressFields = { address, address_lat: geocoded.result.lat, address_lng: geocoded.result.lng };
+    }
+  }
+
   try {
     await peopleRepo.update(supabase, personId, {
       full_name: fullName,
@@ -221,12 +250,15 @@ export async function updatePersonAction(
       phone: String(formData.get("phone") ?? "").trim() || null,
       email: String(formData.get("email") ?? "").trim() || null,
       notes: String(formData.get("notes") ?? ""),
+      is_childcare_provider: isChildcareProvider,
+      ...(addressFields ?? {}),
     });
   } catch (error) {
     return { error: friendlyMutationError(error, { fallback: "Couldn't save those changes — please try again." }) };
   }
 
   revalidatePath(`/people/${personId}`);
+  revalidatePath("/people");
   redirect(`/people/${personId}`);
 }
 

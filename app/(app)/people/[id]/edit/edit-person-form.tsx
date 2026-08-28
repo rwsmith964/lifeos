@@ -85,6 +85,31 @@ export function EditPersonForm({ person }: { person: PersonRow }) {
           <Label htmlFor="notes">Notes</Label>
           <Textarea id="notes" name="notes" rows={3} defaultValue={person.notes} />
         </div>
+        {!isSelf && (
+          <div className="flex flex-col gap-2 rounded-md border p-3">
+            <label className="flex items-center gap-2 text-sm font-medium">
+              <input
+                type="checkbox"
+                name="isChildcareProvider"
+                defaultChecked={person.is_childcare_provider}
+              />
+              This person can provide childcare
+            </label>
+            <p className="text-xs text-muted-foreground">
+              Tag someone like a grandparent or babysitter so you can request childcare from them — they
+              don&apos;t need a LifeOS account to accept or decline.
+            </p>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="address">Their address</Label>
+              <Input
+                id="address"
+                name="address"
+                defaultValue={person.address ?? ""}
+                placeholder="Used to estimate drive/drop-off time for childcare requests"
+              />
+            </div>
+          </div>
+        )}
         {state.error && <p className="text-sm text-destructive">{state.error}</p>}
         <Button type="button" onClick={handleSave} disabled={pending}>
           {pending ? "Saving…" : "Save changes"}

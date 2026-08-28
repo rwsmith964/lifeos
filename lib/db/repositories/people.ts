@@ -72,3 +72,40 @@ export async function listPeopleWithKnownDates(
       .or("birthdate.not.is.null,anniversary.not.is.null")
   );
 }
+
+/**
+ * People tagged as childcare providers (D-060) — e.g. "my mom" flagged on
+ * her existing People record rather than living in a separate contacts
+ * list, so she's still tracked normally for birthdays etc. Used by the
+ * childcare request form's provider picker.
+ */
+export async function listChildcareProvidersForHousehold(
+  client: SupabaseClient,
+  householdId: string
+): Promise<PersonRow[]> {
+  return peopleRepo.list(client, (q) =>
+    q
+      .eq("household_id", householdId)
+      .eq("is_archived", false)
+      .eq("is_childcare_provider", true)
+      .order("full_name", { ascending: true })
+  );
+}
+
+/**
+ * Household children (relationship_type = 'child') for the childcare
+ * request form's child picker — same relationship value used elsewhere
+ * (e.g. lib/planner/generate.ts) to identify kids vs. other relationships.
+ */
+export async function listChildrenForHousehold(
+  client: SupabaseClient,
+  householdId: string
+): Promise<PersonRow[]> {
+  return peopleRepo.list(client, (q) =>
+    q
+      .eq("household_id", householdId)
+      .eq("is_archived", false)
+      .eq("relationship_type", "child")
+      .order("full_name", { ascending: true })
+  );
+}

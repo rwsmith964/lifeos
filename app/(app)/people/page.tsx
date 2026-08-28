@@ -2,9 +2,11 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
+import { listChildcareRequestsForHousehold } from "@/lib/db/repositories/childcare";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ChildcareSection } from "./childcare-section";
 
 const RELATIONSHIP_LABELS: Record<string, string> = {
   self: "You",
@@ -22,7 +24,10 @@ const RELATIONSHIP_LABELS: Record<string, string> = {
 
 export default async function PeoplePage() {
   const { supabase, household } = await requireHouseholdContext();
-  const people = await listPeopleForHousehold(supabase, household.id);
+  const [people, childcareRequests] = await Promise.all([
+    listPeopleForHousehold(supabase, household.id),
+    listChildcareRequestsForHousehold(supabase, household.id),
+  ]);
   const others = people
     .filter((p) => p.relationship_type !== "self")
     // The repository query sorts by the DB column full_name, which isn't
@@ -66,13 +71,18 @@ export default async function PeoplePage() {
                       <p className="text-xs text-muted-foreground">{person.full_name}</p>
                     )}
                   </div>
-                  <Badge variant="secondary">{RELATIONSHIP_LABELS[person.relationship_type] ?? person.relationship_type}</Badge>
+                  <div className="flex flex-col items-end gap-1">
+                    <Badge variant="secondary">{RELATIONSHIP_LABELS[person.relationship_type] ?? person.relationship_type}</Badge>
+                    {person.is_childcare_provider && <Badge variant="outline">Childcare provider</Badge>}
+                  </div>
                 </CardContent>
               </Card>
             </Link>
           ))}
         </div>
       )}
+
+      <ChildcareSection requests={childcareRequests} people={people} />
     </div>
   );
 }
