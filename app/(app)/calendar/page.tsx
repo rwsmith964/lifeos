@@ -5,6 +5,7 @@ import {
   addMonths,
   addWeeks,
   eachDayOfInterval,
+  endOfDay,
   endOfMonth,
   endOfWeek,
   format,
@@ -142,8 +143,21 @@ export default async function CalendarPage({
   // nothing past this block needs to know which range is active.
   const gridStart =
     range === "day" ? startOfDay(selectedDay) : range === "week" ? startOfWeek(selectedDay) : startOfWeek(startOfMonth(monthDate));
+  // D-066 fix: Day view's gridEnd was previously startOfDay(selectedDay)
+  // -- identical to gridStart -- making it a zero-width instant. Every
+  // range query below builds a half-open [gridStart, gridEnd) window
+  // (see listEventsInRange's .gte/.lt pair), so a zero-width window
+  // always matched nothing: Day view could never show a single calendar
+  // event, no matter what was actually on that day. Live-verifying the
+  // new brain-dump feature (D-066) is what surfaced this -- a calendar
+  // event it created showed a "Saved" badge (the row really was written)
+  // but never appeared on the day it was created for. Using endOfDay
+  // matches the exact convention endOfWeek/endOfMonth already use for
+  // week/month (end of the *last* day, not start of the day after), so
+  // this is the same half-open-with-inclusive-last-moment pattern applied
+  // consistently across all three ranges rather than a new one.
   const gridEnd =
-    range === "day" ? startOfDay(selectedDay) : range === "week" ? endOfWeek(selectedDay) : endOfWeek(endOfMonth(monthDate));
+    range === "day" ? endOfDay(selectedDay) : range === "week" ? endOfWeek(selectedDay) : endOfWeek(endOfMonth(monthDate));
   const gridDays = eachDayOfInterval({ start: gridStart, end: gridEnd });
 
   const [events, custodyBlocks, people] = await Promise.all([

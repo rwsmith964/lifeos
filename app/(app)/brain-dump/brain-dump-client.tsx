@@ -529,6 +529,11 @@ function BrainDumpItemCard({
                 </option>
               ))}
             </select>
+            {item.personId == null && item.type !== "add_time_off" && (
+              <p className="text-xs text-muted-foreground">
+                I couldn&apos;t tell for sure who this is about — pick someone to save it.
+              </p>
+            )}
           </div>
         )}
 

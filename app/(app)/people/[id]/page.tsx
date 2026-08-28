@@ -365,6 +365,7 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
                     <p className="font-medium">{gift.description}</p>
                     <p className="text-xs text-muted-foreground">
                       {gift.occasion_type} · {gift.occasion_date}
+                      {gift.cost_cents != null && ` · $${(gift.cost_cents / 100).toFixed(2)}`}
                       {gift.reaction && ` · ${gift.reaction.replace("_", " ")}`}
                     </p>
                   </div>
