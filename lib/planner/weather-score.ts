@@ -18,6 +18,12 @@ const IDEAL_TEMP_LOW_F = 55;
 const IDEAL_TEMP_HIGH_F = 80;
 const WIND_COMFORT_THRESHOLD_MPH = 15;
 
+/** NWS windSpeed comes back as a free-text string like "10 mph" or "10 to 20 mph" — pulls the first number out. Shared by the weekend planner and the opportunity detector so both interpret the same adapter output identically. */
+export function parseWindMph(windSpeed: string): number | null {
+  const match = /(\d+)/.exec(windSpeed);
+  return match ? Number(match[1]) : null;
+}
+
 export function scoreWeatherSuitability(inputs: WeatherSuitabilityInputs): number {
   if (inputs.tempF == null) return 50; // unknown -> neutral, never guess a condition
 

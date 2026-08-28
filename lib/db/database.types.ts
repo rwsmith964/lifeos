@@ -498,6 +498,36 @@ export type TripIdeaInsert = Insert<
 >;
 export type TripIdeaUpdate = Update<TripIdeaRow>;
 
+// opportunities ------------------------------------------------------
+// D-061: rows detected by lib/opportunities/detect.ts — an activity or trip
+// idea whose forecast for a specific upcoming date scored exceptionally
+// well AND had enough open calendar time to actually be done.
+
+export type OpportunityType = "activity_window" | "trip_idea_window";
+export type OpportunityStatus = "open" | "dismissed" | "acted_on";
+
+export interface OpportunityRow {
+  id: string;
+  household_id: string;
+  activity_id: string | null;
+  trip_idea_id: string | null;
+  opportunity_type: OpportunityType;
+  for_date: string;
+  score: number;
+  headline: string;
+  reasoning: string;
+  status: OpportunityStatus;
+  detected_at: string;
+  expires_at: string;
+  created_at: string;
+  updated_at: string;
+}
+export type OpportunityInsert = Insert<
+  OpportunityRow,
+  "id" | "activity_id" | "trip_idea_id" | "status" | "detected_at" | "created_at" | "updated_at"
+>;
+export type OpportunityUpdate = Update<OpportunityRow>;
+
 // activity_locations ------------------------------------------------
 
 export interface ActivityLocationRow {

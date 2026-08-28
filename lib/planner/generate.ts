@@ -31,7 +31,7 @@ import { findOpenBlocks, largestOpenBlock } from "./available-blocks";
 import { findOverdueCompanions } from "./companions";
 import { scoreActivity } from "./scoring";
 import { scoreTravelFeasibility } from "./travel-score";
-import { scoreWeatherSuitability } from "./weather-score";
+import { parseWindMph, scoreWeatherSuitability } from "./weather-score";
 
 const WAKING_HOUR_START = 8;
 const WAKING_HOUR_END = 20;
@@ -267,11 +267,6 @@ export async function generateWeekendPlan(
   }
 
   return { status: "generated", contentMarkdown: markdown };
-}
-
-function parseWindMph(windSpeed: string): number | null {
-  const match = /(\d+)/.exec(windSpeed);
-  return match ? Number(match[1]) : null;
 }
 
 async function findHouseholdOwnerUser(client: SupabaseClient, householdId: string) {

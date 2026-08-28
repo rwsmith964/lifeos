@@ -1,11 +1,12 @@
 import { format } from "date-fns";
 import Link from "next/link";
-import { CalendarClock, Cloud, Gift, Sparkles, Users } from "lucide-react";
+import { CalendarClock, Cloud, Gift, Sparkles, Users, Zap } from "lucide-react";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { generateDailyBrief } from "@/lib/brief/generate";
 import { createSupabaseServiceRoleClient } from "@/lib/db/client-service-role";
 import { briefsRepo, getBriefForPersonAndDate } from "@/lib/db/repositories/system";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
+import { listOpenOpportunitiesForHousehold } from "@/lib/db/repositories/opportunities";
 import type { BriefContent } from "@/lib/brief/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -30,6 +31,13 @@ export default async function BriefPage() {
   }
 
   const content = brief?.content_json as BriefContent | undefined;
+
+  // D-061: opportunities are detected by a separate cron and stored
+  // directly in their own table, not threaded through the AI-generated
+  // content_json/brief schema — deliberate simplification so this section
+  // never depends on the brief's AI-generation budget or timing.
+  const openOpportunities = await listOpenOpportunitiesForHousehold(supabase, household.id);
+  const topOpportunities = openOpportunities.slice(0, 2);
 
   // D-048 (tappability): brief content stores each person by their real
   // full_name (lib/ai/context.ts's labelFor), never a stable id — the brief
@@ -127,6 +135,27 @@ export default async function BriefPage() {
                 </div>
               );
             })}
+          </CardContent>
+        </Card>
+      )}
+
+      {topOpportunities.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <Zap className="size-4" /> Opportunities
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-2">
+            {topOpportunities.map((opp) => (
+              <div key={opp.id} className="text-sm">
+                <span className="font-medium">{opp.headline}</span>
+                <p className="text-muted-foreground">{opp.reasoning}</p>
+              </div>
+            ))}
+            <Link href="/opportunities" className="text-sm underline-offset-2 hover:underline">
+              See all opportunities
+            </Link>
           </CardContent>
         </Card>
       )}

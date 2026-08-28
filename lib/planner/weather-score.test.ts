@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { scoreWeatherSuitability } from "./weather-score";
+import { parseWindMph, scoreWeatherSuitability } from "./weather-score";
 
 describe("scoreWeatherSuitability", () => {
   it("returns a neutral 50 when temperature is unknown", () => {
@@ -39,5 +39,19 @@ describe("scoreWeatherSuitability", () => {
     const terrible = scoreWeatherSuitability({ tempF: -20, precipChancePercent: 100, windMph: 60 });
     expect(terrible).toBeGreaterThanOrEqual(0);
     expect(terrible).toBeLessThanOrEqual(100);
+  });
+});
+
+describe("parseWindMph", () => {
+  it("parses a simple 'N mph' string", () => {
+    expect(parseWindMph("10 mph")).toBe(10);
+  });
+
+  it("parses the first number of a range string", () => {
+    expect(parseWindMph("10 to 20 mph")).toBe(10);
+  });
+
+  it("returns null when there's no number in the string", () => {
+    expect(parseWindMph("calm")).toBeNull();
   });
 });

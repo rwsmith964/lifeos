@@ -23,6 +23,7 @@ import {
 } from "@/lib/db/repositories/calendar";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
 import { getWeekendPlanForDate } from "@/lib/db/repositories/system";
+import { listOpenOpportunitiesForHouseholdInDateRange } from "@/lib/db/repositories/opportunities";
 import { buildChildColorMap } from "@/lib/custody/colors";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -185,8 +186,18 @@ export default async function CalendarPage({
   // is one (round-2 brief 3.1: hard-coded phrasing reading wrong on a
   // weekend).
   const upcomingSaturday = format(new Date(today.getTime() + daysUntilSaturday * 86400000), DAY_PARAM_FORMAT);
+  const upcomingSunday = format(new Date(today.getTime() + (daysUntilSaturday + 1) * 86400000), DAY_PARAM_FORMAT);
   const weekendLabel = daysUntilSaturday === 0 ? "This weekend" : `This weekend (${format(new Date(upcomingSaturday), "MMM d")})`;
   const weekendPlan = await getWeekendPlanForDate(supabase, household.id, upcomingSaturday);
+  // D-061: surface a nudge here (in addition to the Opportunities page and
+  // Brief card) when a detected opportunity falls within the same
+  // Saturday/Sunday window this card already computes.
+  const weekendOpportunities = await listOpenOpportunitiesForHouseholdInDateRange(
+    supabase,
+    household.id,
+    upcomingSaturday,
+    upcomingSunday
+  );
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -248,6 +259,18 @@ export default async function CalendarPage({
                 <p className="text-sm text-muted-foreground">No plan generated yet.</p>
                 <GenerateWeekendPlanButton />
               </>
+            )}
+            {weekendOpportunities.length > 0 && (
+              <div className="flex flex-col gap-1 rounded-md border border-dashed p-2">
+                {weekendOpportunities.slice(0, 2).map((opp) => (
+                  <p key={opp.id} className="text-sm">
+                    <span className="font-medium">{opp.headline}</span>
+                  </p>
+                ))}
+                <Link href="/opportunities" className="text-xs text-muted-foreground underline-offset-2 hover:underline">
+                  See opportunities
+                </Link>
+              </div>
             )}
           </CardContent>
         </Card>
