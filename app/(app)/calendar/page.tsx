@@ -24,6 +24,7 @@ import {
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
 import { getWeekendPlanForDate } from "@/lib/db/repositories/system";
 import { listOpenOpportunitiesForHouseholdInDateRange } from "@/lib/db/repositories/opportunities";
+import { birthdaysInRange, birthdayTitle } from "@/lib/calendar/birthdays";
 import { buildChildColorMap } from "@/lib/custody/colors";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -57,10 +58,14 @@ const BLOCK_TYPE_LABELS: Record<string, string> = {
   swap: "Swap",
   vacation: "Vacation",
 };
+const OTHER_CHIP_LABELS: Record<string, string> = {
+  birthday: "Birthday",
+};
 function humanizeChipLabel(raw: string): string {
   return (
     EVENT_TYPE_LABELS[raw] ??
     BLOCK_TYPE_LABELS[raw] ??
+    OTHER_CHIP_LABELS[raw] ??
     raw.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase())
   );
 }
@@ -82,7 +87,7 @@ function parseDayParam(raw: string | undefined, monthDate: Date): Date {
 
 interface DayItem {
   id: string;
-  kind: "event" | "custody";
+  kind: "event" | "custody" | "birthday";
   startsAt: Date;
   endsAt: Date;
   title: string;
@@ -155,7 +160,28 @@ export default async function CalendarPage({
     };
   });
 
-  const items = view === "custody" ? custodyItems : [...eventItems, ...custodyItems].sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
+  // D-062: birthdays auto-populate on the calendar, computed fresh from
+  // each person's birthdate rather than stored as their own events — see
+  // lib/calendar/birthdays.ts for why. Shown alongside real events, not
+  // in the custody-only view (custody view is specifically about
+  // who-has-the-kids, not general household occasions).
+  const birthdayItems: DayItem[] = birthdaysInRange(people, gridStart, gridEnd).map((b) => ({
+    id: `birthday-${b.personId}-${format(b.date, DAY_PARAM_FORMAT)}`,
+    kind: "birthday",
+    startsAt: b.date,
+    endsAt: b.date,
+    title: birthdayTitle(b),
+    subtitle: "birthday",
+    allDay: true,
+    attendees: [],
+    location: null,
+    dotClassName: "bg-pink-500",
+  }));
+
+  const items =
+    view === "custody"
+      ? custodyItems
+      : [...eventItems, ...custodyItems, ...birthdayItems].sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
 
   // A block/event is a span, not a point — index it under every calendar
   // day it covers, not just the day it starts. Missing this was why a
@@ -373,7 +399,7 @@ export default async function CalendarPage({
                       </Link>
                     </Button>
                   )}
-                  <DeleteCalendarItemButton id={item.id} kind={item.kind} />
+                  {item.kind !== "birthday" && <DeleteCalendarItemButton id={item.id} kind={item.kind} />}
                 </div>
               </CardContent>
             </Card>
