@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, MapPin, Plus } from "lucide-react";
 import {
+  addDays,
   addMonths,
+  addWeeks,
   eachDayOfInterval,
   endOfMonth,
   endOfWeek,
@@ -13,7 +15,9 @@ import {
   startOfDay,
   startOfMonth,
   startOfWeek,
+  subDays,
   subMonths,
+  subWeeks,
 } from "date-fns";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import {
@@ -89,6 +93,18 @@ function parseDayParam(raw: string | undefined, monthDate: Date): Date {
   return isSameMonth(today, monthDate) ? today : startOfMonth(monthDate);
 }
 
+// D-065: calendar granularity is a separate dimension from the existing
+// All/Custody `view` filter -- "week" and "day" reuse the exact same
+// month-grid markup and item-list below, just over a narrower window (see
+// the gridStart/gridEnd branch below), so this stays a plain string union
+// rather than a new enum/table -- there's no new data here, only a
+// different slice of the same computed day items.
+type CalendarRange = "month" | "week" | "day";
+
+function parseRangeParam(raw: string | undefined): CalendarRange {
+  return raw === "week" || raw === "day" ? raw : "month";
+}
+
 interface DayItem {
   id: string;
   kind: "event" | "custody" | "birthday" | "work_shift" | "time_off";
@@ -105,18 +121,29 @@ interface DayItem {
 export default async function CalendarPage({
   searchParams,
 }: {
-  searchParams: Promise<{ month?: string; day?: string; view?: string }>;
+  searchParams: Promise<{ month?: string; day?: string; view?: string; range?: string }>;
 }) {
-  const { month: monthParam, day: dayParam, view: viewParam } = await searchParams;
+  const { month: monthParam, day: dayParam, view: viewParam, range: rangeParam } = await searchParams;
   const { supabase, household } = await requireHouseholdContext();
   const view = viewParam === "custody" ? "custody" : "all";
+  const range = parseRangeParam(rangeParam);
 
   const monthDate = parseMonthParam(monthParam);
   const selectedDay = parseDayParam(dayParam, monthDate);
   const monthLabel = format(monthDate, MONTH_PARAM_FORMAT);
 
-  const gridStart = startOfWeek(startOfMonth(monthDate));
-  const gridEnd = endOfWeek(endOfMonth(monthDate));
+  // D-065: month view's window is the full grid (including the leading/
+  // trailing days of adjacent months needed to fill whole weeks), exactly
+  // as before. Week and day views narrow this same window to just the
+  // selected day's week or the selected day itself -- every downstream
+  // consumer below (event/custody/work-schedule queries, birthdaysInRange,
+  // the byDay grouping) already operates purely off gridStart/gridEnd/
+  // gridDays, so narrowing these three is the entire behavior change;
+  // nothing past this block needs to know which range is active.
+  const gridStart =
+    range === "day" ? startOfDay(selectedDay) : range === "week" ? startOfWeek(selectedDay) : startOfWeek(startOfMonth(monthDate));
+  const gridEnd =
+    range === "day" ? startOfDay(selectedDay) : range === "week" ? endOfWeek(selectedDay) : endOfWeek(endOfMonth(monthDate));
   const gridDays = eachDayOfInterval({ start: gridStart, end: gridEnd });
 
   const [events, custodyBlocks, people] = await Promise.all([
@@ -253,8 +280,35 @@ export default async function CalendarPage({
   const selectedDayItems = byDay.get(selectedDayKey) ?? [];
 
   const viewQuery = view === "custody" ? "&view=custody" : "";
-  const prevMonthHref = `/calendar?month=${format(subMonths(monthDate, 1), MONTH_PARAM_FORMAT)}${viewQuery}`;
-  const nextMonthHref = `/calendar?month=${format(addMonths(monthDate, 1), MONTH_PARAM_FORMAT)}${viewQuery}`;
+  const rangeQuery = range !== "month" ? `&range=${range}` : "";
+
+  // D-065: prev/next semantics differ by granularity, mirroring how each
+  // range's own natural unit works -- month nav shifts the month (day
+  // selection resets via parseDayParam's existing "today if in view, else
+  // the 1st" fallback, unchanged from before this feature), while week/day
+  // nav shifts the anchor day itself by exactly 7 or 1 days, carrying the
+  // `month` param along so it stays in sync if the user switches back to
+  // month view mid-navigation.
+  let headerTitle: string;
+  let prevMonthHref: string;
+  let nextMonthHref: string;
+  if (range === "day") {
+    const prevDay = subDays(selectedDay, 1);
+    const nextDay = addDays(selectedDay, 1);
+    headerTitle = format(selectedDay, "EEEE, MMMM d, yyyy");
+    prevMonthHref = `/calendar?month=${format(prevDay, MONTH_PARAM_FORMAT)}&day=${format(prevDay, DAY_PARAM_FORMAT)}${viewQuery}${rangeQuery}`;
+    nextMonthHref = `/calendar?month=${format(nextDay, MONTH_PARAM_FORMAT)}&day=${format(nextDay, DAY_PARAM_FORMAT)}${viewQuery}${rangeQuery}`;
+  } else if (range === "week") {
+    const prevWeekAnchor = subWeeks(selectedDay, 1);
+    const nextWeekAnchor = addWeeks(selectedDay, 1);
+    headerTitle = `${format(gridStart, "MMM d")} \u2013 ${format(gridEnd, "MMM d, yyyy")}`;
+    prevMonthHref = `/calendar?month=${format(prevWeekAnchor, MONTH_PARAM_FORMAT)}&day=${format(prevWeekAnchor, DAY_PARAM_FORMAT)}${viewQuery}${rangeQuery}`;
+    nextMonthHref = `/calendar?month=${format(nextWeekAnchor, MONTH_PARAM_FORMAT)}&day=${format(nextWeekAnchor, DAY_PARAM_FORMAT)}${viewQuery}${rangeQuery}`;
+  } else {
+    headerTitle = format(monthDate, "MMMM yyyy");
+    prevMonthHref = `/calendar?month=${format(subMonths(monthDate, 1), MONTH_PARAM_FORMAT)}${viewQuery}`;
+    nextMonthHref = `/calendar?month=${format(addMonths(monthDate, 1), MONTH_PARAM_FORMAT)}${viewQuery}`;
+  }
 
   const today = startOfDay(new Date());
   const daysUntilSaturday = (6 - today.getDay() + 7) % 7;
@@ -292,15 +346,40 @@ export default async function CalendarPage({
         </div>
       </div>
 
+      {/* D-065: granularity (Month/Week/Day) is a separate control from
+          the All/Custody filter row below it -- the two combine freely
+          (e.g. Custody + Week), so this is its own segmented control
+          rather than folded into the existing toggle. */}
       <div className="flex gap-1 rounded-md bg-muted p-1 text-sm">
         <Link
-          href={`/calendar?month=${monthLabel}&day=${selectedDayKey}`}
+          href={`/calendar?month=${monthLabel}&day=${selectedDayKey}${viewQuery}`}
+          className={cn("flex-1 rounded px-3 py-1.5 text-center", range === "month" ? "bg-background font-medium shadow-xs" : "text-muted-foreground")}
+        >
+          Month
+        </Link>
+        <Link
+          href={`/calendar?month=${monthLabel}&day=${selectedDayKey}${viewQuery}&range=week`}
+          className={cn("flex-1 rounded px-3 py-1.5 text-center", range === "week" ? "bg-background font-medium shadow-xs" : "text-muted-foreground")}
+        >
+          Week
+        </Link>
+        <Link
+          href={`/calendar?month=${monthLabel}&day=${selectedDayKey}${viewQuery}&range=day`}
+          className={cn("flex-1 rounded px-3 py-1.5 text-center", range === "day" ? "bg-background font-medium shadow-xs" : "text-muted-foreground")}
+        >
+          Day
+        </Link>
+      </div>
+
+      <div className="flex gap-1 rounded-md bg-muted p-1 text-sm">
+        <Link
+          href={`/calendar?month=${monthLabel}&day=${selectedDayKey}${rangeQuery}`}
           className={cn("flex-1 rounded px-3 py-1.5 text-center", view === "all" ? "bg-background font-medium shadow-xs" : "text-muted-foreground")}
         >
           All
         </Link>
         <Link
-          href={`/calendar?month=${monthLabel}&day=${selectedDayKey}&view=custody`}
+          href={`/calendar?month=${monthLabel}&day=${selectedDayKey}&view=custody${rangeQuery}`}
           className={cn("flex-1 rounded px-3 py-1.5 text-center", view === "custody" ? "bg-background font-medium shadow-xs" : "text-muted-foreground")}
         >
           Custody
@@ -353,67 +432,81 @@ export default async function CalendarPage({
         </Card>
       )}
 
+      {/* D-065: day range skips the grid entirely -- with only one day in
+          the window there's nothing a grid adds over the header itself, so
+          the Card below renders just the prev/title/next row and the
+          selected-day agenda list underneath does all the work. Week range
+          reuses this exact same grid markup unmodified: gridDays is just a
+          7-element array in that case, which grid-cols-7 renders as a
+          single row for free. */}
       <Card>
         <CardHeader className="flex-row items-center justify-between space-y-0">
-          <Button asChild size="icon" variant="ghost" className="size-7" aria-label="Previous month">
+          <Button asChild size="icon" variant="ghost" className="size-7" aria-label={`Previous ${range}`}>
             <Link href={prevMonthHref}>
               <ChevronLeft className="size-4" />
             </Link>
           </Button>
-          <CardTitle className="text-sm">{format(monthDate, "MMMM yyyy")}</CardTitle>
-          <Button asChild size="icon" variant="ghost" className="size-7" aria-label="Next month">
+          <CardTitle className="text-sm">{headerTitle}</CardTitle>
+          <Button asChild size="icon" variant="ghost" className="size-7" aria-label={`Next ${range}`}>
             <Link href={nextMonthHref}>
               <ChevronRight className="size-4" />
             </Link>
           </Button>
         </CardHeader>
-        <CardContent className="flex flex-col gap-1">
-          <div className="grid grid-cols-7 gap-1 text-center text-[10px] text-muted-foreground">
-            {WEEKDAY_LABELS.map((label, i) => (
-              <span key={i}>{label}</span>
-            ))}
-          </div>
-          <div className="grid grid-cols-7 gap-1">
-            {gridDays.map((day) => {
-              const key = format(day, DAY_PARAM_FORMAT);
-              const dayItems = byDay.get(key) ?? [];
-              const inMonth = isSameMonth(day, monthDate);
-              const selected = isSameDay(day, selectedDay);
-              return (
-                <Link
-                  key={key}
-                  // The #selected-day fragment makes next/link scroll the
-                  // matching-id element into view instead of resetting to
-                  // the top of the page — without it, picking a day left
-                  // you looking at the month grid with the newly selected
-                  // day's events still off-screen below it (Phase 3
-                  // backlog: "no auto-scroll").
-                  href={`/calendar?month=${monthLabel}&day=${key}${viewQuery}#selected-day`}
-                  className={cn(
-                    "flex flex-col items-center gap-0.5 rounded-md py-1.5 text-xs",
-                    inMonth ? "text-foreground" : "text-muted-foreground/40",
-                    selected && "bg-primary text-primary-foreground",
-                    !selected && isToday(day) && "font-semibold text-primary"
-                  )}
-                >
-                  <span>{format(day, "d")}</span>
-                  <span className="flex h-1.5 items-center gap-0.5">
-                    {dayItems.slice(0, 3).map((item, i) => (
-                      <span
-                        key={i}
-                        className={cn("size-1 rounded-full", selected ? "bg-primary-foreground" : item.dotClassName)}
-                      />
-                    ))}
-                  </span>
-                </Link>
-              );
-            })}
-          </div>
-        </CardContent>
+        {range !== "day" && (
+          <CardContent className="flex flex-col gap-1">
+            <div className="grid grid-cols-7 gap-1 text-center text-[10px] text-muted-foreground">
+              {WEEKDAY_LABELS.map((label, i) => (
+                <span key={i}>{label}</span>
+              ))}
+            </div>
+            <div className="grid grid-cols-7 gap-1">
+              {gridDays.map((day) => {
+                const key = format(day, DAY_PARAM_FORMAT);
+                const dayItems = byDay.get(key) ?? [];
+                // Month view dims leading/trailing days from adjacent
+                // months that only exist to fill out the grid shape. Week
+                // view has no such filler days -- every cell is a real day
+                // in the current week even when the week crosses a month
+                // boundary, so none of them should read as "out of range".
+                const inMonth = range === "week" ? true : isSameMonth(day, monthDate);
+                const selected = isSameDay(day, selectedDay);
+                return (
+                  <Link
+                    key={key}
+                    // The #selected-day fragment makes next/link scroll the
+                    // matching-id element into view instead of resetting to
+                    // the top of the page — without it, picking a day left
+                    // you looking at the month grid with the newly selected
+                    // day's events still off-screen below it (Phase 3
+                    // backlog: "no auto-scroll").
+                    href={`/calendar?month=${monthLabel}&day=${key}${viewQuery}${rangeQuery}#selected-day`}
+                    className={cn(
+                      "flex flex-col items-center gap-0.5 rounded-md py-1.5 text-xs",
+                      inMonth ? "text-foreground" : "text-muted-foreground/40",
+                      selected && "bg-primary text-primary-foreground",
+                      !selected && isToday(day) && "font-semibold text-primary"
+                    )}
+                  >
+                    <span>{format(day, "d")}</span>
+                    <span className="flex h-1.5 items-center gap-0.5">
+                      {dayItems.slice(0, 3).map((item, i) => (
+                        <span
+                          key={i}
+                          className={cn("size-1 rounded-full", selected ? "bg-primary-foreground" : item.dotClassName)}
+                        />
+                      ))}
+                    </span>
+                  </Link>
+                );
+              })}
+            </div>
+          </CardContent>
+        )}
       </Card>
 
       <div id="selected-day" className="flex flex-col gap-2 scroll-mt-4">
-        <p className="text-xs font-medium text-muted-foreground">{format(selectedDay, "EEEE, MMMM d")}</p>
+        {range !== "day" && <p className="text-xs font-medium text-muted-foreground">{format(selectedDay, "EEEE, MMMM d")}</p>}
         {selectedDayItems.length === 0 ? (
           <Card>
             <CardContent className="text-sm text-muted-foreground">
