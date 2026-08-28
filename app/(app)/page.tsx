@@ -1,6 +1,6 @@
 import { format } from "date-fns";
 import Link from "next/link";
-import { CalendarClock, Cloud, Gift, Sparkles, Users, Zap } from "lucide-react";
+import { CalendarClock, Cloud, Gift, Mic, Sparkles, Users, Zap } from "lucide-react";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { generateDailyBrief } from "@/lib/brief/generate";
 import { createSupabaseServiceRoleClient } from "@/lib/db/client-service-role";
@@ -75,6 +75,22 @@ export default async function BriefPage() {
         </div>
         <RegenerateBriefButton />
       </div>
+
+      {/* D-066: brain dump's other entry point, alongside the link inside
+          the Quick Capture panel (components/capture/capture-button.tsx) —
+          surfaced here too since it's a full-page flow that benefits from
+          more visibility than a bottom-sheet link alone. */}
+      <Link href="/brain-dump">
+        <Card className="transition-colors hover:bg-muted/50">
+          <CardContent className="flex items-center gap-3 py-2">
+            <Mic className="size-4 text-muted-foreground" />
+            <div>
+              <p className="text-sm font-medium">Brain dump</p>
+              <p className="text-xs text-muted-foreground">Record a long note and I&apos;ll sort it into the right places</p>
+            </div>
+          </CardContent>
+        </Card>
+      </Link>
 
       {content.today.length > 0 && (
         <Card>

@@ -172,9 +172,25 @@ export function CaptureButton() {
           >
             <div className="flex items-center justify-between border-b px-4 py-3">
               <p className="text-sm font-semibold">Quick capture</p>
-              <button type="button" aria-label="Close" onClick={closeAndReset} className="text-muted-foreground hover:text-foreground">
-                <X className="size-5" />
-              </button>
+              <div className="flex items-center gap-3">
+                {/* D-066: brain dump is a full-page flow (long transcript,
+                    multi-item review), so it can't live inside this
+                    bottom-sheet — this link is its main entry point since
+                    the bottom nav is capped at 6 items (D-064). */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    closeAndReset();
+                    router.push("/brain-dump");
+                  }}
+                  className="text-xs font-medium text-primary hover:underline"
+                >
+                  Brain dump →
+                </button>
+                <button type="button" aria-label="Close" onClick={closeAndReset} className="text-muted-foreground hover:text-foreground">
+                  <X className="size-5" />
+                </button>
+              </div>
             </div>
 
             <div ref={scrollRef} className="flex flex-1 flex-col gap-2 overflow-y-auto px-4 py-3" style={{ minHeight: 120 }}>
