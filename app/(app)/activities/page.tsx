@@ -56,10 +56,14 @@ export default async function ActivitiesPage() {
                       {activity.big_trip_max_drive_minutes && `, up to ${activity.big_trip_max_drive_minutes} min for a big trip`}
                     </p>
                   )}
-                  {activity.locations[0] && (
-                    <Badge variant="outline" className="mt-1">
-                      {activity.locations[0].name}
-                    </Badge>
+                  {activity.locations.length > 0 && (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {activity.locations.map((location) => (
+                        <Badge key={location.id} variant="outline">
+                          {location.name}
+                        </Badge>
+                      ))}
+                    </div>
                   )}
                 </div>
                 <div className="flex items-center gap-1">
