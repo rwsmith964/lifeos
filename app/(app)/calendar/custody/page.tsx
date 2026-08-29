@@ -1,10 +1,13 @@
 import Link from "next/link";
-import { ArrowLeft, Plus } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Plus } from "lucide-react";
 import { format } from "date-fns";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
 import { listCustodySchedulesForHousehold } from "@/lib/db/repositories/custody-schedules";
 import { listCustodyBlocksForHouseholdInRange } from "@/lib/db/repositories/calendar";
+import { listWorkSchedulesForPeople, listTimeOffForPeopleInRange } from "@/lib/db/repositories/work-schedule";
+import { workShiftsInRange, timeOffInRange, workShiftTitle, timeOffTitle } from "@/lib/calendar/work-schedule";
+import { detectCustodyWorkConflicts } from "@/lib/custody/conflicts";
 import { buildChildColorMap } from "@/lib/custody/colors";
 import { CUSTODY_PRESET_LABELS, type CustodyPresetName } from "@/lib/custody/schedule";
 import { Card, CardContent } from "@/components/ui/card";
@@ -47,12 +50,32 @@ export default async function CustodyHubPage() {
   const childColors = buildChildColorMap(people.filter((p) => p.relationship_type === "child").map((p) => p.id));
 
   const now = new Date();
-  const upcomingBlocks = await listCustodyBlocksForHouseholdInRange(
-    supabase,
-    household.id,
-    now.toISOString(),
-    new Date(now.getTime() + 14 * 86400000).toISOString()
-  );
+  const rangeEnd = new Date(now.getTime() + 14 * 86400000);
+  const householdPersonIds = people.map((p) => p.id);
+  const [upcomingBlocks, workSchedules, timeOffEntries] = await Promise.all([
+    listCustodyBlocksForHouseholdInRange(supabase, household.id, now.toISOString(), rangeEnd.toISOString()),
+    // D-068: fetched for every household person regardless of their
+    // show_work_schedule_on_calendar toggle -- that flag only controls the
+    // main /calendar view. The custody calendar's whole point is to reveal
+    // scheduling conflicts, so it deliberately always sees every shift.
+    listWorkSchedulesForPeople(supabase, householdPersonIds),
+    listTimeOffForPeopleInRange(supabase, householdPersonIds, format(now, "yyyy-MM-dd"), format(rangeEnd, "yyyy-MM-dd")),
+  ]);
+
+  const coParents = people.filter((p) => p.relationship_type === "co_parent");
+  const coParentIds = new Set(coParents.map((p) => p.id));
+  const coParentSchedules = workSchedules.filter((s) => coParentIds.has(s.person_id));
+  const coParentTimeOff = timeOffEntries.filter((t) => coParentIds.has(t.person_id));
+  const coParentShifts = workShiftsInRange(coParentSchedules, timeOffEntries, people, now, rangeEnd);
+  const coParentDaysOff = timeOffInRange(coParentTimeOff, people, now, rangeEnd);
+
+  const conflicts = detectCustodyWorkConflicts(upcomingBlocks, workSchedules, timeOffEntries, people);
+  const conflictsByBlockId = new Map<string, typeof conflicts>();
+  for (const conflict of conflicts) {
+    const existing = conflictsByBlockId.get(conflict.custodyBlockId) ?? [];
+    existing.push(conflict);
+    conflictsByBlockId.set(conflict.custodyBlockId, existing);
+  }
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -117,6 +140,36 @@ export default async function CustodyHubPage() {
         )}
       </div>
 
+      {coParents.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <h2 className="text-sm font-medium text-muted-foreground">
+            {coParents.length === 1 ? `${peopleById.get(coParents[0].id) ?? "Co-parent"}'s schedule` : "Co-parents' schedules"}
+          </h2>
+          {coParentShifts.length === 0 && coParentDaysOff.length === 0 ? (
+            <Card>
+              <CardContent className="text-sm text-muted-foreground">
+                No work shifts or time off on file for the next 14 days.
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardContent className="flex flex-col gap-1.5">
+                {[...coParentShifts.map((s) => ({ date: s.date, text: workShiftTitle(s), key: `shift-${s.scheduleId}-${s.date.toISOString()}` }))]
+                  .concat(
+                    coParentDaysOff.map((t) => ({ date: t.date, text: timeOffTitle(t), key: `off-${t.entryId}-${t.date.toISOString()}` }))
+                  )
+                  .sort((a, b) => a.date.getTime() - b.date.getTime())
+                  .map((item) => (
+                    <p key={item.key} className="text-xs text-muted-foreground">
+                      <span className="font-medium text-foreground">{format(item.date, "EEE, MMM d")}</span> — {item.text}
+                    </p>
+                  ))}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+
       <div className="flex flex-col gap-2">
         <h2 className="text-sm font-medium text-muted-foreground">Next 14 days</h2>
         {upcomingBlocks.length === 0 ? (
@@ -126,23 +179,39 @@ export default async function CustodyHubPage() {
         ) : (
           upcomingBlocks.map((block) => {
             const color = childColors.get(block.child_person_id);
+            const blockConflicts = conflictsByBlockId.get(block.id) ?? [];
             return (
-              <Card key={block.id}>
-                <CardContent className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    {color && <span className={`size-2 rounded-full ${color.dot}`} />}
-                    <div>
-                      <p className="text-sm font-medium">
-                        {peopleById.get(block.child_person_id) ?? "Unknown"} with{" "}
-                        {peopleById.get(block.responsible_person_id) ?? "Unknown"}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {format(new Date(block.starts_at), "EEE, MMM d")} – {format(new Date(block.ends_at), "EEE, MMM d, h:mm a")}
-                        {block.location && ` · ${block.location}`}
-                      </p>
+              <Card key={block.id} className={blockConflicts.length > 0 ? "border-amber-500" : undefined}>
+                <CardContent className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      {color && <span className={`size-2 rounded-full ${color.dot}`} />}
+                      <div>
+                        <p className="text-sm font-medium">
+                          {peopleById.get(block.child_person_id) ?? "Unknown"} with{" "}
+                          {peopleById.get(block.responsible_person_id) ?? "Unknown"}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {format(new Date(block.starts_at), "EEE, MMM d")} – {format(new Date(block.ends_at), "EEE, MMM d, h:mm a")}
+                          {block.location && ` · ${block.location}`}
+                        </p>
+                      </div>
                     </div>
+                    <Badge variant="outline">{block.block_type}</Badge>
                   </div>
-                  <Badge variant="outline">{block.block_type}</Badge>
+                  {blockConflicts.map((conflict) => (
+                    <div
+                      key={`${conflict.custodyBlockId}-${conflict.overlapStart.toISOString()}`}
+                      className="flex items-start gap-1.5 rounded-md bg-amber-50 p-2 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200"
+                    >
+                      <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+                      <span>
+                        {conflict.responsiblePersonName} is scheduled to work ({conflict.shiftLabel}{" "}
+                        {format(conflict.overlapStart, "h:mm a")}–{format(conflict.overlapEnd, "h:mm a")}) during this custody
+                        block.
+                      </span>
+                    </div>
+                  ))}
                 </CardContent>
               </Card>
             );

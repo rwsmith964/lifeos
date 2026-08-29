@@ -31,6 +31,9 @@ export async function createHouseholdAction(
     user_id: user.id,
     full_name: fullName,
     relationship_type: "self",
+    // D-068: self's own work schedule showing on their own calendar is the
+    // obviously-wanted default; every other person starts opted out.
+    show_work_schedule_on_calendar: true,
   });
 
   redirect("/");

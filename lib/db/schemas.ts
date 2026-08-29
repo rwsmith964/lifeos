@@ -145,6 +145,7 @@ export const personInsertSchema = z.object({
   address: z.string().nullable().optional(),
   address_lat: z.number().min(-90).max(90).nullable().optional(),
   address_lng: z.number().min(-180).max(180).nullable().optional(),
+  show_work_schedule_on_calendar: z.boolean().optional(),
 });
 
 export const personInterestInsertSchema = z.object({

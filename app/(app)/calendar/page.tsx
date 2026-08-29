@@ -165,10 +165,19 @@ export default async function CalendarPage({
     listCustodyBlocksForHouseholdInRange(supabase, household.id, gridStart.toISOString(), gridEnd.toISOString()),
     listPeopleForHousehold(supabase, household.id),
   ]);
-  const householdPersonIds = people.map((p) => p.id);
+  // D-068: only expand shifts/time-off for people who've opted into the
+  // main calendar (defaults false for everyone but self — see migration
+  // 20260829000001). The custody calendar's co-parent-schedule section
+  // intentionally bypasses this filter; this one is specific to /calendar.
+  const calendarSchedulePersonIds = people.filter((p) => p.show_work_schedule_on_calendar).map((p) => p.id);
   const [workSchedules, timeOffEntries] = await Promise.all([
-    listWorkSchedulesForPeople(supabase, householdPersonIds),
-    listTimeOffForPeopleInRange(supabase, householdPersonIds, format(gridStart, DAY_PARAM_FORMAT), format(gridEnd, DAY_PARAM_FORMAT)),
+    listWorkSchedulesForPeople(supabase, calendarSchedulePersonIds),
+    listTimeOffForPeopleInRange(
+      supabase,
+      calendarSchedulePersonIds,
+      format(gridStart, DAY_PARAM_FORMAT),
+      format(gridEnd, DAY_PARAM_FORMAT)
+    ),
   ]);
   const attendeesByEvent = await listAttendeeNamesForEvents(
     supabase,

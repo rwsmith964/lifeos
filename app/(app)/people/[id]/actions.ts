@@ -381,6 +381,12 @@ export async function updatePersonAction(
       email: String(formData.get("email") ?? "").trim() || null,
       notes: String(formData.get("notes") ?? ""),
       is_childcare_provider: isChildcareProvider,
+      // D-068: checkbox is absent from the form entirely for a "child"
+      // person (no Work schedule card renders for them), so treat absence
+      // as "leave unchanged" rather than silently coercing to false.
+      show_work_schedule_on_calendar: formData.has("showWorkScheduleOnCalendar")
+        ? formData.get("showWorkScheduleOnCalendar") === "on"
+        : existing.show_work_schedule_on_calendar,
       ...(addressFields ?? {}),
     });
   } catch (error) {

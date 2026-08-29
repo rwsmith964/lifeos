@@ -28,6 +28,7 @@ export function EditPersonForm({ person }: { person: PersonRow }) {
   const updateAction = updatePersonAction.bind(null, person.id);
   const [state, dispatch, pending] = useActionState(updateAction, initialState);
   const isSelf = person.relationship_type === "self";
+  const isChild = person.relationship_type === "child";
   const formRef = useRef<HTMLFormElement>(null);
 
   // See DECISIONS.md D-031 — dispatch() called manually on click rather
@@ -108,6 +109,23 @@ export function EditPersonForm({ person }: { person: PersonRow }) {
                 placeholder="Used to estimate drive/drop-off time for childcare requests"
               />
             </div>
+          </div>
+        )}
+        {!isChild && (
+          <div className="flex flex-col gap-1 rounded-md border p-3">
+            <label className="flex items-center gap-2 text-sm font-medium">
+              <input
+                type="checkbox"
+                name="showWorkScheduleOnCalendar"
+                defaultChecked={person.show_work_schedule_on_calendar}
+              />
+              Show {isSelf ? "my" : `${person.nickname || person.full_name}'s`} work schedule on the calendar
+            </label>
+            <p className="text-xs text-muted-foreground">
+              When on, this person&apos;s weekly shifts and time off (below) appear on the shared /calendar view.
+              Off by default for anyone besides yourself — turn it on for a spouse or partner if you want their
+              shifts visible too.
+            </p>
           </div>
         )}
         {state.error && <p className="text-sm text-destructive">{state.error}</p>}

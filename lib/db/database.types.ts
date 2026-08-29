@@ -212,6 +212,11 @@ export interface PersonRow {
   address: string | null;
   address_lat: number | null;
   address_lng: number | null;
+  // D-068: opt-in per-person toggle for whether this person's work_schedules
+  // occurrences render on the main /calendar view. Defaults false; true for
+  // "self" via migration backfill. The /calendar/custody co-parent-schedule
+  // section deliberately ignores this flag.
+  show_work_schedule_on_calendar: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -232,6 +237,7 @@ export type PersonInsert = Insert<
   | "address"
   | "address_lat"
   | "address_lng"
+  | "show_work_schedule_on_calendar"
   | "created_at"
   | "updated_at"
 >;
