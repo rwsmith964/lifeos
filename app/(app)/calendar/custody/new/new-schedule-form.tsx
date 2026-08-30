@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import type { PersonRow } from "@/lib/db/database.types";
@@ -16,6 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
 
 const PRESET_NAMES = Object.keys(CUSTODY_PRESET_LABELS) as CustodyPresetName[];
@@ -30,6 +31,17 @@ function mostRecentSunday(dateStr: string): string {
 }
 
 type Mode = "preset" | "weekly" | "advanced";
+
+interface AgreementParseResult {
+  weeklyAssignments: Record<string, string | null>;
+  weeklyHandoverOverrides: Record<string, string>;
+  defaultHandoverTime: string;
+  handoverLocation: string | null;
+  childPersonIds: string[];
+  confidence: "high" | "medium" | "low";
+  unresolved: string[];
+  summary: string;
+}
 
 export function NewScheduleForm({
   childPeople,
@@ -76,7 +88,78 @@ export function NewScheduleForm({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // AI custody-agreement upload -> parse -> verify -> fill builder (D-075,
+  // best-effort). Nothing here writes to the database — the review card
+  // just proposes values; the user clicks "Apply to builder" to load them
+  // into the same Weekly-mode state above, inspects/edits them there, and
+  // only "Create schedule" at the bottom actually saves anything.
+  const [agreementOpen, setAgreementOpen] = useState(false);
+  const [agreementText, setAgreementText] = useState("");
+  const [agreementPending, setAgreementPending] = useState(false);
+  const [agreementError, setAgreementError] = useState<string | null>(null);
+  const [agreementResult, setAgreementResult] = useState<AgreementParseResult | null>(null);
+  const [agreementApplied, setAgreementApplied] = useState(false);
+
   const weeklyAnchorDate = useMemo(() => mostRecentSunday(startDate), [startDate]);
+
+  function handleAgreementFile(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setAgreementText(typeof reader.result === "string" ? reader.result : "");
+    reader.readAsText(file);
+  }
+
+  async function handleParseAgreement() {
+    if (!agreementText.trim()) {
+      setAgreementError("Paste the text of the agreement, or upload a .txt file, first.");
+      return;
+    }
+    setAgreementPending(true);
+    setAgreementError(null);
+    setAgreementResult(null);
+    setAgreementApplied(false);
+    try {
+      const res = await fetch("/api/calendar/custody/parse-agreement", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: agreementText }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.status === "unavailable" || data.error) {
+        setAgreementError(data.message || data.error || "Couldn't parse that agreement — try building the schedule manually below.");
+        setAgreementPending(false);
+        return;
+      }
+      setAgreementResult(data as AgreementParseResult);
+      setAgreementPending(false);
+    } catch {
+      setAgreementError("Couldn't reach the server — check your connection and try again.");
+      setAgreementPending(false);
+    }
+  }
+
+  function handleApplyAgreementResult() {
+    if (!agreementResult) return;
+    setMode("weekly");
+    const assignments: Record<number, string> = {};
+    for (const [dayIndex, personId] of Object.entries(agreementResult.weeklyAssignments)) {
+      if (personId) assignments[Number(dayIndex)] = personId;
+    }
+    setWeeklyAssignments(assignments);
+    const allDay: Record<number, boolean> = { 0: true, 1: true, 2: true, 3: true, 4: true, 5: true, 6: true };
+    const overrideTimes: Record<number, string> = {};
+    for (const [dayIndex, time] of Object.entries(agreementResult.weeklyHandoverOverrides)) {
+      allDay[Number(dayIndex)] = false;
+      overrideTimes[Number(dayIndex)] = time;
+    }
+    setWeeklyAllDay(allDay);
+    setWeeklyHandoverTime(overrideTimes);
+    setHandoverTime(agreementResult.defaultHandoverTime);
+    setHandoverLocation(agreementResult.handoverLocation ?? "");
+    if (agreementResult.childPersonIds.length > 0) setSelectedChildIds(agreementResult.childPersonIds);
+    setAgreementApplied(true);
+  }
 
   const { cycleLengthDays, cycleAssignments, effectiveAnchorDate, customHandoverTimes } = useMemo<{
     cycleLengthDays: number;
@@ -183,6 +266,94 @@ export function NewScheduleForm({
 
   return (
     <div className="flex flex-col gap-4">
+      <Card>
+        <CardContent className="flex flex-col gap-2">
+          <button type="button" className="flex items-center justify-between text-left" onClick={() => setAgreementOpen((v) => !v)}>
+            <span className="text-sm font-medium">Have a custody agreement? Let AI draft a starting point (beta)</span>
+            <span className="text-xs text-muted-foreground">{agreementOpen ? "Hide" : "Show"}</span>
+          </button>
+          {agreementOpen && (
+            <div className="flex flex-col gap-2">
+              <p className="text-xs text-muted-foreground">
+                Paste the schedule/handover section of your agreement below, or upload a plain text (.txt) file. AI will propose a weekly pattern for
+                you to review and edit before anything is saved — it does not read PDFs or scanned images yet, and works best for arrangements that
+                repeat the same way every week.
+              </p>
+              <input type="file" accept=".txt,text/plain" onChange={handleAgreementFile} className="text-xs" />
+              <Textarea
+                placeholder="e.g. Father shall have parenting time from Friday at 4:30 PM until Monday at 8:30 AM each week. Mother shall have parenting time the remainder of each week."
+                rows={5}
+                value={agreementText}
+                onChange={(e) => setAgreementText(e.target.value)}
+              />
+              <div className="flex items-center gap-2">
+                <Button type="button" size="sm" onClick={handleParseAgreement} disabled={agreementPending}>
+                  {agreementPending ? "Reading agreement…" : "Parse agreement"}
+                </Button>
+                {agreementError && <p className="text-sm text-destructive">{agreementError}</p>}
+              </div>
+              {agreementResult && (
+                <Card>
+                  <CardContent className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-medium">Review before applying</p>
+                      <span
+                        className={`text-xs font-medium ${
+                          agreementResult.confidence === "high"
+                            ? "text-emerald-600 dark:text-emerald-400"
+                            : agreementResult.confidence === "medium"
+                              ? "text-amber-600 dark:text-amber-400"
+                              : "text-destructive"
+                        }`}
+                      >
+                        {agreementResult.confidence === "high"
+                          ? "High confidence"
+                          : agreementResult.confidence === "medium"
+                            ? "Medium confidence"
+                            : "Low confidence — review carefully"}
+                      </span>
+                    </div>
+                    <p className="text-sm text-muted-foreground">{agreementResult.summary}</p>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs sm:grid-cols-3">
+                      {WEEKDAY_LABELS.map((label, dayIndex) => {
+                        const personId = agreementResult.weeklyAssignments[String(dayIndex)];
+                        const override = agreementResult.weeklyHandoverOverrides[String(dayIndex)];
+                        return (
+                          <div key={dayIndex}>
+                            <span className="text-muted-foreground">{label.slice(0, 3)}: </span>
+                            <span className={personId ? "font-medium" : "text-destructive"}>
+                              {personId ? peopleById.get(personId) ?? "Unknown person" : "Unresolved"}
+                            </span>
+                            {override && <span className="text-muted-foreground"> @ {formatHandoverTime(override)}</span>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {agreementResult.unresolved.length > 0 && (
+                      <ul className="list-disc pl-4 text-xs text-amber-600 dark:text-amber-400">
+                        {agreementResult.unresolved.map((note, i) => (
+                          <li key={i}>{note}</li>
+                        ))}
+                      </ul>
+                    )}
+                    <div className="flex items-center gap-2">
+                      <Button type="button" size="sm" variant={agreementApplied ? "outline" : "default"} onClick={handleApplyAgreementResult}>
+                        {agreementApplied ? "Applied — re-apply" : "Apply to builder below"}
+                      </Button>
+                      {agreementApplied && (
+                        <span className="text-xs text-muted-foreground">
+                          Loaded into the Weekly builder below — double-check every day, then Create schedule when it looks right.
+                        </span>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       <div className="flex flex-col gap-2">
         <Label>Child{selectedChildIds.length > 1 ? "ren" : ""}</Label>
         <p className="text-xs text-muted-foreground">Select every child this arrangement applies to — the same pattern is created for each.</p>
