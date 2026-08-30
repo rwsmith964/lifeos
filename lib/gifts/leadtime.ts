@@ -16,7 +16,7 @@
 // `occasion_date - shipping_window_days`; it still nets out the personal
 // buffer. That's the spec's exact wording ("order-by date plus handling
 // buffer") and is implemented literally rather than reinterpreted.
-import { addDays, subDays } from "date-fns";
+import { addDays, differenceInCalendarDays, startOfDay, subDays } from "date-fns";
 
 export const DEFAULT_HANDLING_BUFFER_DAYS = 2;
 export const DEFAULT_PERSONAL_BUFFER_DAYS = 2;
@@ -60,4 +60,28 @@ export function computeGiftPromptDate(orderByDate: Date, promptBufferDays: numbe
 export function isPastPromptDate(orderByDate: Date, promptBufferDays: number, today: Date): boolean {
   const promptDate = computeGiftPromptDate(orderByDate, promptBufferDays);
   return today.getTime() >= promptDate.getTime();
+}
+
+export interface OrderByStatus {
+  label: string;
+  isPastDue: boolean;
+}
+
+/**
+ * P1-10: the gifts list previously rendered the raw order_by_date (e.g.
+ * "Order by 2026-08-20") even once that date had slipped into the past,
+ * which read as a stale/broken suggestion. Never render a past-tense
+ * order-by date — once today is at or past it, the actionable message is
+ * "Needed now"; before that, show days-remaining rather than a calendar
+ * date, so the user never has to do date math themselves.
+ */
+export function orderByStatusLabel(orderByDate: Date, today: Date): OrderByStatus {
+  const daysRemaining = differenceInCalendarDays(startOfDay(orderByDate), startOfDay(today));
+  if (daysRemaining <= 0) {
+    return { label: "Needed now", isPastDue: true };
+  }
+  if (daysRemaining === 1) {
+    return { label: "1 day left to order", isPastDue: false };
+  }
+  return { label: `${daysRemaining} days left to order`, isPastDue: false };
 }

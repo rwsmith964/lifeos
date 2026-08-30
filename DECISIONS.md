@@ -997,3 +997,13 @@ Live-verified all 5 checks via browser automation against production, post-regre
 - Deleted the stale pre-fix daily brief row for today (`briefs` table, household `312f2e2e-63a8-4a61-88d7-4f1c29e23ef8`, `brief_date = 2026-08-30`) via `confirm_action`-approved SQL, matching the D-070 stale-cache lesson — briefs are idempotent per `(person, date)` and the home page only generates one on-demand when missing.
 - Home page brief regenerated on next page load. "Heads up" section now reads: **"Cal turned 4 — 3 days ago / Birthday was 3 days ago — if there's anything uncelebrated or unsent, now's the time to close that loop."** — confirms the lead-time-milestone + recent-past-lookback logic and the templated-fallback phrasing both work correctly in production.
 - Cal's person page "Get gift ideas" form: after the `recentPastOccasionForPerson` fix, occasion dropdown correctly defaults to **birthday**, date field to his actual birthdate (not Christmas, not today's date).
+
+## D-072 | 2026-08-30 | P1-10: gift order-by dates never render in the past
+
+**Problem (verbatim from the spec):** "Gift order-by dates render already in the past — never show a past order-by date; show 'Needed now'/days-remaining instead."
+
+**Root cause:** `app/(app)/gifts/page.tsx` rendered the raw stored `order_by_date` string unconditionally (`Order by {suggestion.order_by_date}`). `listActiveSuggestionsForHousehold()` intentionally does not filter suggestions out once their order-by date passes (a suggestion is still useful to browse — the gift can still be bought, just urgently), so any suggestion whose window had elapsed showed a calendar date visibly in the past, reading as broken/stale.
+
+**Fix:** New `orderByStatusLabel(orderByDate, today)` in `lib/gifts/leadtime.ts` (co-located with the other pure order-by-date math per the existing single-source-of-truth pattern) replaces the raw date with a relative, always-actionable label: `"Needed now"` at or past the order-by date (styled destructive/urgent), `"1 day left to order"` / `"N days left to order"` while there's still time (styled as muted, non-alarming). `app/(app)/gifts/page.tsx` now calls this instead of interpolating the raw ISO string, so a past-tense date can never reach the screen — as a side effect this also removes one raw-ISO-date leak (the broader raw-enum/ISO-date sweep is P2 item 2 and intentionally out of scope here beyond this one line).
+
+**Verification:** `pnpm typecheck && pnpm lint` clean. `pnpm test -- --run` — **358/358 passing** (4 new tests in `leadtime.test.ts`: past-due→"Needed now", exactly-due→"Needed now" not "0 days left", singular "1 day left", plural "N days left"). `pnpm build` passed.

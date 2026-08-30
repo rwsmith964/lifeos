@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Gift } from "lucide-react";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { listActiveSuggestionsForHousehold } from "@/lib/db/repositories/gifts";
+import { orderByStatusLabel } from "@/lib/gifts/leadtime";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { GiftSuggestionActions } from "./gift-suggestion-actions";
@@ -55,7 +56,19 @@ export default async function GiftsPage() {
                 </p>
                 <p className="text-sm">{suggestion.reasoning}</p>
                 <p className="text-sm font-medium">${(suggestion.estimated_cost_cents / 100).toFixed(2)}</p>
-                <p className="text-xs text-destructive">Order by {suggestion.order_by_date}</p>
+                {(() => {
+                  // P1-10: never render the raw order_by_date once it's in
+                  // the past — "Needed now" replaces a stale-looking
+                  // calendar date, and days-remaining replaces it while
+                  // there's still time, so the deadline is always relative
+                  // and actionable instead of raw ISO text.
+                  const status = orderByStatusLabel(new Date(suggestion.order_by_date), new Date());
+                  return (
+                    <p className={status.isPastDue ? "text-xs font-medium text-destructive" : "text-xs text-muted-foreground"}>
+                      {status.label}
+                    </p>
+                  );
+                })()}
                 {suggestion.product_url && (
                   <a
                     href={suggestion.product_url}

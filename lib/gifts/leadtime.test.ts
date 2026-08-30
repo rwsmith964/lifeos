@@ -3,6 +3,7 @@ import {
   computeGiftPromptDate,
   computeOrderByDate,
   isPastPromptDate,
+  orderByStatusLabel,
 } from "./leadtime";
 
 describe("computeOrderByDate", () => {
@@ -91,5 +92,27 @@ describe("isPastPromptDate", () => {
 
   it("is true on the order-by date itself", () => {
     expect(isPastPromptDate(orderByDate, 7, orderByDate)).toBe(true);
+  });
+});
+
+describe("orderByStatusLabel", () => {
+  it("never shows a raw past-tense date — 'Needed now' once the order-by date has passed (P1-10)", () => {
+    const result = orderByStatusLabel(new Date(2026, 7, 20), new Date(2026, 7, 30)); // 10 days ago
+    expect(result).toEqual({ label: "Needed now", isPastDue: true });
+  });
+
+  it("shows 'Needed now' on the order-by date itself, not '0 days left'", () => {
+    const result = orderByStatusLabel(new Date(2026, 7, 30), new Date(2026, 7, 30));
+    expect(result).toEqual({ label: "Needed now", isPastDue: true });
+  });
+
+  it("uses singular phrasing with 1 day remaining", () => {
+    const result = orderByStatusLabel(new Date(2026, 7, 31), new Date(2026, 7, 30));
+    expect(result).toEqual({ label: "1 day left to order", isPastDue: false });
+  });
+
+  it("uses plural days-remaining phrasing, never a raw calendar date, while there's time left", () => {
+    const result = orderByStatusLabel(new Date(2026, 8, 6), new Date(2026, 7, 30));
+    expect(result).toEqual({ label: "7 days left to order", isPastDue: false });
   });
 });
