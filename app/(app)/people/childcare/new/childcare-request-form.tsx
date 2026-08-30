@@ -7,6 +7,7 @@ import {
   type ChildcareRequestFormState,
 } from "../../childcare-actions";
 import type { PersonRow } from "@/lib/db/database.types";
+import { useFormValidity } from "@/lib/hooks/use-form-validity";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,11 +24,12 @@ export function ChildcareRequestForm({
 }) {
   const [state, dispatch, pending] = useActionState(createChildcareRequestAction, initialState);
   const formRef = useRef<HTMLFormElement>(null);
+  const { invalid, checkValid, clearInvalid } = useFormValidity(formRef);
   const router = useRouter();
 
   function handleSubmit() {
-    if (!formRef.current || !formRef.current.reportValidity()) return;
-    dispatch(new FormData(formRef.current));
+    if (!checkValid()) return;
+    dispatch(new FormData(formRef.current!));
   }
 
   useEffect(() => {
@@ -39,7 +41,7 @@ export function ChildcareRequestForm({
   }, [state.sent, router]);
 
   return (
-    <form ref={formRef} className="flex flex-col gap-4">
+    <form ref={formRef} noValidate onChange={clearInvalid} className="flex flex-col gap-4">
       <div className="flex flex-col gap-2">
         <Label htmlFor="providerPersonId">Who are you asking?</Label>
         <select
@@ -102,6 +104,7 @@ export function ChildcareRequestForm({
         <Textarea id="customNote" name="customNote" rows={3} placeholder="Any details they should know" />
       </div>
 
+      {invalid && <p className="text-sm text-destructive">Please fill in the required fields above.</p>}
       {state.error && <p className="text-sm text-destructive">{state.error}</p>}
       <Button type="button" onClick={handleSubmit} disabled={pending}>
         {pending ? "Sending…" : "Send request"}

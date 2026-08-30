@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { getTimezoneOptions } from "@/lib/timezones";
+import { TimezoneCombobox } from "@/components/ui/timezone-combobox";
+import { useFormValidity } from "@/lib/hooks/use-form-validity";
 
 const initialState: SettingsFormState = { error: null, saved: false };
 
@@ -22,6 +24,7 @@ export function SettingsForm({
 }) {
   const [state, dispatch, pending] = useActionState(updateHouseholdSettingsAction, initialState);
   const formRef = useRef<HTMLFormElement>(null);
+  const { invalid, checkValid, clearInvalid } = useFormValidity(formRef);
   const [errorDismissed, setErrorDismissed] = useState(false);
   // Was free text (Phase 3 backlog) — a typo ("Amercia/Los_Angeles") or a
   // made-up zone used to save silently and just quietly break every
@@ -56,15 +59,15 @@ export function SettingsForm({
   // DECISIONS.md D-031. dispatch() is the same useActionState-managed
   // function either way; only how it's invoked changes.
   function handleSave() {
-    if (!formRef.current || !formRef.current.reportValidity()) return;
+    if (!checkValid()) return;
     setErrorDismissed(false);
-    dispatch(new FormData(formRef.current));
+    dispatch(new FormData(formRef.current!));
   }
 
   return (
     <Card>
       <CardContent>
-        <form ref={formRef} className="flex flex-col gap-4">
+        <form ref={formRef} noValidate onChange={clearInvalid} className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <Label htmlFor="householdName">Household name</Label>
             <Input id="householdName" name="householdName" defaultValue={household.name} required />
@@ -138,20 +141,10 @@ export function SettingsForm({
 
           <div className="flex flex-col gap-2">
             <Label htmlFor="timezone">Timezone</Label>
-            <select
-              id="timezone"
-              name="timezone"
-              defaultValue={timezone}
-              className="border-input h-9 rounded-md border bg-transparent px-3 text-sm shadow-xs"
-            >
-              {timezoneOptions.map((tz) => (
-                <option key={tz} value={tz}>
-                  {tz.replace(/_/g, " ")}
-                </option>
-              ))}
-            </select>
+            <TimezoneCombobox id="timezone" name="timezone" options={timezoneOptions} defaultValue={timezone} />
           </div>
 
+          {invalid && <p className="text-sm text-destructive">Please fill in the required fields above.</p>}
           {otherError && <p className="text-sm text-destructive">{otherError}</p>}
           {state.saved && !state.error && <p className="text-sm text-muted-foreground">Saved.</p>}
           <Button type="button" onClick={handleSave} disabled={pending}>

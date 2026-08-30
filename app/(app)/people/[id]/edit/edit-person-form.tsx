@@ -2,6 +2,7 @@
 
 import { useActionState, useRef } from "react";
 import { updatePersonAction, archivePersonAction, type SimpleFormState } from "../actions";
+import { useFormValidity } from "@/lib/hooks/use-form-validity";
 import type { PersonRow } from "@/lib/db/database.types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,17 +31,18 @@ export function EditPersonForm({ person }: { person: PersonRow }) {
   const isSelf = person.relationship_type === "self";
   const isChild = person.relationship_type === "child";
   const formRef = useRef<HTMLFormElement>(null);
+  const { invalid, checkValid, clearInvalid } = useFormValidity(formRef);
 
   // See DECISIONS.md D-031 — dispatch() called manually on click rather
   // than bound to the form's `action` prop.
   function handleSave() {
-    if (!formRef.current || !formRef.current.reportValidity()) return;
-    dispatch(new FormData(formRef.current));
+    if (!checkValid()) return;
+    dispatch(new FormData(formRef.current!));
   }
 
   return (
     <div className="flex flex-col gap-6">
-      <form ref={formRef} className="flex flex-col gap-4">
+      <form ref={formRef} noValidate onChange={clearInvalid} className="flex flex-col gap-4">
         <div className="flex flex-col gap-2">
           <Label htmlFor="fullName">Full name</Label>
           <Input id="fullName" name="fullName" defaultValue={person.full_name} required />
@@ -128,6 +130,7 @@ export function EditPersonForm({ person }: { person: PersonRow }) {
             </p>
           </div>
         )}
+        {invalid && <p className="text-sm text-destructive">Please fill in the required fields above.</p>}
         {state.error && <p className="text-sm text-destructive">{state.error}</p>}
         <Button type="button" onClick={handleSave} disabled={pending}>
           {pending ? "Saving…" : "Save changes"}

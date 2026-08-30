@@ -4,6 +4,13 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  /* D-079 (P2-5): without an explicit color-scheme, browsers render native
+     form controls (checkboxes, selects, date/time pickers, scrollbars)
+     using light OS chrome regardless of this app's own dark CSS theme --
+     that's the light-grey checkbox / unstyled-select clash the bug report
+     describes. Setting color-scheme per theme class fixes every native
+     control app-wide from this one place, no per-input styling needed. */
+  color-scheme: light;
   --radius: 0.625rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -27,6 +34,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);

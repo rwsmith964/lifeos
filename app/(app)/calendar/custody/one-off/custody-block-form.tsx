@@ -2,6 +2,7 @@
 
 import { useRef } from "react";
 import { useFormPost } from "@/lib/hooks/use-form-post";
+import { useFormValidity } from "@/lib/hooks/use-form-validity";
 import type { PersonRow } from "@/lib/db/database.types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,14 +19,15 @@ export function CustodyBlockForm({
 }) {
   const { submit, pending, error } = useFormPost("/api/calendar/custody");
   const formRef = useRef<HTMLFormElement>(null);
+  const { invalid, checkValid, clearInvalid } = useFormValidity(formRef);
 
   function handleSave() {
-    if (!formRef.current || !formRef.current.reportValidity()) return;
-    submit(new FormData(formRef.current), { redirectTo: () => "/calendar/custody" });
+    if (!checkValid()) return;
+    submit(new FormData(formRef.current!), { redirectTo: () => "/calendar/custody" });
   }
 
   return (
-    <form ref={formRef} className="flex flex-col gap-4">
+    <form ref={formRef} noValidate onChange={clearInvalid} className="flex flex-col gap-4">
       <div className="flex flex-col gap-2">
         <Label htmlFor="childPersonId">Child</Label>
         <select
@@ -91,6 +93,7 @@ export function CustodyBlockForm({
         <Label htmlFor="location">Handover location (optional)</Label>
         <Input id="location" name="location" placeholder="e.g. School pickup" />
       </div>
+      {invalid && <p className="text-sm text-destructive">Please fill in the required fields above.</p>}
       {error && <p className="text-sm text-destructive">{error}</p>}
       <Button type="button" onClick={handleSave} disabled={pending}>
         {pending ? "Saving…" : "Save custody block"}

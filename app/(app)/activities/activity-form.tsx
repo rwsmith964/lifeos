@@ -2,6 +2,7 @@
 
 import { useRef } from "react";
 import { useFormPost } from "@/lib/hooks/use-form-post";
+import { useFormValidity } from "@/lib/hooks/use-form-validity";
 import type { PersonRow } from "@/lib/db/database.types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,10 +49,11 @@ export function ActivityForm({
 }: ActivityFormProps) {
   const { submit, pending, error, errorField, clearErrorField } = useFormPost(endpoint);
   const formRef = useRef<HTMLFormElement>(null);
+  const { invalid, checkValid, clearInvalid } = useFormValidity(formRef);
 
   function handleSave() {
-    if (!formRef.current || !formRef.current.reportValidity()) return;
-    submit(new FormData(formRef.current), { method, redirectTo: () => redirectTo });
+    if (!checkValid()) return;
+    submit(new FormData(formRef.current!), { method, redirectTo: () => redirectTo });
   }
 
   const fieldError = (name: string) => (errorField === name ? error : null);
@@ -59,7 +61,7 @@ export function ActivityForm({
   const companionSet = new Set(d.preferredCompanionIds ?? []);
 
   return (
-    <form ref={formRef} className="flex flex-col gap-4">
+    <form ref={formRef} noValidate onChange={clearInvalid} className="flex flex-col gap-4">
       <div className="flex flex-col gap-2">
         <Label htmlFor="activityType">Activity</Label>
         <Input
@@ -217,6 +219,7 @@ export function ActivityForm({
         <Input id="noaaStation" name="noaaStation" placeholder="e.g. 9432780" defaultValue={d.noaaStation} />
       </div>
 
+      {invalid && <p className="text-sm text-destructive">Please fill in the required fields above.</p>}
       {error && !errorField && <p className="text-sm text-destructive">{error}</p>}
       <Button type="button" onClick={handleSave} disabled={pending}>
         {pending ? pendingLabel : submitLabel}

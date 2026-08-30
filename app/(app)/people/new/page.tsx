@@ -2,6 +2,7 @@
 
 import { useRef } from "react";
 import { useFormPost } from "@/lib/hooks/use-form-post";
+import { useFormValidity } from "@/lib/hooks/use-form-validity";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,16 +24,17 @@ const RELATIONSHIP_OPTIONS = [
 export default function NewPersonPage() {
   const { submit, pending, error } = useFormPost("/api/people");
   const formRef = useRef<HTMLFormElement>(null);
+  const { invalid, checkValid, clearInvalid } = useFormValidity(formRef);
 
   function handleSave() {
-    if (!formRef.current || !formRef.current.reportValidity()) return;
-    submit(new FormData(formRef.current), { redirectTo: (data) => `/people/${data.id}` });
+    if (!checkValid()) return;
+    submit(new FormData(formRef.current!), { redirectTo: (data) => `/people/${data.id}` });
   }
 
   return (
     <div className="flex flex-col gap-4 p-4">
       <h1 className="text-xl font-semibold">Add someone</h1>
-      <form ref={formRef} className="flex flex-col gap-4">
+      <form ref={formRef} noValidate onChange={clearInvalid} className="flex flex-col gap-4">
         <div className="flex flex-col gap-2">
           <Label htmlFor="fullName">Full name</Label>
           <Input id="fullName" name="fullName" required />
@@ -67,6 +69,7 @@ export default function NewPersonPage() {
           <Label htmlFor="notes">Notes</Label>
           <Textarea id="notes" name="notes" rows={3} />
         </div>
+        {invalid && <p className="text-sm text-destructive">Please fill in the required fields above.</p>}
         {error && <p className="text-sm text-destructive">{error}</p>}
         <Button type="button" onClick={handleSave} disabled={pending}>
           {pending ? "Saving…" : "Save"}
