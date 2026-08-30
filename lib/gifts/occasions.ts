@@ -94,3 +94,22 @@ export function scanUpcomingOccasions(
 
   return candidates.sort((a, b) => a.occasionDate.getTime() - b.occasionDate.getTime());
 }
+
+/**
+ * P1-9: the manual "Get gift ideas" form previously hardcoded
+ * occasionType="just_because" and occasionDate=today regardless of
+ * whether the person had a real upcoming occasion, which is how Cal's
+ * suggestions ended up tagged "just_because" instead of "birthday" even
+ * though his birthday was days away. This finds the single soonest real
+ * occasion (birthday/anniversary/christmas) for one person to default
+ * that form to, instead. A 366-day horizon guarantees at least a
+ * Christmas candidate for anyone not archived/self, so this only returns
+ * null for an excluded person (archived or 'self').
+ */
+export function nearestUpcomingOccasionForPerson(
+  person: Pick<PersonRow, "id" | "relationship_type" | "birthdate" | "anniversary" | "is_archived">,
+  today: Date
+): OccasionCandidate | null {
+  const candidates = scanUpcomingOccasions([person], today, 366);
+  return candidates[0] ?? null;
+}

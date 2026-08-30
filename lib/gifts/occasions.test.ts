@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   CHRISTMAS_MONTH_DAY,
   extractMonthDay,
+  nearestUpcomingOccasionForPerson,
   nextOccurrenceOfMonthDay,
   scanUpcomingOccasions,
 } from "./occasions";
@@ -120,5 +121,28 @@ describe("scanUpcomingOccasions", () => {
 
   it("matches CHRISTMAS_MONTH_DAY constant (Dec 25)", () => {
     expect(CHRISTMAS_MONTH_DAY).toEqual({ month: 12, day: 25 });
+  });
+});
+
+describe("nearestUpcomingOccasionForPerson", () => {
+  const today = new Date(2026, 7, 1); // Aug 1, 2026
+
+  it("picks the birthday over the farther-off Christmas (the P1-9 default-occasion fix)", () => {
+    const cal = person({ id: "cal", birthdate: "1984-08-19" }); // 18 days out, well before Dec 25
+    const result = nearestUpcomingOccasionForPerson(cal, today);
+    expect(result).toEqual(expect.objectContaining({ personId: "cal", occasionType: "birthday" }));
+  });
+
+  it("falls back to Christmas when no birthday/anniversary is on file", () => {
+    const result = nearestUpcomingOccasionForPerson(person({ id: "mystery" }), today);
+    expect(result).toEqual(expect.objectContaining({ personId: "mystery", occasionType: "christmas" }));
+  });
+
+  it("returns null for an excluded person ('self')", () => {
+    const result = nearestUpcomingOccasionForPerson(
+      person({ id: "richard", relationship_type: "self", birthdate: "1985-08-10" }),
+      today
+    );
+    expect(result).toBeNull();
   });
 });

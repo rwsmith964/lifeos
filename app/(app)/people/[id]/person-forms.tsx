@@ -230,7 +230,16 @@ export function RecordGiftForm({ personId }: { personId: string }) {
 
 const initialGenerateState: GenerateSuggestionsState = { error: null, success: false };
 
-export function GenerateSuggestionsForm({ personId }: { personId: string }) {
+export function GenerateSuggestionsForm({
+  personId,
+  defaultOccasionType = "just_because",
+  defaultOccasionDate,
+}: {
+  personId: string;
+  /** P1-9: the person's nearest real upcoming occasion, computed server-side — falls back to "just_because" only when none exists (e.g. excluded person). */
+  defaultOccasionType?: (typeof OCCASION_OPTIONS)[number];
+  defaultOccasionDate?: string;
+}) {
   const action = generateSuggestionsAction.bind(null, personId);
   const [state, dispatch, pending] = useActionState(action, initialGenerateState);
   const formRef = useRef<HTMLFormElement>(null);
@@ -253,7 +262,7 @@ export function GenerateSuggestionsForm({ personId }: { personId: string }) {
       <div className="flex gap-2">
         <select
           name="occasionType"
-          defaultValue="just_because"
+          defaultValue={defaultOccasionType}
           aria-label="Occasion"
           className="border-input h-8 flex-1 rounded-md border bg-transparent px-2 text-sm"
         >
@@ -267,7 +276,7 @@ export function GenerateSuggestionsForm({ personId }: { personId: string }) {
           name="occasionDate"
           type="date"
           required
-          defaultValue={new Date().toISOString().slice(0, 10)}
+          defaultValue={defaultOccasionDate ?? new Date().toISOString().slice(0, 10)}
           className="h-8"
           aria-label="Occasion date"
         />

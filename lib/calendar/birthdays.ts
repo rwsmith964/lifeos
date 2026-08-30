@@ -5,7 +5,7 @@
 // edit/cancel/reschedule and no cron or idempotency bookkeeping needed. Any
 // edit to a person's birthdate on their profile is reflected immediately,
 // every time the calendar is viewed, with no sync step in between.
-import { eachDayOfInterval, isLeapYear, startOfDay } from "date-fns";
+import { addDays, eachDayOfInterval, isLeapYear, startOfDay, subDays } from "date-fns";
 import { extractMonthDay, type MonthDay } from "../gifts/occasions";
 import type { PersonRow } from "../db/database.types";
 
@@ -70,4 +70,59 @@ export function birthdaysInRange(
 
 export function birthdayTitle(item: BirthdayCalendarItem): string {
   return item.age != null ? `${item.personName} turns ${item.age}` : `${item.personName}'s birthday`;
+}
+
+// P1-9: the daily brief must surface a birthday at specific lead-time
+// milestones counting down to it (30/14/7/3/1 days, and the day itself),
+// not silently every day for a month straight -- and it must also catch
+// one that *just* happened, since "Cal's birthday was 3 days ago and
+// nobody mentioned it" is exactly as useful a heads-up as "in 3 days."
+// Reusing the same threshold (3) for both directions is deliberate, not
+// an oversight -- it's the one lookback distance already meaningful in
+// this list.
+export const BIRTHDAY_LEAD_TIME_MILESTONE_DAYS = [30, 14, 7, 3, 1, 0] as const;
+export const BIRTHDAY_RECENT_PAST_LOOKBACK_DAYS = 3;
+
+export interface BirthdayLeadTimeItem extends BirthdayCalendarItem {
+  /** Positive = upcoming, 0 = today, negative = happened this many days ago. */
+  daysUntil: number;
+}
+
+/**
+ * Every person whose (next-or-just-passed) birthday sits on one of the
+ * forward milestones or within the recent-past lookback, as of `today`.
+ * Deliberately NOT every day in between -- a brief that mentions the same
+ * upcoming birthday every single day for a month trains the user to
+ * ignore it, same reasoning as the order-by prompt-window buffer
+ * (lib/gifts/leadtime.ts).
+ */
+export function birthdaysToSurfaceInBrief(
+  people: BirthdayEligiblePerson[],
+  today: Date
+): BirthdayLeadTimeItem[] {
+  const todayStart = startOfDay(today);
+  const maxLead = Math.max(...BIRTHDAY_LEAD_TIME_MILESTONE_DAYS);
+  const rangeStart = subDays(todayStart, BIRTHDAY_RECENT_PAST_LOOKBACK_DAYS);
+  const rangeEnd = addDays(todayStart, maxLead);
+
+  const results: BirthdayLeadTimeItem[] = [];
+  for (const item of birthdaysInRange(people, rangeStart, rangeEnd)) {
+    const daysUntil = Math.round((startOfDay(item.date).getTime() - todayStart.getTime()) / 86_400_000);
+    const isMilestone = (BIRTHDAY_LEAD_TIME_MILESTONE_DAYS as readonly number[]).includes(daysUntil);
+    const isRecentPast = daysUntil < 0 && daysUntil >= -BIRTHDAY_RECENT_PAST_LOOKBACK_DAYS;
+    if (isMilestone || isRecentPast) {
+      results.push({ ...item, daysUntil });
+    }
+  }
+
+  return results.sort((a, b) => a.daysUntil - b.daysUntil);
+}
+
+/** e.g. "in 30 days", "today", "3 days ago". No raw ISO dates, per the spec's UI-facing rule. */
+export function birthdayLeadTimeLabel(daysUntil: number): string {
+  if (daysUntil === 0) return "today";
+  if (daysUntil === 1) return "tomorrow";
+  if (daysUntil > 0) return `in ${daysUntil} days`;
+  const daysAgo = Math.abs(daysUntil);
+  return daysAgo === 1 ? "yesterday" : `${daysAgo} days ago`;
 }

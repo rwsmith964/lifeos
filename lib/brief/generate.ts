@@ -14,6 +14,7 @@ import {
   type BriefContextInput,
 } from "../ai/prompts/brief";
 import type { PersonRow } from "../db/database.types";
+import { birthdayLeadTimeLabel, birthdaysToSurfaceInBrief } from "../calendar/birthdays";
 import { listActivitiesWithLocations } from "../db/repositories/activities";
 import { calendarEventsRepo, listCustodyBlocksForHouseholdInRange, listEventsInRange } from "../db/repositories/calendar";
 import { listActiveCadencesForHousehold } from "../db/repositories/contact";
@@ -68,6 +69,22 @@ export async function generateDailyBrief(
 
   const tokenMap = buildChildTokenMap(householdPeople);
   const peopleById = new Map(householdPeople.map((p) => [p.id, p]));
+
+  // --- Birthdays at a lead-time milestone or in the recent-past lookback (Section 8.2, P1-9) ---
+  // birthdaysToSurfaceInBrief is fed householdPeople directly, so every result's
+  // personId is guaranteed to be present in peopleById.
+  const birthdays = birthdaysToSurfaceInBrief(householdPeople, todayStart).flatMap((b) => {
+    const person = peopleById.get(b.personId);
+    if (!person) return [];
+    return [
+      {
+        personLabel: tokenMap.labelFor(person),
+        age: b.age,
+        daysUntil: b.daysUntil,
+        timingLabel: birthdayLeadTimeLabel(b.daysUntil),
+      },
+    ];
+  });
 
   // --- Travel times (Section 8.5) ------------------------------------
   const home = owner?.home_lat != null && owner?.home_lng != null ? { lat: owner.home_lat, lng: owner.home_lng } : null;
@@ -223,6 +240,7 @@ export async function generateDailyBrief(
       activityTitle: activities.find((a) => a.id === p.activityId)?.activity_type ?? "activity",
       prepAtLabel: format(p.prepAt, "EEEE h:mm a"),
     })),
+    birthdays,
     weather,
     weekendPlanSummary,
   };

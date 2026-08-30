@@ -12,6 +12,7 @@ You are generating today's brief for the user: one generated summary that must b
 3. Every item in "people" MUST cite something specific and concrete — a number of days since contact, an exact date, a specific fact. A people item without a concrete reason is a failed item; omit it rather than pad the list.
 4. If there is genuinely nothing notable today, say so in one line via the headline and leave the other arrays empty. Do not manufacture content to seem useful — that trains the user to ignore the brief entirely.
 5. Only assert a weather condition, travel time, or external fact if it is present in the context you were given below. If weather data wasn't provided, omit the "weather" field (set it to null) rather than guessing.
+6. Any birthday listed below MUST appear in "headsUp" (title naming the person, detail stating the relative timing exactly as given — "in 3 days", "today", "3 days ago" — never inventing a different number). A birthday that already happened (negative days) still belongs in headsUp, framed as a catch-up nudge, not silently dropped.
 
 Return ONLY a single JSON object with exactly this shape (no prose, no markdown fences):
 {
@@ -59,12 +60,20 @@ export interface BriefWeatherContext {
   lowF: number | null;
 }
 
+export interface BriefBirthdayContext {
+  personLabel: string;
+  age: number | null;
+  daysUntil: number; // positive = upcoming, 0 = today, negative = happened this many days ago
+  timingLabel: string; // pre-formatted, e.g. "in 3 days", "today", "3 days ago"
+}
+
 export interface BriefContextInput {
   todayLabel: string; // e.g. "Tuesday, August 25" — for the model's own reference, not to be echoed verbatim
   events: BriefEventContext[];
   giftReminders: BriefGiftReminderContext[];
   overdueContacts: BriefOverdueContactContext[];
   prepObligations: BriefPrepObligationContext[];
+  birthdays: BriefBirthdayContext[]; // pre-filtered to lead-time milestones (30/14/7/3/1/day-of) + recent-past lookback
   weather: BriefWeatherContext | null;
   weekendPlanSummary: string | null; // populated only when today is Wed-Fri
 }
@@ -93,6 +102,16 @@ export function buildBriefUserPrompt(ctx: BriefContextInput): string {
       lines.push(
         `- ${gift.personLabel}'s ${gift.occasionType} is ${gift.occasionDate}; order by ${gift.orderByDate} (${gift.daysUntilOrderBy} days from now)`
       );
+    }
+  }
+
+  lines.push("", "Birthdays (lead-time milestones and recent-past only, not every day):");
+  if (ctx.birthdays.length === 0) {
+    lines.push("(none at a milestone today)");
+  } else {
+    for (const b of ctx.birthdays) {
+      const ageNote = b.age != null ? ` (turns ${b.age})` : "";
+      lines.push(`- ${b.personLabel}'s birthday is ${b.timingLabel}${ageNote}`);
     }
   }
 

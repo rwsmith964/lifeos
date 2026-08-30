@@ -8,6 +8,7 @@ const EMPTY_CTX: BriefContextInput = {
   giftReminders: [],
   overdueContacts: [],
   prepObligations: [],
+  birthdays: [],
   weather: null,
   weekendPlanSummary: null,
 };
@@ -49,6 +50,22 @@ describe("buildTemplatedBriefContent", () => {
     expect(content.headsUp).toHaveLength(2);
     expect(content.headsUp[0].title).toContain("Order by");
     expect(content.headsUp[1].title).toContain("Prep: Fly fishing");
+  });
+
+  it("turns an upcoming birthday into a headsUp item with the exact given timing", () => {
+    const content = buildTemplatedBriefContent({
+      ...EMPTY_CTX,
+      birthdays: [{ personLabel: "Cal", age: 8, daysUntil: 3, timingLabel: "in 3 days" }],
+    });
+    expect(content.headsUp).toEqual([{ title: "Cal's birthday", detail: "Coming up in 3 days — turning 8." }]);
+  });
+
+  it("turns a just-passed birthday into a past-tense headsUp item, never dropped", () => {
+    const content = buildTemplatedBriefContent({
+      ...EMPTY_CTX,
+      birthdays: [{ personLabel: "Cal", age: 8, daysUntil: -3, timingLabel: "3 days ago" }],
+    });
+    expect(content.headsUp).toEqual([{ title: "Cal's birthday", detail: "Was 3 days ago — turned 8." }]);
   });
 
   it("turns overdue contacts into people items with a concrete reason", () => {

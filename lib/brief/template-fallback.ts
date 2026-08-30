@@ -11,6 +11,13 @@ export function buildTemplatedBriefContent(ctx: BriefContextInput): BriefContent
     .map((e) => ({ time: e.time, title: e.title, note: e.travelNote }));
 
   const headsUp = [
+    ...ctx.birthdays.map((b) => ({
+      title: `${b.personLabel}'s birthday`,
+      detail:
+        b.daysUntil < 0
+          ? `Was ${b.timingLabel}${b.age != null ? ` — turned ${b.age}` : ""}.`
+          : `${b.timingLabel === "today" ? "Today" : `Coming up ${b.timingLabel}`}${b.age != null ? ` — turning ${b.age}` : ""}.`,
+    })),
     ...ctx.giftReminders.map((g) => ({
       title: `Order by ${g.orderByDate}`,
       detail: `${g.personLabel}'s ${g.occasionType} gift needs to ship — ${g.daysUntilOrderBy} days left.`,

@@ -13,6 +13,7 @@ import {
   listUpcomingEventsForPerson,
 } from "@/lib/db/repositories/calendar";
 import { evaluateCadence } from "@/lib/contact/cadence";
+import { nearestUpcomingOccasionForPerson } from "@/lib/gifts/occasions";
 import { estimateAgeYears } from "@/lib/ai/prompts/gift-suggestion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -80,6 +81,11 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
 
   const age = estimateAgeYears(person.birthdate, person.birth_year_known, new Date());
   const cadenceStatus = cadence ? evaluateCadence(cadence, new Date()) : null;
+
+  // P1-9: default the "Get gift ideas" form to this person's actual
+  // nearest upcoming occasion (birthday/anniversary/christmas) instead of
+  // always defaulting to "just_because" + today.
+  const nearestOccasion = nearestUpcomingOccasionForPerson(person, now);
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -347,7 +353,11 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
             <CardTitle className="text-sm">Get gift ideas</CardTitle>
           </CardHeader>
           <CardContent>
-            <GenerateSuggestionsForm personId={id} />
+            <GenerateSuggestionsForm
+              personId={id}
+              defaultOccasionType={nearestOccasion?.occasionType ?? "just_because"}
+              defaultOccasionDate={nearestOccasion ? format(nearestOccasion.occasionDate, "yyyy-MM-dd") : todayStr}
+            />
           </CardContent>
         </Card>
       )}
