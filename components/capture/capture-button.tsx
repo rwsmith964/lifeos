@@ -159,7 +159,7 @@ export function CaptureButton() {
           the real viewport edge, so on any screen wider than ~448px the
           button drifts far outside the app's visual "phone frame" instead
           of sitting in its bottom-right corner. */}
-      <div className="pointer-events-none fixed inset-x-0 bottom-20 z-40 mx-auto flex max-w-md justify-end">
+      <div className="pointer-events-none fixed inset-x-0 bottom-24 z-40 mx-auto flex max-w-md justify-end">
         <Button
           onClick={() => setOpen(true)}
           size="icon"

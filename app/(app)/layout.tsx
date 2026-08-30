@@ -44,7 +44,12 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto pb-20">{children}</main>
+      {/* D-079 (P2-1): bottom padding matches the capture button's full
+          footprint (bottom-24 offset + size-12/48px height = 144px = pb-36)
+          so no page's own bottom-right controls (calendar event delete,
+          gift budget Remove, activity Remove, etc.) render underneath the
+          floating button when a list scrolls all the way down. */}
+      <main className="flex-1 overflow-y-auto pb-36">{children}</main>
 
       <CaptureButton />
 
