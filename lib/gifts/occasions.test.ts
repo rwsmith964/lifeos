@@ -133,6 +133,26 @@ describe("nearestUpcomingOccasionForPerson", () => {
     expect(result).toEqual(expect.objectContaining({ personId: "cal", occasionType: "birthday" }));
   });
 
+  it("prefers a birthday that passed 3 days ago over the mathematically-nearer future Christmas (Cal's exact reported case)", () => {
+    // today = Aug 30; birthday = Aug 27 (3 days ago); Christmas (Dec 25) is
+    // the nearer *future* date, but the recent-past birthday should win.
+    const cal = person({ id: "cal", birthdate: "2022-08-27" });
+    const result = nearestUpcomingOccasionForPerson(cal, new Date(2026, 7, 30));
+    expect(result).toEqual(
+      expect.objectContaining({
+        personId: "cal",
+        occasionType: "birthday",
+        occasionDate: new Date(2026, 7, 27),
+      })
+    );
+  });
+
+  it("does not use a birthday that passed more than the lookback window ago", () => {
+    const cal = person({ id: "cal", birthdate: "2022-08-20" }); // 10 days ago
+    const result = nearestUpcomingOccasionForPerson(cal, new Date(2026, 7, 30));
+    expect(result).toEqual(expect.objectContaining({ personId: "cal", occasionType: "christmas" }));
+  });
+
   it("falls back to Christmas when no birthday/anniversary is on file", () => {
     const result = nearestUpcomingOccasionForPerson(person({ id: "mystery" }), today);
     expect(result).toEqual(expect.objectContaining({ personId: "mystery", occasionType: "christmas" }));

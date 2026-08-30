@@ -2,7 +2,7 @@
 // and fixed-date occasions (Christmas) within a rolling horizon. Pure and
 // unit-tested, like leadtime.ts — DB access lives in the caller
 // (lib/gifts/suggest.ts).
-import { addDays, isAfter, isBefore, isLeapYear, startOfDay } from "date-fns";
+import { addDays, differenceInCalendarDays, isAfter, isBefore, isLeapYear, startOfDay } from "date-fns";
 import type { OccasionType, PersonRow } from "../db/database.types";
 
 export interface MonthDay {
@@ -95,21 +95,76 @@ export function scanUpcomingOccasions(
   return candidates.sort((a, b) => a.occasionDate.getTime() - b.occasionDate.getTime());
 }
 
+// Kept in sync with BIRTHDAY_RECENT_PAST_LOOKBACK_DAYS in
+// lib/calendar/birthdays.ts — same "still worth acting on" window, applied
+// here to the gift-occasion default instead of the brief's headsUp copy.
+// Not imported from there to avoid a circular import (birthdays.ts already
+// imports extractMonthDay from this file).
+const RECENT_PAST_LOOKBACK_DAYS = 3;
+
+/** The most recent past-or-today calendar occurrence of a month/day. */
+function mostRecentOccurrenceOfMonthDay(monthDay: MonthDay, todayStart: Date): Date {
+  const thisYear = safeLocalDate(todayStart.getFullYear(), monthDay.month, monthDay.day);
+  if (isAfter(thisYear, todayStart)) {
+    return safeLocalDate(todayStart.getFullYear() - 1, monthDay.month, monthDay.day);
+  }
+  return thisYear;
+}
+
+/**
+ * A birthday/anniversary that fell within the last RECENT_PAST_LOOKBACK_DAYS
+ * days takes priority over a farther-off future occasion (e.g. Christmas) —
+ * this is what actually catches Cal's case: his birthday (Aug 27) had just
+ * passed when this form was opened (Aug 30), so the mathematically nearer
+ * *future* occasion was Christmas, four months out, not his birthday a
+ * year away. Without this, nearestUpcomingOccasionForPerson would default
+ * the "Get gift ideas" form to Christmas for someone who just had an
+ * uncelebrated birthday — the opposite of the intended fix.
+ */
+function recentPastOccasionForPerson(
+  person: Pick<PersonRow, "id" | "birthdate" | "anniversary">,
+  todayStart: Date
+): OccasionCandidate | null {
+  const candidates: OccasionCandidate[] = [];
+
+  const consider = (dateString: string | null, occasionType: "birthday" | "anniversary") => {
+    if (!dateString) return;
+    const occurred = mostRecentOccurrenceOfMonthDay(extractMonthDay(dateString), todayStart);
+    const daysAgo = differenceInCalendarDays(todayStart, occurred);
+    if (daysAgo >= 0 && daysAgo <= RECENT_PAST_LOOKBACK_DAYS) {
+      candidates.push({ personId: person.id, occasionType, occasionDate: occurred });
+    }
+  };
+  consider(person.birthdate, "birthday");
+  consider(person.anniversary, "anniversary");
+
+  candidates.sort((a, b) => b.occasionDate.getTime() - a.occasionDate.getTime());
+  return candidates[0] ?? null;
+}
+
 /**
  * P1-9: the manual "Get gift ideas" form previously hardcoded
  * occasionType="just_because" and occasionDate=today regardless of
  * whether the person had a real upcoming occasion, which is how Cal's
  * suggestions ended up tagged "just_because" instead of "birthday" even
- * though his birthday was days away. This finds the single soonest real
- * occasion (birthday/anniversary/christmas) for one person to default
- * that form to, instead. A 366-day horizon guarantees at least a
- * Christmas candidate for anyone not archived/self, so this only returns
- * null for an excluded person (archived or 'self').
+ * though his birthday was days away. This finds the single most relevant
+ * real occasion (birthday/anniversary/christmas) for one person to default
+ * that form to, instead — preferring a just-passed birthday/anniversary
+ * (see recentPastOccasionForPerson) over a farther-off future occasion. A
+ * 366-day horizon guarantees at least a Christmas candidate for anyone not
+ * archived/self, so this only returns null for an excluded person
+ * (archived or 'self').
  */
 export function nearestUpcomingOccasionForPerson(
   person: Pick<PersonRow, "id" | "relationship_type" | "birthdate" | "anniversary" | "is_archived">,
   today: Date
 ): OccasionCandidate | null {
-  const candidates = scanUpcomingOccasions([person], today, 366);
+  if (person.is_archived || person.relationship_type === "self") return null;
+
+  const todayStart = startOfDay(today);
+  const recentPast = recentPastOccasionForPerson(person, todayStart);
+  if (recentPast) return recentPast;
+
+  const candidates = scanUpcomingOccasions([person], todayStart, 366);
   return candidates[0] ?? null;
 }
