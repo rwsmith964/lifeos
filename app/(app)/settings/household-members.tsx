@@ -201,7 +201,7 @@ export function HouseholdMembers({
             <ul className="mt-2 flex flex-col gap-1">
               {pastInvites.map((invite) => (
                 <li key={invite.id}>
-                  {invite.invited_email} — {invite.status}
+                  {invite.invited_email} — {invite.status.charAt(0).toUpperCase() + invite.status.slice(1)}
                 </li>
               ))}
             </ul>

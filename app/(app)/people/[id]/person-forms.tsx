@@ -23,6 +23,8 @@ import {
   type GenerateSuggestionsState,
 } from "./actions";
 import { useAiHealth } from "@/lib/hooks/use-ai-health";
+import { useFormValidity } from "@/lib/hooks/use-form-validity";
+import { giftReactionDisplayLabel } from "@/lib/gifts/occasions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -42,21 +44,26 @@ const DAY_OF_WEEK_LABELS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursda
 // any Server Action nested under (app)'s auth-checking layout in
 // production — see DECISIONS.md D-031. dispatch() is the same
 // useActionState-managed function either way; only how it's invoked
-// changes, and reportValidity() keeps native required/min/max validation
-// working the same as a real submit would.
+// changes. Each form used reportValidity() to keep native required/min/
+// max validation working the same as a real submit would, but that also
+// pops the browser's own unstyled validation tooltip (D-079/P2-5) -- now
+// checkValidity() (silent, same pass/fail check) plus useFormValidity's
+// `invalid` flag drives one small inline message instead, next to each
+// form's existing server-error slot.
 
 export function AddInterestForm({ personId }: { personId: string }) {
   const action = addInterestAction.bind(null, personId);
   const [state, dispatch, pending] = useActionState(action, initialState);
   const formRef = useRef<HTMLFormElement>(null);
+  const { invalid, checkValid, clearInvalid } = useFormValidity(formRef);
   const justSubmittedRef = useRef(false);
   const [errorDismissed, setErrorDismissed] = useState(false);
 
   function handleAdd() {
-    if (!formRef.current || !formRef.current.reportValidity()) return;
+    if (!checkValid()) return;
     justSubmittedRef.current = true;
     setErrorDismissed(false);
-    dispatch(new FormData(formRef.current));
+    dispatch(new FormData(formRef.current!));
   }
 
   // Clear the input (and reset the strength select) after a successful
@@ -76,7 +83,7 @@ export function AddInterestForm({ personId }: { personId: string }) {
   const showError = state.error && !errorDismissed;
 
   return (
-    <form ref={formRef} className="flex flex-wrap items-end gap-2">
+    <form ref={formRef} noValidate onChange={clearInvalid} className="flex flex-wrap items-end gap-2">
       <div className="flex flex-col gap-1">
         <Label htmlFor={`interest-${personId}`} className="text-xs">
           Interest
@@ -91,6 +98,7 @@ export function AddInterestForm({ personId }: { personId: string }) {
           onChange={() => setErrorDismissed(true)}
         />
         {showError && <p className="text-xs text-destructive">{state.error}</p>}
+        {invalid && !showError && <p className="text-xs text-destructive">Interest is required.</p>}
       </div>
       <select
         name="strength"
@@ -115,14 +123,15 @@ export function AddBudgetForm({ personId }: { personId: string }) {
   const action = addBudgetAction.bind(null, personId);
   const [state, dispatch, pending] = useActionState(action, initialState);
   const formRef = useRef<HTMLFormElement>(null);
+  const { invalid, checkValid, clearInvalid } = useFormValidity(formRef);
   const justSubmittedRef = useRef(false);
   const [errorDismissed, setErrorDismissed] = useState(false);
 
   function handleAdd() {
-    if (!formRef.current || !formRef.current.reportValidity()) return;
+    if (!checkValid()) return;
     justSubmittedRef.current = true;
     setErrorDismissed(false); // a fresh submit is about to produce a fresh result either way
-    dispatch(new FormData(formRef.current));
+    dispatch(new FormData(formRef.current!));
   }
 
   useEffect(() => {
@@ -135,7 +144,7 @@ export function AddBudgetForm({ personId }: { personId: string }) {
   const showError = state.error && !errorDismissed;
 
   return (
-    <form ref={formRef} className="flex flex-wrap items-end gap-2">
+    <form ref={formRef} noValidate onChange={clearInvalid} className="flex flex-wrap items-end gap-2">
       <select
         name="occasionType"
         defaultValue="default"
@@ -169,6 +178,7 @@ export function AddBudgetForm({ personId }: { personId: string }) {
           onChange={() => setErrorDismissed(true)}
         />
         {showError && <p className="text-xs text-destructive">{state.error}</p>}
+        {invalid && !showError && <p className="text-xs text-destructive">Min and max budget are required.</p>}
       </div>
       <Button type="button" size="sm" onClick={handleAdd} disabled={pending}>
         Add
@@ -181,14 +191,15 @@ export function RecordGiftForm({ personId }: { personId: string }) {
   const action = recordGiftAction.bind(null, personId);
   const [state, dispatch, pending] = useActionState(action, initialState);
   const formRef = useRef<HTMLFormElement>(null);
+  const { invalid, checkValid, clearInvalid } = useFormValidity(formRef);
 
   function handleRecord() {
-    if (!formRef.current || !formRef.current.reportValidity()) return;
-    dispatch(new FormData(formRef.current));
+    if (!checkValid()) return;
+    dispatch(new FormData(formRef.current!));
   }
 
   return (
-    <form ref={formRef} className="flex flex-col gap-2">
+    <form ref={formRef} noValidate onChange={clearInvalid} className="flex flex-col gap-2">
       <Input name="description" placeholder="What did you give them?" required />
       <div className="flex gap-2">
         <select
@@ -215,11 +226,12 @@ export function RecordGiftForm({ personId }: { personId: string }) {
         >
           {REACTION_OPTIONS.map((r) => (
             <option key={r} value={r}>
-              {r ? r.replace("_", " ") : "reaction (optional)"}
+              {r ? giftReactionDisplayLabel(r) : "reaction (optional)"}
             </option>
           ))}
         </select>
       </div>
+      {invalid && <p className="text-xs text-destructive">Description and occasion date are required.</p>}
       {state.error && <p className="text-xs text-destructive">{state.error}</p>}
       <Button type="button" size="sm" onClick={handleRecord} disabled={pending}>
         Record gift
@@ -243,6 +255,7 @@ export function GenerateSuggestionsForm({
   const action = generateSuggestionsAction.bind(null, personId);
   const [state, dispatch, pending] = useActionState(action, initialGenerateState);
   const formRef = useRef<HTMLFormElement>(null);
+  const { invalid, checkValid, clearInvalid } = useFormValidity(formRef);
   const { aiAvailable } = useAiHealth();
 
   function handleGenerate() {
@@ -251,14 +264,14 @@ export function GenerateSuggestionsForm({
     // no visible feedback ("first click does nothing"). Defaulting the
     // field means this path is now rarely hit, but it's still a no-op
     // rather than a silent one if it is.
-    if (!formRef.current || !formRef.current.reportValidity()) return;
-    dispatch(new FormData(formRef.current));
+    if (!checkValid()) return;
+    dispatch(new FormData(formRef.current!));
   }
 
   const disabled = pending || aiAvailable === false;
 
   return (
-    <form ref={formRef} className="flex flex-col gap-2">
+    <form ref={formRef} noValidate onChange={clearInvalid} className="flex flex-col gap-2">
       <div className="flex gap-2">
         <select
           name="occasionType"
@@ -281,6 +294,7 @@ export function GenerateSuggestionsForm({
           aria-label="Occasion date"
         />
       </div>
+      {invalid && <p className="text-xs text-destructive">An occasion date is required.</p>}
       {state.error && <p className="text-xs text-destructive">{state.error}</p>}
       {state.success && (
         <p className="text-xs text-muted-foreground">{state.message ?? "Done — see the Gifts tab."}</p>
@@ -309,12 +323,13 @@ export function CadenceForm({ personId, currentDays }: { personId: string; curre
   const action = setCadenceAction.bind(null, personId);
   const [state, dispatch, pending] = useActionState(action, initialState);
   const formRef = useRef<HTMLFormElement>(null);
+  const { invalid, checkValid, clearInvalid } = useFormValidity(formRef);
   const [errorDismissed, setErrorDismissed] = useState(false);
 
   function handleSet() {
-    if (!formRef.current || !formRef.current.reportValidity()) return;
+    if (!checkValid()) return;
     setErrorDismissed(false);
-    dispatch(new FormData(formRef.current));
+    dispatch(new FormData(formRef.current!));
   }
 
   // "targetIntervalDays" is the only field here, so no field-matching is
@@ -323,7 +338,7 @@ export function CadenceForm({ personId, currentDays }: { personId: string; curre
   const showError = state.error && !errorDismissed;
 
   return (
-    <form ref={formRef} className="flex items-end gap-2">
+    <form ref={formRef} noValidate onChange={clearInvalid} className="flex items-end gap-2">
       <div className="flex flex-col gap-1">
         <Label htmlFor={`cadence-${personId}`} className="text-xs">
           Check in every (days)
@@ -339,6 +354,7 @@ export function CadenceForm({ personId, currentDays }: { personId: string; curre
           onChange={() => setErrorDismissed(true)}
         />
         {showError && <p className="text-xs text-destructive">{state.error}</p>}
+        {invalid && !showError && <p className="text-xs text-destructive">Enter a valid number of days.</p>}
       </div>
       <Button type="button" size="sm" variant="secondary" onClick={handleSet} disabled={pending}>
         Set
@@ -383,14 +399,15 @@ export function AddGiftSiteForm({ personId }: { personId: string }) {
   const action = addGiftSiteAction.bind(null, personId);
   const [state, dispatch, pending] = useActionState(action, initialState);
   const formRef = useRef<HTMLFormElement>(null);
+  const { invalid, checkValid, clearInvalid } = useFormValidity(formRef);
   const justSubmittedRef = useRef(false);
   const [errorDismissed, setErrorDismissed] = useState(false);
 
   function handleAdd() {
-    if (!formRef.current || !formRef.current.reportValidity()) return;
+    if (!checkValid()) return;
     justSubmittedRef.current = true;
     setErrorDismissed(false);
-    dispatch(new FormData(formRef.current));
+    dispatch(new FormData(formRef.current!));
   }
 
   useEffect(() => {
@@ -403,7 +420,7 @@ export function AddGiftSiteForm({ personId }: { personId: string }) {
   const showError = state.error && !errorDismissed;
 
   return (
-    <form ref={formRef} className="flex flex-wrap items-end gap-2">
+    <form ref={formRef} noValidate onChange={clearInvalid} className="flex flex-wrap items-end gap-2">
       <div className="flex flex-col gap-1">
         <Label htmlFor={`gift-site-label-${personId}`} className="text-xs">
           Site name
@@ -433,6 +450,7 @@ export function AddGiftSiteForm({ personId }: { personId: string }) {
         />
       </div>
       {showError && <p className="text-xs text-destructive">{state.error}</p>}
+      {invalid && !showError && <p className="text-xs text-destructive">Site name and URL are required.</p>}
       <Button type="button" size="sm" onClick={handleAdd} disabled={pending}>
         Save site
       </Button>
@@ -461,14 +479,15 @@ export function AddWorkScheduleForm({ personId }: { personId: string }) {
   const action = addWorkScheduleAction.bind(null, personId);
   const [state, dispatch, pending] = useActionState(action, initialState);
   const formRef = useRef<HTMLFormElement>(null);
+  const { invalid, checkValid, clearInvalid } = useFormValidity(formRef);
   const justSubmittedRef = useRef(false);
   const [errorDismissed, setErrorDismissed] = useState(false);
 
   function handleAdd() {
-    if (!formRef.current || !formRef.current.reportValidity()) return;
+    if (!checkValid()) return;
     justSubmittedRef.current = true;
     setErrorDismissed(false);
-    dispatch(new FormData(formRef.current));
+    dispatch(new FormData(formRef.current!));
   }
 
   useEffect(() => {
@@ -481,7 +500,7 @@ export function AddWorkScheduleForm({ personId }: { personId: string }) {
   const showError = state.error && !errorDismissed;
 
   return (
-    <form ref={formRef} className="flex flex-wrap items-end gap-2">
+    <form ref={formRef} noValidate onChange={clearInvalid} className="flex flex-wrap items-end gap-2">
       <div className="flex flex-col gap-1">
         <Label htmlFor={`work-day-${personId}`} className="text-xs">
           Day
@@ -546,6 +565,7 @@ export function AddWorkScheduleForm({ personId }: { personId: string }) {
         />
       </div>
       {showError && <p className="text-xs text-destructive">{state.error}</p>}
+      {invalid && !showError && <p className="text-xs text-destructive">Start time, end time, and label are required.</p>}
       <Button type="button" size="sm" onClick={handleAdd} disabled={pending}>
         Add shift
       </Button>
@@ -570,14 +590,15 @@ export function AddTimeOffForm({ personId }: { personId: string }) {
   const action = addTimeOffAction.bind(null, personId);
   const [state, dispatch, pending] = useActionState(action, initialState);
   const formRef = useRef<HTMLFormElement>(null);
+  const { invalid, checkValid, clearInvalid } = useFormValidity(formRef);
   const justSubmittedRef = useRef(false);
   const [errorDismissed, setErrorDismissed] = useState(false);
 
   function handleAdd() {
-    if (!formRef.current || !formRef.current.reportValidity()) return;
+    if (!checkValid()) return;
     justSubmittedRef.current = true;
     setErrorDismissed(false);
-    dispatch(new FormData(formRef.current));
+    dispatch(new FormData(formRef.current!));
   }
 
   useEffect(() => {
@@ -590,7 +611,7 @@ export function AddTimeOffForm({ personId }: { personId: string }) {
   const showError = state.error && !errorDismissed;
 
   return (
-    <form ref={formRef} className="flex flex-wrap items-end gap-2">
+    <form ref={formRef} noValidate onChange={clearInvalid} className="flex flex-wrap items-end gap-2">
       <div className="flex flex-col gap-1">
         <Label htmlFor={`timeoff-start-${personId}`} className="text-xs">
           From
@@ -630,6 +651,7 @@ export function AddTimeOffForm({ personId }: { personId: string }) {
         />
       </div>
       {showError && <p className="text-xs text-destructive">{state.error}</p>}
+      {invalid && !showError && <p className="text-xs text-destructive">A start date is required.</p>}
       <Button type="button" size="sm" onClick={handleAdd} disabled={pending}>
         Add time off
       </Button>

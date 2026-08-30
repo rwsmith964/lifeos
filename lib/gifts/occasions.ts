@@ -3,7 +3,7 @@
 // unit-tested, like leadtime.ts — DB access lives in the caller
 // (lib/gifts/suggest.ts).
 import { addDays, differenceInCalendarDays, isAfter, isBefore, isLeapYear, startOfDay } from "date-fns";
-import type { OccasionType, PersonRow } from "../db/database.types";
+import type { GiftReaction, OccasionType, PersonRow } from "../db/database.types";
 
 export interface MonthDay {
   month: number; // 1-12
@@ -25,6 +25,21 @@ export const OCCASION_TYPE_DISPLAY_LABELS: Record<OccasionType, string> = {
 
 export function occasionTypeDisplayLabel(occasionType: OccasionType): string {
   return OCCASION_TYPE_DISPLAY_LABELS[occasionType] ?? "Occasion";
+}
+
+/** D-079 (P2-2): human-readable label for a GiftReaction, single source of
+ * truth shared by the reaction <select> options (person-forms.tsx) and the
+ * Gift history display (people/[id]/page.tsx) -- never render the raw
+ * snake_case enum value itself. */
+export const GIFT_REACTION_DISPLAY_LABELS: Record<GiftReaction, string> = {
+  loved_it: "Loved it",
+  liked_it: "Liked it",
+  neutral: "Neutral",
+  missed: "Missed",
+};
+
+export function giftReactionDisplayLabel(reaction: GiftReaction): string {
+  return GIFT_REACTION_DISPLAY_LABELS[reaction] ?? reaction;
 }
 
 /** Parses just the month/day out of a stored `YYYY-MM-DD` date string —

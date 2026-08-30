@@ -13,7 +13,7 @@ import {
   listUpcomingEventsForPerson,
 } from "@/lib/db/repositories/calendar";
 import { evaluateCadence } from "@/lib/contact/cadence";
-import { nearestUpcomingOccasionForPerson } from "@/lib/gifts/occasions";
+import { giftReactionDisplayLabel, nearestUpcomingOccasionForPerson, occasionTypeDisplayLabel } from "@/lib/gifts/occasions";
 import { estimateAgeYears } from "@/lib/ai/prompts/gift-suggestion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -305,8 +305,8 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
               {budgets.map((budget) => (
                 <div key={budget.id} className="flex items-center justify-between text-sm">
                   <p>
-                    <span className="font-medium">{budget.occasion_type}:</span> ${(budget.min_cents / 100).toFixed(0)}
-                    –${(budget.max_cents / 100).toFixed(0)}
+                    <span className="font-medium">{occasionTypeDisplayLabel(budget.occasion_type)}:</span> $
+                    {(budget.min_cents / 100).toFixed(0)}–${(budget.max_cents / 100).toFixed(0)}
                   </p>
                   <DeleteBudgetButton personId={id} budgetId={budget.id} />
                 </div>
@@ -374,9 +374,10 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
                   <div>
                     <p className="font-medium">{gift.description}</p>
                     <p className="text-xs text-muted-foreground">
-                      {gift.occasion_type} · {gift.occasion_date}
+                      {occasionTypeDisplayLabel(gift.occasion_type)} ·{" "}
+                      {format(new Date(`${gift.occasion_date}T00:00:00`), "EEEE, MMMM d")}
                       {gift.cost_cents != null && ` · $${(gift.cost_cents / 100).toFixed(2)}`}
-                      {gift.reaction && ` · ${gift.reaction.replace("_", " ")}`}
+                      {gift.reaction && ` · ${giftReactionDisplayLabel(gift.reaction)}`}
                     </p>
                   </div>
                   <DeleteGiftButton personId={id} giftId={gift.id} />
