@@ -1,7 +1,9 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useFormPost } from "@/lib/hooks/use-form-post";
+import { useFormValidity } from "@/lib/hooks/use-form-validity";
 import type { PersonRow } from "@/lib/db/database.types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,16 +58,18 @@ function buildRedirectTarget(savedDate: string): string {
 }
 
 export function EventForm({ people, endpoint, method, submitLabel, pendingLabel, defaults }: EventFormProps) {
+  const router = useRouter();
   const { submit, pending, error } = useFormPost(endpoint);
   const [allDay, setAllDay] = useState(defaults?.allDay ?? false);
   const [errorDismissed, setErrorDismissed] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
+  const { invalid, checkValid, clearInvalid } = useFormValidity(formRef);
   const attendeeSet = new Set(defaults?.attendeePersonIds ?? []);
 
   function handleSave() {
-    if (!formRef.current || !formRef.current.reportValidity()) return;
+    if (!checkValid()) return;
     setErrorDismissed(false);
-    const formData = new FormData(formRef.current);
+    const formData = new FormData(formRef.current!);
     const savedDate = String(formData.get("date") ?? "");
     submit(formData, { method, redirectTo: () => buildRedirectTarget(savedDate) });
   }
@@ -74,7 +78,7 @@ export function EventForm({ people, endpoint, method, submitLabel, pendingLabel,
   const otherError = error && !isTimeRangeError(error) ? error : null;
 
   return (
-    <form ref={formRef} className="flex flex-col gap-4">
+    <form ref={formRef} noValidate onChange={clearInvalid} className="flex flex-col gap-4">
       <div className="flex flex-col gap-2">
         <Label htmlFor="title">Title</Label>
         <Input id="title" name="title" required defaultValue={defaults?.title} />
@@ -167,10 +171,20 @@ export function EventForm({ people, endpoint, method, submitLabel, pendingLabel,
         </div>
       )}
 
+      {invalid && <p className="text-sm text-destructive">Please fill in the required fields above.</p>}
       {otherError && <p className="text-sm text-destructive">{otherError}</p>}
-      <Button type="button" onClick={handleSave} disabled={pending}>
-        {pending ? pendingLabel : submitLabel}
-      </Button>
+      {/* D-079 (P2-3): Add Event and Edit Event previously had no way out
+          except the bottom nav or browser back -- Cancel returns to
+          wherever the form was opened from (the calendar day view in
+          practice), discarding any unsaved changes. */}
+      <div className="flex gap-2">
+        <Button type="button" variant="outline" onClick={() => router.back()} disabled={pending} className="flex-1">
+          Cancel
+        </Button>
+        <Button type="button" onClick={handleSave} disabled={pending} className="flex-1">
+          {pending ? pendingLabel : submitLabel}
+        </Button>
+      </div>
     </form>
   );
 }

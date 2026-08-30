@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, MapPin, Plus } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, MapPin, Plus } from "lucide-react";
 import {
   addDays,
   addMonths,
@@ -359,14 +359,20 @@ export default async function CalendarPage({
 
   return (
     <div className="flex flex-col gap-4 p-4">
+      {/* D-079 (P2-4): dropped the standalone header "Custody" button --
+          with the All/Custody filter toggle right below also saying
+          "Custody", the header read as three overlapping controls. Custody
+          schedule management is still one tap away via "Manage schedules"
+          inside the Custody filter view itself (below). */}
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Calendar</h1>
         <div className="flex gap-2">
-          <Button asChild size="sm" variant="outline">
-            <Link href="/calendar/custody">Custody</Link>
-          </Button>
           <Button asChild size="sm">
-            <Link href="/calendar/new">
+            {/* D-079 (P2-3): prefill from whichever day is currently
+                selected, matching the empty-state "Add something" link
+                below -- previously always opened blank regardless of the
+                day the user had just clicked. */}
+            <Link href={`/calendar/new?date=${selectedDayKey}`}>
               <Plus className="size-4" /> Add
             </Link>
           </Button>
@@ -413,23 +419,33 @@ export default async function CalendarPage({
         </Link>
       </div>
 
-      {view === "custody" && childColors.size > 0 && (
-        <div className="flex flex-wrap gap-3">
-          {[...childColors.entries()].map(([childId, color]) => (
-            <div key={childId} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span className={cn("size-2 rounded-full", color.dot)} />
-              {peopleById.get(childId) ?? "Child"}
-            </div>
-          ))}
+      {view === "custody" && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap gap-3">
+            {[...childColors.entries()].map(([childId, color]) => (
+              <div key={childId} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span className={cn("size-2 rounded-full", color.dot)} />
+                {peopleById.get(childId) ?? "Child"}
+              </div>
+            ))}
+          </div>
+          <Link href="/calendar/custody" className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground">
+            Manage schedules
+          </Link>
         </div>
       )}
 
+      {/* D-079 (P2-4): the AI weekend-plan narrative could run ~400px tall,
+          burying the month grid below the fold on every visit. A native
+          <details> starts closed by default with zero extra client JS --
+          the plan is one tap away instead of forced screen real estate. */}
       {view === "all" && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">{weekendLabel}</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2">
+        <details className="group bg-card text-card-foreground rounded-xl border shadow-sm">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-4 py-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">
+            {weekendLabel}
+            <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
+          </summary>
+          <div className="flex flex-col gap-2 px-4 pb-4">
             {weekendPlan ? (
               <>
                 <RenderedMarkdown content={weekendPlan.content_markdown} className="flex flex-col gap-1.5 text-sm text-muted-foreground" />
@@ -455,8 +471,8 @@ export default async function CalendarPage({
                 </Link>
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </details>
       )}
 
       {/* D-065: day range skips the grid entirely -- with only one day in
