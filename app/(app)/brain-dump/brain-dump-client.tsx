@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
-import { Check, Mic, MicOff, Trash2 } from "lucide-react";
+import { AlertTriangle, Check, Mic, MicOff, Trash2 } from "lucide-react";
 import { useAiHealth } from "@/lib/hooks/use-ai-health";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -74,6 +74,8 @@ interface EditableItem {
   eventDate: string;
   eventStartTime: string;
   eventEndTime: string;
+  eventAllDay: boolean;
+  eventDateApproximate: boolean;
   eventType: "personal" | "work" | "family" | "kid_activity" | "travel";
   noteText: string;
   budgetOccasionType: "birthday" | "christmas" | "anniversary" | "graduation" | "just_because" | "default";
@@ -101,6 +103,8 @@ interface ParsedApiItem {
   eventTitle: string | null;
   eventStartsAtISO: string | null;
   eventEndsAtISO: string | null;
+  eventAllDay: boolean | null;
+  eventDateApproximate: boolean | null;
   eventType: "personal" | "work" | "family" | "kid_activity" | "travel" | null;
   noteText: string | null;
   budgetOccasionType: "birthday" | "christmas" | "anniversary" | "graduation" | "just_because" | "default" | null;
@@ -124,7 +128,15 @@ function isoToDateAndTime(iso: string | null): { date: string; time: string } {
   return { date: format(parsed, "yyyy-MM-dd"), time: format(parsed, "HH:mm") };
 }
 
+function addOneHour(time: string): string {
+  const [h, m] = time.split(":").map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return "";
+  const next = (h + 1) % 24;
+  return `${String(next).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
 function fromApiItem(item: ParsedApiItem): EditableItem {
+  const allDay = item.eventAllDay ?? false;
   const start = isoToDateAndTime(item.eventStartsAtISO);
   const end = isoToDateAndTime(item.eventEndsAtISO);
   return {
@@ -142,8 +154,13 @@ function fromApiItem(item: ParsedApiItem): EditableItem {
     giftCostDollars: item.giftCostDollars != null ? String(item.giftCostDollars) : "",
     eventTitle: item.eventTitle ?? "",
     eventDate: start.date,
-    eventStartTime: start.time || "09:00",
-    eventEndTime: end.time || "10:00",
+    // P0-4: only default to a clock time when the model actually gave one
+    // and it isn't an all-day event — never invent 9am/10am out of thin
+    // air, which used to happen for every event with no stated time.
+    eventStartTime: allDay ? "" : start.time,
+    eventEndTime: allDay ? "" : end.time || (start.time ? addOneHour(start.time) : ""),
+    eventAllDay: allDay,
+    eventDateApproximate: item.eventDateApproximate ?? false,
     eventType: item.eventType ?? "personal",
     noteText: item.noteText ?? "",
     budgetOccasionType: item.budgetOccasionType ?? "default",
@@ -170,7 +187,14 @@ function isItemValid(item: EditableItem): boolean {
     case "append_person_note":
       return !!item.personId && item.noteText.trim().length > 0;
     case "create_calendar_event":
-      return item.eventTitle.trim().length > 0 && item.eventDate.length > 0;
+      // P0-4: all-day events don't need a time; timed events do — an
+      // empty time field is now a real "not entered yet" state, not a
+      // silently-defaulted 09:00, so it must block Save until filled in.
+      return (
+        item.eventTitle.trim().length > 0 &&
+        item.eventDate.length > 0 &&
+        (item.eventAllDay || item.eventStartTime.length > 0)
+      );
     case "add_time_off":
       return item.timeOffStartDate.length > 0;
   }
@@ -194,6 +218,7 @@ function toExecutePayload(item: EditableItem): Record<string, unknown> {
     eventTitle: null as string | null,
     eventStartsAtISO: null as string | null,
     eventEndsAtISO: null as string | null,
+    eventAllDay: null as boolean | null,
     eventType: null as string | null,
     noteText: null as string | null,
     budgetOccasionType: null as string | null,
@@ -227,9 +252,22 @@ function toExecutePayload(item: EditableItem): Record<string, unknown> {
     case "append_person_note":
       return { ...base, noteText: item.noteText.trim() };
     case "create_calendar_event": {
-      const startsAt = new Date(`${item.eventDate}T${item.eventStartTime || "09:00"}:00`).toISOString();
-      const endsAt = new Date(`${item.eventDate}T${item.eventEndTime || "10:00"}:00`).toISOString();
-      return { ...base, eventTitle: item.eventTitle.trim(), eventStartsAtISO: startsAt, eventEndsAtISO: endsAt, eventType: item.eventType };
+      // P0-4: all-day events are stored midnight-to-midnight; timed events
+      // use the times the user actually entered (never a silent default).
+      const startsAt = item.eventAllDay
+        ? new Date(`${item.eventDate}T00:00:00`).toISOString()
+        : new Date(`${item.eventDate}T${item.eventStartTime}:00`).toISOString();
+      const endsAt = item.eventAllDay
+        ? new Date(`${item.eventDate}T23:59:59`).toISOString()
+        : new Date(`${item.eventDate}T${item.eventEndTime || addOneHour(item.eventStartTime)}:00`).toISOString();
+      return {
+        ...base,
+        eventTitle: item.eventTitle.trim(),
+        eventStartsAtISO: startsAt,
+        eventEndsAtISO: endsAt,
+        eventAllDay: item.eventAllDay,
+        eventType: item.eventType,
+      };
     }
     case "add_time_off":
       return {
@@ -382,6 +420,10 @@ export function BrainDumpClient({ people }: { people: PersonOption[] }) {
 
   const pendingCount = items?.filter((it) => it.status === "pending" || it.status === "error").length ?? 0;
   const savedCount = items?.filter((it) => it.status === "saved").length ?? 0;
+  // P0-4: "Save all" used to stay enabled and silently skip incomplete
+  // items instead of blocking — now it's disabled until every pending
+  // item is filled in, with a message pointing at what's missing.
+  const incompletePendingCount = items?.filter((it) => it.status === "pending" && !isItemValid(it)).length ?? 0;
 
   if (!items) {
     return (
@@ -435,11 +477,19 @@ export function BrainDumpClient({ people }: { people: PersonOption[] }) {
           {savedCount > 0 ? ` · ${savedCount} saved` : ""}
         </p>
         {pendingCount > 0 && (
-          <Button size="sm" onClick={() => void saveAll()}>
+          <Button size="sm" disabled={incompletePendingCount > 0} onClick={() => void saveAll()}>
             Save all
           </Button>
         )}
       </div>
+
+      {incompletePendingCount > 0 && (
+        <p className="text-xs text-amber-600">
+          {incompletePendingCount === 1
+            ? "Finish the highlighted item below before saving all."
+            : `Finish the ${incompletePendingCount} highlighted items below before saving all.`}
+        </p>
+      )}
 
       {items.map((item) => (
         <BrainDumpItemCard
@@ -476,9 +526,20 @@ function BrainDumpItemCard({
 }) {
   const selectClass = "border-input h-9 rounded-md border bg-transparent px-3 text-sm";
   const disabled = item.status === "saving" || item.status === "saved";
+  // P0-4: flag the item visually (not just via the disabled Save button)
+  // so it's obvious which pending card is blocking "Save all".
+  const incomplete = item.status === "pending" && !isItemValid(item);
 
   return (
-    <Card className={item.status === "saved" ? "opacity-60" : undefined}>
+    <Card
+      className={
+        item.status === "saved"
+          ? "opacity-60"
+          : incomplete
+            ? "border-amber-400 dark:border-amber-600"
+            : undefined
+      }
+    >
       <CardHeader className="flex-row items-start justify-between gap-2 space-y-0">
         <div className="flex flex-col gap-1">
           <CardTitle className="text-sm">{item.summary}</CardTitle>
@@ -689,19 +750,48 @@ function BrainDumpItemCard({
               <Input value={item.eventTitle} disabled={disabled} onChange={(e) => onChange({ eventTitle: e.target.value })} />
             </div>
             <div className="flex flex-col gap-1">
-              <Label>Date</Label>
+              <div className="flex items-center gap-2">
+                <Label>Date</Label>
+                {item.eventDateApproximate && (
+                  <Badge variant="outline" className="gap-1 border-amber-400 text-amber-600 dark:border-amber-600">
+                    <AlertTriangle className="size-3" /> Guessed — double-check
+                  </Badge>
+                )}
+              </div>
               <Input type="date" value={item.eventDate} disabled={disabled} onChange={(e) => onChange({ eventDate: e.target.value })} />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-1">
-                <Label>Start</Label>
-                <Input type="time" value={item.eventStartTime} disabled={disabled} onChange={(e) => onChange({ eventStartTime: e.target.value })} />
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={item.eventAllDay}
+                disabled={disabled}
+                onChange={(e) =>
+                  onChange({
+                    eventAllDay: e.target.checked,
+                    eventStartTime: e.target.checked ? "" : item.eventStartTime || "09:00",
+                    eventEndTime: e.target.checked ? "" : item.eventEndTime || "10:00",
+                  })
+                }
+              />
+              All day
+            </label>
+            {!item.eventAllDay && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1">
+                  <Label>Start</Label>
+                  <Input type="time" value={item.eventStartTime} disabled={disabled} onChange={(e) => onChange({ eventStartTime: e.target.value })} />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-2">
+                    <Label>End</Label>
+                    {!item.eventEndTime && (
+                      <span className="text-xs text-muted-foreground">not stated</span>
+                    )}
+                  </div>
+                  <Input type="time" value={item.eventEndTime} disabled={disabled} onChange={(e) => onChange({ eventEndTime: e.target.value })} />
+                </div>
               </div>
-              <div className="flex flex-col gap-1">
-                <Label>End</Label>
-                <Input type="time" value={item.eventEndTime} disabled={disabled} onChange={(e) => onChange({ eventEndTime: e.target.value })} />
-              </div>
-            </div>
+            )}
             <div className="flex flex-col gap-1">
               <Label>Type</Label>
               <select

@@ -2,14 +2,33 @@
 
 import { revalidatePath } from "next/cache";
 import { requireHouseholdContext } from "@/lib/auth/session";
-import { calendarEventsRepo, custodyBlocksRepo } from "@/lib/db/repositories/calendar";
+import { calendarEventsRepo, custodyBlocksRepo, eventAttendeesRepo } from "@/lib/db/repositories/calendar";
 import { timeOffEntriesRepo } from "@/lib/db/repositories/work-schedule";
 import { createSupabaseServiceRoleClient } from "@/lib/db/client-service-role";
 import { generateWeekendPlan } from "@/lib/planner/generate";
 import { friendlyMutationError } from "@/lib/db/errors";
+import type { CalendarEventRow } from "@/lib/db/database.types";
 
 export interface DeleteActionState {
   error: string | null;
+}
+
+// Full snapshot needed to recreate a deleted event on Undo (P0-1) — every
+// column but the ones the DB assigns fresh on insert (id, created_at,
+// updated_at), plus the attendee person ids, which live in a join table
+// and aren't part of CalendarEventRow itself.
+export interface CalendarEventUndoSnapshot {
+  event: Omit<CalendarEventRow, "id" | "created_at" | "updated_at">;
+  attendeePersonIds: string[];
+}
+
+export async function getCalendarEventSnapshotAction(eventId: string): Promise<CalendarEventUndoSnapshot | null> {
+  const { supabase } = await requireHouseholdContext();
+  const event = await calendarEventsRepo.getById(supabase, eventId);
+  if (!event) return null;
+  const attendees = await eventAttendeesRepo.list(supabase, (q) => q.eq("calendar_event_id", eventId));
+  const { id: _id, created_at: _createdAt, updated_at: _updatedAt, ...rest } = event;
+  return { event: rest, attendeePersonIds: attendees.map((a) => a.person_id) };
 }
 
 export async function deleteCalendarEventAction(eventId: string): Promise<DeleteActionState> {
@@ -18,6 +37,27 @@ export async function deleteCalendarEventAction(eventId: string): Promise<Delete
     await calendarEventsRepo.remove(supabase, eventId);
   } catch (error) {
     return { error: friendlyMutationError(error, { fallback: "Couldn't delete this event — please try again." }) };
+  }
+  revalidatePath("/calendar");
+  return { error: null };
+}
+
+// Recreates an event from a pre-delete snapshot (Undo). Produces a new row
+// with a new id/timestamps — functionally identical to the user, but not
+// literally the same database row, which is fine since nothing else
+// references calendar_events by id across a delete.
+export async function restoreCalendarEventAction(snapshot: CalendarEventUndoSnapshot): Promise<DeleteActionState> {
+  const { supabase } = await requireHouseholdContext();
+  try {
+    const restored = await calendarEventsRepo.create(supabase, snapshot.event);
+    if (snapshot.attendeePersonIds.length > 0) {
+      await eventAttendeesRepo.createMany(
+        supabase,
+        snapshot.attendeePersonIds.map((personId) => ({ calendar_event_id: restored.id, person_id: personId }))
+      );
+    }
+  } catch (error) {
+    return { error: friendlyMutationError(error, { fallback: "Couldn't restore this event — please add it again manually." }) };
   }
   revalidatePath("/calendar");
   return { error: null };

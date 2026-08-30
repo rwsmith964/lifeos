@@ -24,12 +24,19 @@ const RELATIONSHIP_LABELS: Record<string, string> = {
 
 export default async function PeoplePage() {
   const { supabase, household } = await requireHouseholdContext();
-  const [people, childcareRequests] = await Promise.all([
+  const [people, othersRaw, childcareRequests] = await Promise.all([
     listPeopleForHousehold(supabase, household.id),
+    // P0-5: excludeSelf here is the canonical decision for "does the
+    // account owner show up in the People list" -- no (self is who's
+    // using the app, not someone they're keeping track of) -- applied via
+    // the shared query rather than a page-local filter so every other
+    // screen presenting this same roster (Add Event's attendee picker,
+    // etc.) can share the exact same decision instead of each re-deriving
+    // its own filter and silently drifting out of sync.
+    listPeopleForHousehold(supabase, household.id, { excludeSelf: true }),
     listChildcareRequestsForHousehold(supabase, household.id),
   ]);
-  const others = people
-    .filter((p) => p.relationship_type !== "self")
+  const others = othersRaw
     // The repository query sorts by the DB column full_name, which isn't
     // always what's shown as the primary label below (nickname takes
     // priority when set) — re-sort here by the same name actually

@@ -42,13 +42,24 @@ export async function POST(request: Request) {
 
   const people = await listPeopleForHousehold(supabase, household.id);
   const tokenMap = buildChildTokenMap(people);
+  // labelFor already prefers nickname over full_name for non-children and
+  // returns the CHILD_N token for children (P0-2) -- no per-call-site
+  // fallback needed here anymore.
   const dumpPeople = people.map((p) => ({
     id: p.id,
-    label: p.relationship_type === "child" ? tokenMap.labelFor(p) : p.nickname || p.full_name,
+    label: tokenMap.labelFor(p),
     relationshipType: p.relationship_type,
   }));
 
-  const userPrompt = buildBrainDumpUserPrompt(format(new Date(), "EEEE, MMMM d, yyyy"), dumpPeople, transcript);
+  // Rewrite any child's nickname/full name/first name mentioned in the raw
+  // transcript to their CHILD_N token BEFORE building the prompt, so "Cal's
+  // shoe size is 10" becomes "CHILD_1's shoe size is 10" -- matching the
+  // token-only roster line above and letting the model actually resolve
+  // personId instead of silently leaving it null (P0-2). Text fields in the
+  // AI's response are restored back to real names below via
+  // tokenMap.restoreRealNames, same as before.
+  const redactedTranscript = tokenMap.redactMentions(transcript);
+  const userPrompt = buildBrainDumpUserPrompt(format(new Date(), "EEEE, MMMM d, yyyy"), dumpPeople, redactedTranscript);
 
   let aiResult;
   try {

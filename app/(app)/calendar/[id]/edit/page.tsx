@@ -12,7 +12,8 @@ export default async function EditCalendarEventPage({ params }: { params: Promis
   if (!event || event.household_id !== household.id) notFound();
 
   const [people, attendees] = await Promise.all([
-    listPeopleForHousehold(supabase, household.id),
+    // excludeSelf: true matches the People tab and Add Event (P0-5).
+    listPeopleForHousehold(supabase, household.id, { excludeSelf: true }),
     listAttendeesForEvent(supabase, id),
   ]);
 

@@ -4,6 +4,7 @@ import "./globals.css";
 import { APP_NAME } from "@/lib/constants";
 import { ServiceWorkerRegistration } from "./service-worker-registration";
 import { ThemeProvider } from "@/components/theme-provider";
+import { ToastProvider } from "@/components/ui/toast";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -58,8 +59,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full flex flex-col">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-          {children}
-          <ServiceWorkerRegistration />
+          <ToastProvider>
+            {children}
+            <ServiceWorkerRegistration />
+          </ToastProvider>
         </ThemeProvider>
       </body>
     </html>

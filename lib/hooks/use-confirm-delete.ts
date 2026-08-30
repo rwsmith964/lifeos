@@ -1,19 +1,23 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { useToast } from "@/components/ui/toast";
 
 /**
- * Shared two-click "arm, then confirm" delete flow (KNOWN-ISSUES.md 1.5: no
- * confirm/undo on any delete). First click arms the action and flips the
- * button into its "Confirm delete" state; a second click within the arm
- * window actually runs it. Arming auto-resets after `armMs` so a stray
- * second click days later can't slip through as a confirm.
+ * Shared delete-confirmation flow (P0-1). Opens a real confirmation dialog
+ * (see components/ui/confirm-delete-button.tsx) rather than the earlier
+ * two-click "arm" pattern, which testing showed produced no visible
+ * feedback on the first click and was easy to miss entirely. On success,
+ * shows a toast — with an Undo action when the caller supplied one — and
+ * forces a fresh server render via router.refresh() so the change is
+ * reflected immediately without waiting for Next's revalidation signal to
+ * be picked up by an already-mounted tree (see D-051 for background on why
+ * that extra refresh is needed here).
  *
  * `action` should reject/throw on failure (server actions here already
  * return `{ error }` shapes via `friendlyMutationError` — pass a wrapper
- * that throws `new Error(result.error)` when present, or a raw action that
- * throws directly; both are handled the same way here).
+ * that throws `new Error(result.error)` when present).
  */
 function isNextNavigationSignal(error: unknown): boolean {
   return (
@@ -26,64 +30,62 @@ function isNextNavigationSignal(error: unknown): boolean {
   );
 }
 
-export function useConfirmDelete(action: () => Promise<void> | void, armMs = 4000) {
-  const [armed, setArmed] = useState(false);
+interface UseConfirmDeleteOptions {
+  /** Recreates the deleted record. When set, the success toast offers Undo. */
+  onUndo?: () => Promise<void>;
+  successMessage?: string;
+}
+
+export function useConfirmDelete(action: () => Promise<void> | void, options: UseConfirmDeleteOptions = {}) {
+  const { onUndo, successMessage = "Deleted." } = options;
+  const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const router = useRouter();
+  const { showToast } = useToast();
 
-  useEffect(() => {
-    return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    };
+  const requestConfirm = useCallback(() => {
+    setError(null);
+    setOpen(true);
   }, []);
 
-  const trigger = useCallback(() => {
+  const cancel = useCallback(() => {
+    setOpen(false);
     setError(null);
-    if (!armed) {
-      setArmed(true);
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-      timeoutRef.current = setTimeout(() => setArmed(false), armMs);
-      return;
-    }
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+  }, []);
+
+  const confirm = useCallback(() => {
     startTransition(async () => {
       try {
         await action();
-        setArmed(false);
-        // D-051: the Server Action's own revalidatePath() call correctly
-        // marks the route stale and (per direct network inspection) the
-        // POST response IS the fresh, already-updated RSC payload — but
-        // in production this tab's already-mounted component tree was
-        // observed staying stuck on the pre-delete view for 5+ seconds
-        // with zero errors, only fixing itself on the next real
-        // navigation/reload. router.refresh() forces this tab to
-        // re-request and apply a fresh server render explicitly, instead
-        // of relying on the framework to notice and apply the
-        // revalidation signal on its own. Cheap (one extra round trip)
-        // and used by every delete flow sharing this hook (activities,
-        // gifts, interests, budgets, calendar events/custody, people).
+        setOpen(false);
         router.refresh();
+        showToast({
+          title: successMessage,
+          variant: "success",
+          action: onUndo
+            ? {
+                label: "Undo",
+                onClick: async () => {
+                  try {
+                    await onUndo();
+                    router.refresh();
+                    showToast({ title: "Restored.", variant: "default" });
+                  } catch {
+                    showToast({ title: "Couldn't undo that — please redo it manually.", variant: "destructive" });
+                  }
+                },
+              }
+            : undefined,
+        });
       } catch (err) {
-        // Next.js redirect()/notFound() inside a server action surface here
-        // as a special digest-tagged error ("NEXT_REDIRECT"/"NEXT_NOT_FOUND")
-        // rather than a real failure — some actions this hook wraps (e.g.
-        // archivePersonAction) redirect on success. Rethrow so Next's own
-        // client runtime still performs the navigation instead of us
-        // swallowing it and showing a bogus error message.
         if (isNextNavigationSignal(err)) throw err;
-        setArmed(false);
+        setOpen(false);
         setError(err instanceof Error ? err.message : "Couldn't delete that — please try again.");
+        showToast({ title: "Couldn't delete that", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
       }
     });
-  }, [armed, action, armMs, router]);
+  }, [action, router, showToast, onUndo, successMessage]);
 
-  const cancel = useCallback(() => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    setArmed(false);
-    setError(null);
-  }, []);
-
-  return { armed, pending, error, trigger, cancel };
+  return { open, pending, error, requestConfirm, confirm, cancel };
 }

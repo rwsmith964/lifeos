@@ -18,6 +18,7 @@ Rules:
 5. If the note doesn't correspond to anything actionable in this app (not about a person, event, or gift), set status to "unrecognized" and briefly say so in confirmationMessage.
 6. Once a clarifying question has been answered, use the full conversation so far to decide — don't re-ask something already answered earlier in the thread.
 7. Exception to rule 1: for add_time_off, if the user doesn't name a specific person ("I'm off Friday", "taking next week off"), do NOT ask who and do NOT guess — set personId to null. The app automatically attributes an unnamed time-off entry to the person actually using the device, which you cannot determine from the household list (a household can contain more than one household person with relationship_type "self" — one per adult member — so picking one yourself would often be wrong). Still ask a clarifying question if the user DOES name someone else and that name is ambiguous or unresolvable, exactly as rule 1 says for every other action type.
+8. For create_calendar_event: if no specific time of day was stated (no "7am", "at noon", "after work", etc.), set eventAllDay to true and give eventStartsAtISO that date at midnight (00:00:00) instead of inventing a time — don't treat a missing time alone as something to ask a clarifying question about.
 
 Return ONLY a single JSON object with exactly this shape (no prose, no markdown fences):
 {
@@ -37,6 +38,7 @@ Return ONLY a single JSON object with exactly this shape (no prose, no markdown 
     "eventTitle": string | null,
     "eventStartsAtISO": string | null,
     "eventEndsAtISO": string | null,
+    "eventAllDay": boolean | null,
     "eventType": "personal" | "work" | "family" | "kid_activity" | "travel" | null,
     "noteText": string | null,
     "budgetOccasionType": "birthday" | "christmas" | "anniversary" | "graduation" | "just_because" | "default" | null,
@@ -80,6 +82,9 @@ export const captureActionSchema = z.object({
       eventTitle: z.string().nullable(),
       eventStartsAtISO: z.string().nullable(),
       eventEndsAtISO: z.string().nullable(),
+      // P0-4 (shared with Brain Dump): lets the model say "no time was
+      // ever stated" instead of the model or executor fabricating a time.
+      eventAllDay: z.boolean().nullable(),
       eventType: z.enum(["personal", "work", "family", "kid_activity", "travel"]).nullable(),
       noteText: z.string().nullable(),
       budgetOccasionType: occasionTypeSchema.nullable(),

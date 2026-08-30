@@ -41,13 +41,23 @@ export async function POST(request: Request) {
 
   const people = await listPeopleForHousehold(supabase, household.id);
   const tokenMap = buildChildTokenMap(people);
+  // labelFor already prefers nickname over full_name for non-children and
+  // returns the CHILD_N token for children (P0-2), matching Brain Dump so
+  // the same input resolves the same way in both features.
   const capturePeople = people.map((p) => ({
     id: p.id,
-    label: p.relationship_type === "child" ? tokenMap.labelFor(p) : p.nickname || p.full_name,
+    label: tokenMap.labelFor(p),
     relationshipType: p.relationship_type,
   }));
 
-  const userPrompt = buildCaptureUserPrompt(format(new Date(), "EEEE, MMMM d, yyyy"), capturePeople, body.turns);
+  // Same fix as Brain Dump (P0-2): rewrite child nickname/full name/first
+  // name mentions in every turn's raw text to the matching CHILD_N token
+  // before building the prompt, so "Cal's shoe size is 10" resolves
+  // against the token-only roster line above instead of the model failing
+  // to match a redacted child at all.
+  const redactedTurns = body.turns.map((turn) => ({ ...turn, text: tokenMap.redactMentions(turn.text) }));
+
+  const userPrompt = buildCaptureUserPrompt(format(new Date(), "EEEE, MMMM d, yyyy"), capturePeople, redactedTurns);
 
   let aiResult;
   try {

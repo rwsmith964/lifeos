@@ -83,14 +83,30 @@ export async function executeAction(
     }
     case "create_calendar_event": {
       if (!action.eventTitle || !action.eventStartsAtISO) throw new Error("Missing event title or start time");
+      // P0-4: when no time of day was ever stated, the model/review-UI sets
+      // eventAllDay rather than us inventing a clock time. All-day events
+      // span midnight-to-midnight of the given date, matching the manual
+      // Add Event form's own all-day convention (app/api/calendar/events).
+      const allDay = action.eventAllDay ?? false;
       const startsAt = new Date(action.eventStartsAtISO);
-      const endsAt = action.eventEndsAtISO ? new Date(action.eventEndsAtISO) : new Date(startsAt.getTime() + 60 * 60 * 1000);
+      let startsAtISO: string;
+      let endsAtISO: string;
+      if (allDay) {
+        const datePart = format(startsAt, "yyyy-MM-dd");
+        startsAtISO = new Date(`${datePart}T00:00:00`).toISOString();
+        endsAtISO = new Date(`${datePart}T23:59:59`).toISOString();
+      } else {
+        const endsAt = action.eventEndsAtISO ? new Date(action.eventEndsAtISO) : new Date(startsAt.getTime() + 60 * 60 * 1000);
+        startsAtISO = startsAt.toISOString();
+        endsAtISO = endsAt.toISOString();
+      }
       const event = await calendarEventsRepo.create(supabase, {
         household_id: household.id,
         created_by_person_id: selfPerson.id,
         title: action.eventTitle,
-        starts_at: startsAt.toISOString(),
-        ends_at: endsAt.toISOString(),
+        starts_at: startsAtISO,
+        ends_at: endsAtISO,
+        all_day: allDay,
         event_type: action.eventType ?? "personal",
       });
       if (action.personId) {

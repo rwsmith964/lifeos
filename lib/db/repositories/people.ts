@@ -35,14 +35,26 @@ export const personGiftSitesRepo = createRepository<
   PersonGiftSiteUpdate
 >("person_gift_sites");
 
+// The canonical household-roster query (P0-5) -- every screen that shows
+// "the people in this household" (People tab, Add Event's attendee
+// picker, gift/interest/note person pickers, AI feature rosters) should go
+// through this one function rather than querying the `people` table
+// directly, so a change to what counts as "in the roster" only has to be
+// made once. `excludeSelf` defaults to false to preserve every existing
+// caller's behavior; pass true for any picker where the account owner
+// showing up alongside people they'd add/select doesn't make sense (e.g.
+// the People list itself and the calendar event attendee picker -- you're
+// always implicitly on your own calendar, so being able to "add yourself"
+// as an attendee is not a real use case).
 export async function listPeopleForHousehold(
   client: SupabaseClient,
   householdId: string,
-  { includeArchived = false }: { includeArchived?: boolean } = {}
+  { includeArchived = false, excludeSelf = false }: { includeArchived?: boolean; excludeSelf?: boolean } = {}
 ): Promise<PersonRow[]> {
   return peopleRepo.list(client, (q) => {
     let query = q.eq("household_id", householdId);
     if (!includeArchived) query = query.eq("is_archived", false);
+    if (excludeSelf) query = query.neq("relationship_type", "self");
     return query.order("full_name", { ascending: true });
   });
 }

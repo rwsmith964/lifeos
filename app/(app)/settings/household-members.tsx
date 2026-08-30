@@ -15,7 +15,6 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ConfirmDeleteButton } from "@/components/ui/confirm-delete-button";
-import { useConfirmDelete } from "@/lib/hooks/use-confirm-delete";
 
 // Kept here rather than in household-invite-actions.ts: a "use server" file
 // may only export async functions at runtime (type-only exports like
@@ -105,24 +104,15 @@ function InviteForm() {
 }
 
 function RevokeInviteButton({ inviteId }: { inviteId: string }) {
-  const { armed, pending, error, trigger, cancel } = useConfirmDelete(async () => {
-    const result = await revokeHouseholdInviteAction(inviteId);
-    if (result.error) throw new Error(result.error);
-  });
   return (
-    <div className="flex flex-col items-end gap-1">
-      <div className="flex items-center gap-1">
-        <Button type="button" size="sm" variant={armed ? "destructive" : "ghost"} disabled={pending} onClick={trigger}>
-          {pending ? "Revoking…" : armed ? "Confirm revoke" : "Revoke"}
-        </Button>
-        {armed && !pending && (
-          <Button type="button" size="sm" variant="ghost" onClick={cancel}>
-            Cancel
-          </Button>
-        )}
-      </div>
-      {error && <p className="text-xs text-destructive">{error}</p>}
-    </div>
+    <ConfirmDeleteButton
+      label="Revoke"
+      confirmLabel="Revoke"
+      dialogTitle="Revoke this invite?"
+      successMessage="Invite revoked."
+      size="sm"
+      action={() => revokeHouseholdInviteAction(inviteId)}
+    />
   );
 }
 

@@ -25,6 +25,8 @@ Rules:
 6. If nothing in the whole transcript is actionable, return an empty items array.
 7. record_gift always records a gift IDEA (status "idea"), never a completed transaction — for something already given, that sentence isn't actionable for this feature; omit it (per rule 5).
 8. Each item needs a short "summary" string (under 12 words, present tense, e.g. "Add 'fly fishing' to Dave's interests" or "Log a call with Mom today") describing what will happen if the item is saved as-is — written for a human scanning a review list, not a confirmation of something already done.
+9. For create_calendar_event: if the transcript names a day but never states a specific time of day (no "7am", "at noon", "after work", etc.), set eventAllDay to true and give eventStartsAtISO that date at midnight (00:00:00) — never invent a time of day that was never said (P0-4: the review UI used to silently default missing times to a made-up clock time). Set eventAllDay to false whenever a specific time was stated.
+10. For create_calendar_event: set eventDateApproximate to true when the date itself is a loose guess rather than something the transcript clearly pins down (e.g. "sometime next month", "in a few weeks", a season with no date) — the review UI flags this for the user to double-check. Set it to false when the date is stated explicitly (a specific date) or unambiguously resolvable (a clearly named weekday, "tomorrow", "next Friday").
 
 Return ONLY a single JSON object with exactly this shape (no prose, no markdown fences):
 {
@@ -44,6 +46,8 @@ Return ONLY a single JSON object with exactly this shape (no prose, no markdown 
       "eventTitle": string | null,
       "eventStartsAtISO": string | null,
       "eventEndsAtISO": string | null,
+      "eventAllDay": boolean | null,
+      "eventDateApproximate": boolean | null,
       "eventType": "personal" | "work" | "family" | "kid_activity" | "travel" | null,
       "noteText": string | null,
       "budgetOccasionType": "birthday" | "christmas" | "anniversary" | "graduation" | "just_because" | "default" | null,
@@ -84,6 +88,11 @@ export const brainDumpItemSchema = z.object({
   eventTitle: z.string().nullable(),
   eventStartsAtISO: z.string().nullable(),
   eventEndsAtISO: z.string().nullable(),
+  // P0-4: lets the model say "no time was ever stated" (all-day) and "this
+  // date is a loose guess" (approximate) instead of the review UI silently
+  // defaulting to a fabricated time / presenting a guessed date as certain.
+  eventAllDay: z.boolean().nullable(),
+  eventDateApproximate: z.boolean().nullable(),
   eventType: z.enum(["personal", "work", "family", "kid_activity", "travel"]).nullable(),
   noteText: z.string().nullable(),
   budgetOccasionType: occasionTypeSchema.nullable(),

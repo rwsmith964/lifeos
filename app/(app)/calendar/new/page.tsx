@@ -8,7 +8,10 @@ export default async function NewCalendarEventPage({
   searchParams: Promise<{ date?: string }>;
 }) {
   const { supabase, household } = await requireHouseholdContext();
-  const people = await listPeopleForHousehold(supabase, household.id);
+  // excludeSelf: true matches the People tab (P0-5) -- you're always
+  // implicitly on your own calendar, so you're not a selectable attendee
+  // of your own event.
+  const people = await listPeopleForHousehold(supabase, household.id, { excludeSelf: true });
   const { date } = await searchParams;
 
   // The calendar day view links here as `/calendar/new?date=YYYY-MM-DD`

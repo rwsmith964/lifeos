@@ -30,14 +30,25 @@ export async function getCadenceForPerson(
   return rows[0] ?? null;
 }
 
+// P0-5 fix: previously joined on people!inner(household_id) only, with no
+// is_archived check on the joined person. A cadence row left pointing at
+// an archived/test person (e.g. an archived "ZZ Brief TestFriend" row)
+// still came back here as "active," and since that person no longer shows
+// up in listPeopleForHousehold's peopleById map, generate.ts's lookup
+// silently fell back to the literal string "someone" in the brief output.
+// Filtering on person.is_archived = false here means an active cadence
+// can now only ever resolve to a person who still exists in a caller's
+// own peopleById map, since both queries share the same is_archived
+// condition.
 export async function listActiveCadencesForHousehold(
   client: SupabaseClient,
   householdId: string
 ): Promise<(ContactCadenceRow & { person_id: string })[]> {
   const { data, error } = await client
     .from("contact_cadences")
-    .select("*, person:people!inner(household_id)")
+    .select("*, person:people!inner(household_id, is_archived)")
     .eq("person.household_id", householdId)
+    .eq("person.is_archived", false)
     .eq("is_active", true);
   if (error) throw error;
   return (data ?? []) as (ContactCadenceRow & { person_id: string })[];
