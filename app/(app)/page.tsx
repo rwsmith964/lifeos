@@ -1,10 +1,12 @@
-import { format } from "date-fns";
+import { addDays, format, formatDistanceToNow, startOfDay } from "date-fns";
 import Link from "next/link";
-import { CalendarClock, Cloud, Gift, Mic, Sparkles, Users, Zap } from "lucide-react";
+import { AlertTriangle, CalendarClock, Cloud, Gift, Mic, Sparkles, Users, Zap } from "lucide-react";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { generateDailyBrief } from "@/lib/brief/generate";
+import { isBriefStale } from "@/lib/brief/staleness";
 import { createSupabaseServiceRoleClient } from "@/lib/db/client-service-role";
 import { briefsRepo, getBriefForPersonAndDate } from "@/lib/db/repositories/system";
+import { listCustodyBlocksForHouseholdInRange, listEventsInRange } from "@/lib/db/repositories/calendar";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
 import { listOpenOpportunitiesWithSubjectForHousehold } from "@/lib/db/repositories/opportunities";
 import { getPresentedOpportunities } from "@/lib/opportunities/present";
@@ -51,6 +53,25 @@ export default async function BriefPage() {
   // (rare, but possible for e.g. two grandparents sharing a first name)
   // falls back to plain text rather than risk linking to the wrong person.
   const householdPeople = content ? await listPeopleForHousehold(supabase, household.id) : [];
+
+  // P1-13: detect whether anything the brief was built from (today/
+  // tomorrow's events and custody blocks, or the household's people —
+  // e.g. a birthdate edit) has changed since brief.generated_at, so we
+  // can hint that it's out of date instead of silently serving a stale
+  // cache next to fresher data. Same window generateDailyBrief itself
+  // reads (today through +2 days) so this never flags a change the
+  // brief wouldn't have cared about anyway.
+  let isStale = false;
+  if (brief && content) {
+    const windowStart = startOfDay(today);
+    const windowEnd = addDays(windowStart, 2);
+    const [recentEvents, recentCustodyBlocks] = await Promise.all([
+      listEventsInRange(supabase, household.id, windowStart.toISOString(), windowEnd.toISOString()),
+      listCustodyBlocksForHouseholdInRange(supabase, household.id, windowStart.toISOString(), windowEnd.toISOString()),
+    ]);
+    isStale = isBriefStale(brief.generated_at, [...recentEvents, ...recentCustodyBlocks, ...householdPeople]);
+  }
+
   const idByUniqueName = new Map<string, string>();
   const seenNames = new Set<string>();
   for (const p of householdPeople) {
@@ -70,15 +91,35 @@ export default async function BriefPage() {
     );
   }
 
+  // P1-13: a human-friendly relative time, matching the phrasing already
+  // used in the notifications list ("about 9 hours ago") — never a raw
+  // ISO timestamp per the ground rule against showing raw dates.
+  const generatedAtLabel = brief
+    ? formatDistanceToNow(new Date(brief.generated_at), { addSuffix: true })
+    : null;
+
   return (
     <div className="flex flex-col gap-4 p-4">
       <div className="flex items-start justify-between gap-2">
         <div>
           <p className="text-xs text-muted-foreground">{format(today, "EEEE, MMMM d")}</p>
           <h1 className="text-xl font-semibold">{content.headline}</h1>
+          {generatedAtLabel && (
+            <p className="mt-0.5 text-xs text-muted-foreground">Updated {generatedAtLabel}</p>
+          )}
         </div>
         <RegenerateBriefButton />
       </div>
+
+      {isStale && (
+        <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <p>
+            Your calendar or household info has changed since this brief was written — tap{" "}
+            <span className="font-medium">Refresh brief</span> above to update it.
+          </p>
+        </div>
+      )}
 
       {/* D-066: brain dump's other entry point, alongside the link inside
           the Quick Capture panel (components/capture/capture-button.tsx) —
