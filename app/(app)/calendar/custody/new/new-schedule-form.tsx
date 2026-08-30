@@ -282,7 +282,7 @@ export function NewScheduleForm({
                       </option>
                     ))}
                   </select>
-                  <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <label className="flex w-20 shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
                     <input
                       type="checkbox"
                       checked={isAllDay}
@@ -290,14 +290,17 @@ export function NewScheduleForm({
                     />
                     All Day
                   </label>
-                  {!isAllDay && (
-                    <Input
-                      type="time"
-                      className="w-32"
-                      value={weeklyHandoverTime[dayIndex] ?? ""}
-                      onChange={(e) => setWeeklyHandoverTime((prev) => ({ ...prev, [dayIndex]: e.target.value }))}
-                    />
-                  )}
+                  {/* Always reserve this row's width, even when "All Day" is checked, so
+                      toggling a row never reflows the rows below it — an earlier version
+                      showed/hid this field, which shifted every subsequent checkbox and
+                      caused accidental misclicks on the wrong day while toggling quickly. */}
+                  <Input
+                    type="time"
+                    className="w-32"
+                    disabled={isAllDay}
+                    value={weeklyHandoverTime[dayIndex] ?? ""}
+                    onChange={(e) => setWeeklyHandoverTime((prev) => ({ ...prev, [dayIndex]: e.target.value }))}
+                  />
                 </div>
               );
             })}
