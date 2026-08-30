@@ -218,7 +218,12 @@ function toExecutePayload(item: EditableItem): Record<string, unknown> {
     eventTitle: null as string | null,
     eventStartsAtISO: null as string | null,
     eventEndsAtISO: null as string | null,
+    // Both fields are required keys on brainDumpItemSchema (nullable, not
+    // optional) — omitting either from this object entirely would drop it
+    // from the JSON body and fail server-side validation for every item
+    // type, not just calendar events.
     eventAllDay: null as boolean | null,
+    eventDateApproximate: null as boolean | null,
     eventType: null as string | null,
     noteText: null as string | null,
     budgetOccasionType: null as string | null,
@@ -266,6 +271,7 @@ function toExecutePayload(item: EditableItem): Record<string, unknown> {
         eventStartsAtISO: startsAt,
         eventEndsAtISO: endsAt,
         eventAllDay: item.eventAllDay,
+        eventDateApproximate: item.eventDateApproximate,
         eventType: item.eventType,
       };
     }
