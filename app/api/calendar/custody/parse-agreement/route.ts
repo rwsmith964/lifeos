@@ -17,6 +17,7 @@ import {
   type CustodyAgreementRosterPerson,
 } from "@/lib/ai/prompts/custody-agreement";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
+import { filterEligibleResponsibleAdults } from "@/lib/custody/eligible-parents";
 
 const MAX_AGREEMENT_CHARS = 20000;
 
@@ -47,12 +48,33 @@ export async function POST(request: Request) {
   const truncated = text.slice(0, MAX_AGREEMENT_CHARS);
 
   const people = await listPeopleForHousehold(supabase, household.id);
-  const adults: CustodyAgreementRosterPerson[] = people
-    .filter((p) => p.relationship_type !== "child")
-    .map((p) => ({ id: p.id, label: p.nickname || p.full_name, relationshipType: p.relationship_type }));
+  // Only offer the AI the same "eligible responsible adult" set the Weekly
+  // builder's own person picker uses (self/co_parent/spouse/partner) — a
+  // live-verification run found the model matching "Mother"/"Father" against
+  // a household member tagged relationship_type "parent" (meaning a
+  // grandparent to the kids, per lib/custody/eligible-parents.ts), which the
+  // builder then couldn't render at all (that id isn't a selectable option),
+  // silently dropping 4 of 7 days. Narrowing the roster we hand the model to
+  // exactly the eligible set makes every returned id guaranteed renderable,
+  // and removes the ambiguous grandparent as a candidate the model could
+  // mismatch onto in the first place.
+  const eligibleAdults = filterEligibleResponsibleAdults(people);
+  const eligibleIds = new Set(eligibleAdults.map((p) => p.id));
+  const adults: CustodyAgreementRosterPerson[] = eligibleAdults.map((p) => ({
+    id: p.id,
+    label: p.nickname || p.full_name,
+    relationshipType: p.relationship_type,
+  }));
   const children: CustodyAgreementRosterPerson[] = people
     .filter((p) => p.relationship_type === "child")
     .map((p) => ({ id: p.id, label: p.nickname || p.full_name, relationshipType: p.relationship_type }));
+
+  if (adults.length < 2) {
+    return NextResponse.json({
+      status: "unavailable",
+      message: "You need at least two eligible adults (co-parent, spouse, or partner) on record before parsing a custody agreement — add one under People first.",
+    });
+  }
 
   if (children.length === 0) {
     return NextResponse.json({ error: "Add at least one child to the household before parsing a custody agreement." }, { status: 400 });
@@ -82,15 +104,16 @@ export async function POST(request: Request) {
       });
     }
 
-    // Defensive: only ids that are actually valid personIds in this
-    // household's own roster survive — the model resolves names against
-    // the roster we gave it, but never trust an AI response's ids as
-    // authorization-safe input straight into another call.
-    const validPersonIds = new Set(people.map((p) => p.id));
+    // Defensive: only ids that are actually valid, eligible-responsible-adult
+    // personIds in this household's own roster survive — the model resolves
+    // names against the roster we gave it, but never trust an AI response's
+    // ids as authorization-safe input straight into another call, and never
+    // let through an id the Weekly builder's own dropdown couldn't render.
     const sanitizedAssignments: Record<string, string | null> = {};
     for (const [dayIndex, personId] of Object.entries(validated.data.weeklyAssignments)) {
-      sanitizedAssignments[dayIndex] = personId && validPersonIds.has(personId) ? personId : null;
+      sanitizedAssignments[dayIndex] = personId && eligibleIds.has(personId) ? personId : null;
     }
+    const validPersonIds = new Set(people.map((p) => p.id));
     const sanitizedChildIds = validated.data.childPersonIds.filter((id) => validPersonIds.has(id) && children.some((c) => c.id === id));
 
     return NextResponse.json({
