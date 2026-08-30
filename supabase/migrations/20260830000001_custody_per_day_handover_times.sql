@@ -1,0 +1,20 @@
+-- LifeOS: per-day handover times for custody schedules.
+--
+-- Reported confusion (user feedback, Aug 30): the abstract "assign each
+-- cycle day to a parent" builder has no way to express a real-world
+-- schedule like "pick up Friday 4:30pm, return Monday 8:30am" — every
+-- handover in a schedule shares one single handover_time, but this
+-- pattern needs two different times (16:30 for the Friday handover,
+-- 08:30 for the Monday handover).
+--
+-- custom_handover_times is additive and nullable: null (the default)
+-- means "every handover in this schedule uses the schedule's single
+-- handover_time," exactly today's behavior for every existing row — no
+-- backfill, no behavior change for schedules built before this migration.
+-- When present, it's a JSON object keyed by cycle dayIndex (as a string,
+-- since JSON object keys are always strings) whose value is an "HH:MM"
+-- override for the handover that begins that day. lib/custody/materialize.ts
+-- falls back to the schedule's handover_time for any dayIndex not present
+-- in the map. Validated at the application layer (Zod), like
+-- cycle_assignments already is.
+alter table custody_schedules add column custom_handover_times jsonb;

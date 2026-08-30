@@ -9,7 +9,7 @@ import { listWorkSchedulesForPeople, listTimeOffForPeopleInRange } from "@/lib/d
 import { workShiftsInRange, timeOffInRange, workShiftTitle, timeOffTitle } from "@/lib/calendar/work-schedule";
 import { detectCustodyWorkConflicts } from "@/lib/custody/conflicts";
 import { buildChildColorMap } from "@/lib/custody/colors";
-import { CUSTODY_PRESET_LABELS, type CustodyPresetName } from "@/lib/custody/schedule";
+import { CUSTODY_PRESET_LABELS, describeCustodyHandoverTimes, type CustodyPresetName } from "@/lib/custody/schedule";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -118,8 +118,7 @@ export default async function CustodyHubPage() {
                       <p className="text-sm font-medium">{peopleById.get(schedule.child_person_id) ?? "Unknown child"}</p>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      {detectPresetLabel(schedule.cycle_length_days, schedule.cycle_assignments)} · handover{" "}
-                      {schedule.handover_time.slice(0, 5)}
+                      {detectPresetLabel(schedule.cycle_length_days, schedule.cycle_assignments)} · {describeCustodyHandoverTimes(schedule)}
                       {schedule.handover_location && ` at ${schedule.handover_location}`}
                     </p>
                     <p className="text-xs text-muted-foreground">

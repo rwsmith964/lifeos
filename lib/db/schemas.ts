@@ -397,6 +397,12 @@ export const custodyScheduleInsertSchema = z
       .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "expected HH:MM 24-hour time")
       .optional(),
     handover_location: z.string().nullable().optional(),
+    // Optional per-dayIndex handover time override (see migration
+    // 20260830000001). Keys are stringified dayIndex, e.g. "5".
+    custom_handover_times: z
+      .record(z.string(), z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "expected HH:MM 24-hour time"))
+      .nullable()
+      .optional(),
     start_date: isoDate,
     end_date: isoDate.nullable().optional(),
     notes: z.string().optional(),
@@ -405,6 +411,15 @@ export const custodyScheduleInsertSchema = z
     message: "Every cycle day must be within the cycle length.",
     path: ["cycle_assignments"],
   })
+  .refine(
+    (v) =>
+      !v.custom_handover_times ||
+      Object.keys(v.custom_handover_times).every((key) => Number.isInteger(Number(key)) && Number(key) < v.cycle_length_days),
+    {
+      message: "Every handover-time override must be within the cycle length.",
+      path: ["custom_handover_times"],
+    }
+  )
   .refine((v) => !v.end_date || v.end_date >= v.start_date, {
     message: "End date can't be before the start date.",
     path: ["end_date"],

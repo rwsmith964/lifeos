@@ -7,7 +7,7 @@ import { listPeopleForHousehold } from "@/lib/db/repositories/people";
 import { listExceptionsForSchedule, custodySchedulesRepo } from "@/lib/db/repositories/custody-schedules";
 import { filterEligibleResponsibleAdults } from "@/lib/custody/eligible-parents";
 import { MATERIALIZE_WINDOW_DAYS } from "@/lib/custody/materialize";
-import { findGaps, projectCustodySchedule } from "@/lib/custody/schedule";
+import { describeCustodyHandoverTimes, findGaps, projectCustodySchedule } from "@/lib/custody/schedule";
 import { Card, CardContent } from "@/components/ui/card";
 import { ExceptionForm } from "./exception-form";
 import { DeleteExceptionButton } from "./delete-exception-button";
@@ -62,7 +62,7 @@ export default async function CustodyScheduleDetailPage({ params }: { params: Pr
         <div>
           <h1 className="text-xl font-semibold">{peopleById.get(schedule.child_person_id) ?? "Unknown child"}&rsquo;s schedule</h1>
           <p className="text-sm text-muted-foreground">
-            Handover {schedule.handover_time.slice(0, 5)}
+            {describeCustodyHandoverTimes(schedule)}
             {schedule.handover_location && ` at ${schedule.handover_location}`} · from{" "}
             {format(new Date(`${schedule.start_date}T00:00:00`), "MMM d, yyyy")}
             {schedule.end_date ? ` to ${format(new Date(`${schedule.end_date}T00:00:00`), "MMM d, yyyy")}` : " · ongoing"}

@@ -701,6 +701,10 @@ export interface CustodyScheduleRow {
   anchor_date: string;
   handover_time: string;
   handover_location: string | null;
+  // Optional per-cycle-dayIndex handover time override, keyed by dayIndex
+  // as a string ("0", "1", ...) -> "HH:MM". null/absent dayIndex falls
+  // back to handover_time. See migration 20260830000001.
+  custom_handover_times: Record<string, string> | null;
   start_date: string;
   end_date: string | null;
   notes: string;
@@ -710,7 +714,16 @@ export interface CustodyScheduleRow {
 }
 export type CustodyScheduleInsert = Insert<
   CustodyScheduleRow,
-  "id" | "name" | "handover_time" | "handover_location" | "end_date" | "notes" | "is_active" | "created_at" | "updated_at"
+  | "id"
+  | "name"
+  | "handover_time"
+  | "handover_location"
+  | "custom_handover_times"
+  | "end_date"
+  | "notes"
+  | "is_active"
+  | "created_at"
+  | "updated_at"
 >;
 export type CustodyScheduleUpdate = Update<CustodyScheduleRow>;
 

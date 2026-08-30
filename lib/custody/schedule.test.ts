@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   buildPresetCycle,
   cycleAssignmentForDate,
+  cycleDayIndexForDate,
   findGaps,
+  handoverTimeForDayIndex,
   projectCustodySchedule,
   type CustodyScheduleDefinition,
 } from "./schedule";
@@ -154,5 +156,46 @@ describe("findGaps", () => {
     expect(findGaps(days, new Date(2026, 8, 1), new Date(2026, 8, 4))).toEqual([
       { startDate: "2026-09-02", endDate: "2026-09-04" },
     ]);
+  });
+});
+
+describe("cycleDayIndexForDate", () => {
+  const schedule = { anchorDate: "2026-08-28", cycleLengthDays: 7 }; // anchor is a Friday
+
+  it("maps the anchor date to dayIndex 0", () => {
+    expect(cycleDayIndexForDate(schedule, "2026-08-28")).toBe(0);
+  });
+
+  it("maps subsequent days to increasing indices, wrapping at cycleLengthDays", () => {
+    expect(cycleDayIndexForDate(schedule, "2026-08-31")).toBe(3); // Monday, 3 days after the Friday anchor
+    expect(cycleDayIndexForDate(schedule, "2026-09-04")).toBe(0); // wraps to a new cycle (day 7 -> index 0)
+  });
+
+  it("handles dates before the anchor via positive modulo", () => {
+    expect(cycleDayIndexForDate(schedule, "2026-08-27")).toBe(6); // one day before anchor -> last index of the previous cycle
+  });
+});
+
+describe("handoverTimeForDayIndex — D-074 per-day handover time overrides", () => {
+  it("falls back to the schedule's single handover_time when there is no override map", () => {
+    const schedule = { handover_time: "17:00:00", custom_handover_times: null };
+    expect(handoverTimeForDayIndex(schedule, 0)).toBe("17:00:00");
+    expect(handoverTimeForDayIndex(schedule, 5)).toBe("17:00:00");
+  });
+
+  it("falls back to handover_time for a dayIndex with no explicit override", () => {
+    const schedule = { handover_time: "17:00:00", custom_handover_times: { "5": "16:30" } };
+    expect(handoverTimeForDayIndex(schedule, 0)).toBe("17:00:00");
+  });
+
+  it("uses the per-day override when one is set for that dayIndex", () => {
+    // The user's real reported pattern: Friday 4:30pm pickup, Monday 8:30am return.
+    const schedule = {
+      handover_time: "17:00:00",
+      custom_handover_times: { "5": "16:30", "1": "08:30" }, // Fri=5, Mon=1 in a Sunday-anchored 7-day cycle
+    };
+    expect(handoverTimeForDayIndex(schedule, 5)).toBe("16:30");
+    expect(handoverTimeForDayIndex(schedule, 1)).toBe("08:30");
+    expect(handoverTimeForDayIndex(schedule, 2)).toBe("17:00:00"); // untouched day still falls back
   });
 });

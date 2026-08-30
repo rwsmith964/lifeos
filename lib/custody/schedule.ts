@@ -43,9 +43,29 @@ function positiveMod(n: number, m: number): number {
  * cycle degrades to gaps rather than a crash.
  */
 export function cycleAssignmentForDate(schedule: CustodyScheduleDefinition, date: string): string | null {
-  const daysSinceAnchor = differenceInCalendarDays(parseISO(date), parseISO(schedule.anchorDate));
-  const dayIndex = positiveMod(daysSinceAnchor, schedule.cycleLengthDays);
+  const dayIndex = cycleDayIndexForDate(schedule, date);
   return schedule.cycleAssignments.find((a) => a.dayIndex === dayIndex)?.responsiblePersonId ?? null;
+}
+
+/** Which cycle dayIndex (0..cycleLengthDays-1) a real date maps to. Exposed separately from cycleAssignmentForDate so materialize.ts can also resolve a per-day handover time override for the same dayIndex without recomputing it. */
+export function cycleDayIndexForDate(schedule: Pick<CustodyScheduleDefinition, "anchorDate" | "cycleLengthDays">, date: string): number {
+  const daysSinceAnchor = differenceInCalendarDays(parseISO(date), parseISO(schedule.anchorDate));
+  return positiveMod(daysSinceAnchor, schedule.cycleLengthDays);
+}
+
+/**
+ * Resolves the handover time that applies to a given cycle dayIndex: the
+ * per-day override in custom_handover_times if one is set for that day,
+ * otherwise the schedule's single handover_time. Lets a schedule express
+ * different clock times for different handovers (e.g. Friday 4:30pm pickup
+ * vs. Monday 8:30am return) instead of one time for every transition. See
+ * DECISIONS.md D-074.
+ */
+export function handoverTimeForDayIndex(
+  schedule: { handover_time: string; custom_handover_times: Record<string, string> | null },
+  dayIndex: number
+): string {
+  return schedule.custom_handover_times?.[String(dayIndex)] ?? schedule.handover_time;
 }
 
 /**
@@ -164,4 +184,49 @@ export function findGaps(projectedDays: ProjectedCustodyDay[], windowStart: Date
   }
   if (gapStart) gaps.push({ startDate: gapStart, endDate: format(windowEnd, "yyyy-MM-dd") });
   return gaps;
+}
+
+/** "17:00" / "17:00:00" -> "5 PM" / "4:30 PM" — never show a raw 24-hour or seconds-precision string to the user. */
+export function formatHandoverTime(hhmm: string): string {
+  const [hourStr, minute] = hhmm.split(":");
+  const hour = Number(hourStr);
+  const period = hour >= 12 ? "PM" : "AM";
+  const displayHour = hour % 12 === 0 ? 12 : hour % 12;
+  return !minute || minute === "00" ? `${displayHour} ${period}` : `${displayHour}:${minute} ${period}`;
+}
+
+const WEEKDAY_ABBREVIATIONS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/**
+ * Human-readable summary of a schedule's handover time(s) for display —
+ * "Handover 5 PM" for the common single-time case, or a per-day breakdown
+ * like "Handover Fri 4:30 PM, Mon 8:30 AM" once custom_handover_times has
+ * overrides, so a schedule with two different clock times (see D-074)
+ * doesn't silently show only its first/global one.
+ */
+export function describeCustodyHandoverTimes(schedule: {
+  handover_time: string;
+  custom_handover_times: Record<string, string> | null;
+  anchor_date: string;
+  cycle_length_days: number;
+}): string {
+  const overrides = schedule.custom_handover_times;
+  if (!overrides || Object.keys(overrides).length === 0) {
+    return `Handover ${formatHandoverTime(schedule.handover_time)}`;
+  }
+  // dayIndex only maps to a single fixed weekday across every cycle
+  // iteration when the cycle length is a whole number of weeks (true for
+  // the Weekly builder, which always uses a 7-day cycle) -- for any other
+  // cycle length, fall back to "Day N" rather than showing a weekday label
+  // that would be wrong in later iterations.
+  const anchorWeekdayIndex = parseISO(schedule.anchor_date).getDay();
+  const canLabelByWeekday = schedule.cycle_length_days % 7 === 0;
+  const parts = Object.entries(overrides)
+    .map(([dayIndexStr, time]) => ({ dayIndex: Number(dayIndexStr), time }))
+    .sort((a, b) => a.dayIndex - b.dayIndex)
+    .map(({ dayIndex, time }) => {
+      const label = canLabelByWeekday ? WEEKDAY_ABBREVIATIONS[(anchorWeekdayIndex + dayIndex) % 7] : `Day ${dayIndex + 1}`;
+      return `${label} ${formatHandoverTime(time)}`;
+    });
+  return `Handover ${parts.join(", ")}`;
 }
