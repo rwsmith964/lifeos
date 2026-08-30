@@ -124,9 +124,16 @@ export function CaptureButton() {
           { role: "assistant", text: data.confirmationMessage ?? "Not sure what to do with that.", tone: "error" },
         ]);
       } else {
+        // P1-14/D-078: a real failure (bad AI output, more than one thing
+        // said at once, a save that errored) — unlike needs_clarification
+        // above, there's no follow-up question to answer, so put the
+        // original text back in the box instead of leaving it stranded
+        // in the transcript with nothing the user can act on.
+        setInput(text);
         setTurns((prev) => [...prev, { role: "assistant", text: data.message ?? "Something went wrong.", tone: "error" }]);
       }
     } catch {
+      setInput(text);
       setTurns((prev) => [...prev, { role: "assistant", text: "Couldn't reach the server — try again.", tone: "error" }]);
     } finally {
       setPending(false);

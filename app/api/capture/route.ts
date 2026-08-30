@@ -4,19 +4,70 @@
 // write against the user's own data (or a clarifying question), executes
 // that write through the normal RLS-bound client, and returns the AI's
 // reply for the panel to render. See DECISIONS.md D-030.
+//
+// P1-14/D-078: this used to call its own separate CAPTURE_SYSTEM_PROMPT +
+// captureActionSchema (lib/ai/prompts/capture.ts) instead of Brain Dump's
+// parser, and the two prompts drifted — "Cal's shoe size is 10" (a plain
+// person note) resolved fine through Brain Dump but fell through Quick
+// Capture's own prompt to a generic "Couldn't understand that — try
+// rephrasing." with no way to tell what was actually unclear. Per the
+// "make one the single source of truth" ground rule, Quick Capture now
+// calls the exact same BRAIN_DUMP_SYSTEM_PROMPT / brainDumpResponseSchema
+// / buildBrainDumpUserPrompt Brain Dump uses, and adapts the resulting
+// item list back into this endpoint's single-action-per-turn,
+// ask-one-specific-question conversational shape.
 import { NextResponse } from "next/server";
 import { format } from "date-fns";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { AiBudgetExceededError, AiUnavailableError, callAi, isAiConfigured } from "@/lib/ai/client";
 import { buildChildTokenMap } from "@/lib/ai/context";
 import { parseAiJson } from "@/lib/ai/parse-json";
-import { buildCaptureUserPrompt, captureActionSchema, CAPTURE_SYSTEM_PROMPT, type CaptureTurn } from "@/lib/ai/prompts/capture";
+import {
+  buildBrainDumpUserPrompt,
+  brainDumpResponseSchema,
+  BRAIN_DUMP_SYSTEM_PROMPT,
+  type BrainDumpItem,
+} from "@/lib/ai/prompts/brain-dump";
+import type { CaptureTurn } from "@/lib/ai/prompts/capture";
 import { executeAction, isKnownPersonId } from "@/lib/ai/capture-actions";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
 import { friendlyMutationError } from "@/lib/db/errors";
 
 interface CaptureRequestBody {
   turns: CaptureTurn[];
+}
+
+// Mirrors the "personId is required for every action type except
+// create_calendar_event ... and add_time_off" rule both prompts already
+// state — the action types below need a resolved person before they're
+// safe to execute (executeAction throws "Missing person" for all of
+// these otherwise). create_calendar_event and add_time_off deliberately
+// tolerate a null personId (an event with no specific attendee; time off
+// defaults to the device's own user), so they're intentionally excluded.
+const PERSON_REQUIRED_TYPES = new Set<BrainDumpItem["type"]>([
+  "add_interest",
+  "log_interaction",
+  "record_gift",
+  "append_person_note",
+  "add_gift_budget",
+]);
+
+function clarifyingQuestionFor(type: BrainDumpItem["type"]): string {
+  switch (type) {
+    case "add_interest":
+      return "I got that as something to add to their interests, but not who — who is this for?";
+    case "log_interaction":
+      return "I got that as a call or visit to log, but not with whom — who was this with?";
+    case "record_gift":
+      return "I got that as a gift idea, but not who it's for — who is this for?";
+    case "add_gift_budget":
+      return "I got that as a gift budget, but not whose — who is this for?";
+    case "append_person_note":
+    default:
+      // The exact example from the bug report: a plain person note like
+      // "Cal's shoe size is 10" whose subject couldn't be resolved.
+      return "I got the note but not who it's about — who is this for?";
+  }
 }
 
 export async function POST(request: Request) {
@@ -57,14 +108,26 @@ export async function POST(request: Request) {
   // to match a redacted child at all.
   const redactedTurns = body.turns.map((turn) => ({ ...turn, text: tokenMap.redactMentions(turn.text) }));
 
-  const userPrompt = buildCaptureUserPrompt(format(new Date(), "EEEE, MMMM d, yyyy"), capturePeople, redactedTurns);
+  // Brain Dump's prompt takes one flat transcript, not a labeled dialogue.
+  // Quick Capture's own turns already carry the full back-and-forth (the
+  // clarifying question we asked, and the user's answer) — joining just
+  // the user's own turns reconstructs the same information Brain Dump
+  // would see if the user had just said it all in one breath, e.g.
+  // "log a call today" + a follow-up answer "Mom" becomes
+  // "log a call today. Mom." for the model to resolve as one item.
+  const combinedTranscript = redactedTurns
+    .filter((t) => t.role === "user")
+    .map((t) => t.text)
+    .join(". ");
+
+  const userPrompt = buildBrainDumpUserPrompt(format(new Date(), "EEEE, MMMM d, yyyy"), capturePeople, combinedTranscript);
 
   let aiResult;
   try {
     aiResult = await callAi(supabase, {
       householdId: household.id,
       feature: "quick_capture",
-      systemPrompt: CAPTURE_SYSTEM_PROMPT,
+      systemPrompt: BRAIN_DUMP_SYSTEM_PROMPT,
       userPrompt,
       maxTokens: 1024,
     });
@@ -86,33 +149,49 @@ export async function POST(request: Request) {
   if (!parsed.success) {
     return NextResponse.json({ status: "error", message: "Couldn't understand that — try rephrasing." });
   }
-  const validated = captureActionSchema.safeParse(parsed.data);
+  const validated = brainDumpResponseSchema.safeParse(parsed.data);
   if (!validated.success) {
     return NextResponse.json({ status: "error", message: "Couldn't understand that — try rephrasing." });
   }
 
-  const response = validated.data;
-  const question = response.question ? tokenMap.restoreRealNames(response.question) : null;
-  const confirmationMessage = response.confirmationMessage
-    ? tokenMap.restoreRealNames(response.confirmationMessage)
-    : null;
+  const items = validated.data.items;
 
-  if (response.status !== "ready" || !response.action) {
-    return NextResponse.json({ status: response.status, question, confirmationMessage });
+  if (items.length === 0) {
+    return NextResponse.json({
+      status: "unrecognized",
+      confirmationMessage: "I don't see anything to save there — try mentioning a person, event, or gift.",
+    });
   }
+
+  if (items.length > 1) {
+    // Quick Capture executes one action per turn (unlike Brain Dump's
+    // multi-item review list) — say specifically why this didn't go
+    // through instead of a flat rejection, per the bug report.
+    return NextResponse.json({
+      status: "error",
+      message: "That sounds like more than one thing — try sending them one at a time.",
+    });
+  }
+
+  const item = items[0];
+  const restore = (text: string | null) => (text ? tokenMap.restoreRealNames(text) : text);
 
   // Defense in depth beyond RLS: the model only ever saw this household's
   // people, but never trust an LLM-produced id against a foreign-key write
   // without checking it against what we actually handed it.
-  if (!isKnownPersonId(people, response.action.personId)) {
+  const personId = item.personId && isKnownPersonId(people, item.personId) ? item.personId : null;
+
+  if (PERSON_REQUIRED_TYPES.has(item.type) && !personId) {
     return NextResponse.json({
-      status: "error",
-      message: "Something went wrong resolving who that's about — try naming them again.",
+      status: "needs_clarification",
+      question: clarifyingQuestionFor(item.type),
     });
   }
 
+  const action = { ...item, personId };
+
   try {
-    await executeAction(supabase, household, selfPerson, response.action);
+    await executeAction(supabase, household, selfPerson, action);
   } catch (error) {
     return NextResponse.json({
       status: "error",
@@ -120,5 +199,8 @@ export async function POST(request: Request) {
     });
   }
 
-  return NextResponse.json({ status: "ready", confirmationMessage });
+  // item.summary is phrased as an instruction ("Add 'fly fishing' to
+  // Dave's interests") for Brain Dump's review list; reused here as a
+  // plain-language confirmation of what was just saved.
+  return NextResponse.json({ status: "ready", confirmationMessage: `Saved — ${restore(item.summary) ?? "done"}.` });
 }

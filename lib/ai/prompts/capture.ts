@@ -3,6 +3,13 @@
 // "confirmationMessage" fields render directly in the capture panel) — an
 // intentional exception to BASE_SYSTEM_PROMPT rule 4's general framing of
 // AI output as invisible plumbing. See DECISIONS.md D-030.
+// P1-14/D-078: app/api/capture/route.ts no longer calls
+// CAPTURE_SYSTEM_PROMPT/captureActionSchema/buildCaptureUserPrompt below —
+// it now shares Brain Dump's parser (lib/ai/prompts/brain-dump.ts) so the
+// two features can't drift out of sync on the same input again. Those
+// three exports are kept only for reference/potential reuse; CaptureAction,
+// CaptureTurn, and CapturePersonContext below are still the live shared
+// type contract used by lib/ai/capture-actions.ts and the capture route.
 import { z } from "zod";
 import { BASE_SYSTEM_PROMPT } from "./base";
 
