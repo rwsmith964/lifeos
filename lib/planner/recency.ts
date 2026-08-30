@@ -4,7 +4,7 @@
 // inputs that made Opportunities and the weekend plan disagree about the
 // same activity/day (Opportunities scored purely on weather; the weekend
 // plan additionally penalized an activity recently recommended).
-import { addDays, format } from "date-fns";
+import { addDays, differenceInCalendarDays, format, parseISO } from "date-fns";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getWeekendPlanForDate } from "../db/repositories/system";
 import type { WeekendPlanAiResponse } from "../ai/prompts/weekend-plan";
@@ -37,4 +37,19 @@ export async function listRecentlyProposedActivityTypes(
 
 export function weeksSinceLastProposed(activityType: string, recentActivityTypes: string[]): number | null {
   return recentActivityTypes.includes(activityType) ? recentActivityTypes.lastIndexOf(activityType) : null;
+}
+
+// D-083 (P3-1): the ground-truth counterpart to weeksSinceLastProposed --
+// "was this activity actually done recently" rather than "was it merely the
+// planner's top pick recently" (an activity can be proposed and never acted
+// on, or done without ever having been the AI's Saturday recommendation).
+// Anchored on `today` the same way weeksSinceLastProposed's lookback is,
+// not on whichever future day is being scored -- keeping both recency
+// signals on the same clock is what let D-070 make Opportunities and the
+// weekend plan agree in the first place.
+export function weeksSinceLastDone(lastDoneAt: string | null, today: Date): number | null {
+  if (!lastDoneAt) return null;
+  const days = differenceInCalendarDays(today, parseISO(lastDoneAt));
+  if (days < 0) return null; // last_done_at somehow in the future -- treat as no signal rather than a negative
+  return Math.floor(days / 7);
 }

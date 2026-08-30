@@ -2,6 +2,13 @@ import { describe, expect, it } from "vitest";
 import { scoreActivity } from "./scoring";
 import { SCORING_WEIGHTS } from "./weights";
 
+const BASE_INPUTS = {
+  weatherSuitabilityScore: 50,
+  conditionDataScore: 50,
+  travelFeasibilityScore: 50,
+  enjoymentRank: 5,
+};
+
 describe("scoreActivity", () => {
   it("scores a perfect activity (all components 100) at 100", () => {
     const result = scoreActivity({
@@ -118,5 +125,29 @@ describe("scoreActivity", () => {
   it("scoring weights sum to 1 (config sanity check)", () => {
     const total = Object.values(SCORING_WEIGHTS).reduce((a, b) => a + b, 0);
     expect(total).toBeCloseTo(1, 10);
+  });
+
+  // D-083 (P3-1): weeksSinceLastDone combines with weeksSinceLastProposed
+  // (whichever recency signal is more recent wins) before the penalty curve.
+  describe("weeksSinceLastDone (D-083)", () => {
+    it("is treated the same as weeksSinceLastProposed when it's the only signal present", () => {
+      const viaProposed = scoreActivity({ ...BASE_INPUTS, weeksSinceLastProposed: 1, weeksSinceLastDone: null });
+      const viaDone = scoreActivity({ ...BASE_INPUTS, weeksSinceLastProposed: null, weeksSinceLastDone: 1 });
+      expect(viaDone.totalScore).toBe(viaProposed.totalScore);
+    });
+
+    it("uses whichever signal is more recent (smaller weeks) when both are present", () => {
+      // Proposed 3 weeks ago, but actually done just last weekend -- the real
+      // completion should dominate and apply the harsher (more recent) penalty.
+      const combined = scoreActivity({ ...BASE_INPUTS, weeksSinceLastProposed: 3, weeksSinceLastDone: 1 });
+      const doneOnly = scoreActivity({ ...BASE_INPUTS, weeksSinceLastProposed: 1, weeksSinceLastDone: null });
+      expect(combined.totalScore).toBe(doneOnly.totalScore);
+    });
+
+    it("omitting weeksSinceLastDone entirely behaves like passing null (backward compatible with existing callers)", () => {
+      const omitted = scoreActivity({ ...BASE_INPUTS, weeksSinceLastProposed: 2 });
+      const explicitNull = scoreActivity({ ...BASE_INPUTS, weeksSinceLastProposed: 2, weeksSinceLastDone: null });
+      expect(omitted.totalScore).toBe(explicitNull.totalScore);
+    });
   });
 });

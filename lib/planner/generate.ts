@@ -27,7 +27,7 @@ import { computeSolunarPeriods } from "../external/solunar";
 import { getUsgsGaugeReading } from "../external/usgs";
 import { findOpenBlocks, largestOpenBlock } from "./available-blocks";
 import { findOverdueCompanions } from "./companions";
-import { nextSaturdayFrom, listRecentlyProposedActivityTypes, weeksSinceLastProposed } from "./recency";
+import { nextSaturdayFrom, listRecentlyProposedActivityTypes, weeksSinceLastDone, weeksSinceLastProposed } from "./recency";
 import { scoreActivityCandidate } from "./score-candidate";
 import { pickBestLocation } from "./travel-estimate";
 
@@ -110,6 +110,7 @@ export async function generateWeekendPlan(
       targetDate: saturday,
       availableMinutes,
       weeksSinceLastProposed: weeksSinceLastProposed(activity.activity_type, recentActivityTypes),
+      weeksSinceLastDone: weeksSinceLastDone(activity.last_done_at, today),
     });
     const point = candidate.travel.point;
     const todayPeriod = candidate.forecastPeriod;

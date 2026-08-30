@@ -17,7 +17,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { addDays, format, setHours, startOfDay } from "date-fns";
 import { findOpenBlocks, largestOpenBlock } from "../planner/available-blocks";
 import { bestForecastPeriodForDate } from "../planner/forecast-period";
-import { listRecentlyProposedActivityTypes, weeksSinceLastProposed } from "../planner/recency";
+import { listRecentlyProposedActivityTypes, weeksSinceLastDone, weeksSinceLastProposed } from "../planner/recency";
 import { scoreActivityCandidate } from "../planner/score-candidate";
 import { formatTravelClause, pickBestLocation } from "../planner/travel-estimate";
 import { listActivitiesWithLocations } from "../db/repositories/activities";
@@ -122,6 +122,7 @@ export async function detectOpportunitiesForHousehold(
         targetDate: dayStart,
         availableMinutes,
         weeksSinceLastProposed: weeksSinceLastProposed(activity.activity_type, recentActivityTypes),
+        weeksSinceLastDone: weeksSinceLastDone(activity.last_done_at, today),
       });
       const { forecastPeriod: period, weatherScore, travel, score } = candidate;
       if (!period) continue; // beyond the forecast horizon, or the adapter has no data right now

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Plus, Pencil } from "lucide-react";
+import { format, parseISO } from "date-fns";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { listActivitiesWithLocations } from "@/lib/db/repositories/activities";
 import { listTripIdeasForHousehold } from "@/lib/db/repositories/trip-ideas";
@@ -8,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DeactivateActivityButton } from "./deactivate-button";
+import { MarkDoneButton } from "./mark-done-button";
 import { TripIdeasSection } from "./trip-ideas-section";
 
 export default async function ActivitiesPage() {
@@ -65,8 +67,15 @@ export default async function ActivitiesPage() {
                       ))}
                     </div>
                   )}
+                  {/* D-083 (P3-1): never show the raw ISO date -- human-readable, matching the rest of the app. */}
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {activity.last_done_at
+                      ? `Last done ${format(parseISO(activity.last_done_at), "MMM d")}`
+                      : "Not logged as done yet"}
+                  </p>
                 </div>
                 <div className="flex items-center gap-1">
+                  <MarkDoneButton activityId={activity.id} />
                   <Button asChild size="icon" variant="ghost" className="size-8">
                     <Link href={`/activities/${activity.id}/edit`} aria-label="Edit activity">
                       <Pencil className="size-4" />

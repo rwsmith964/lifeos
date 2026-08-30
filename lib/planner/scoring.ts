@@ -15,6 +15,8 @@ export interface ActivityScoreInputs {
   enjoymentRank: number; // 1-10, from user_activities.enjoyment_rank
   /** Weeks since this activity was last proposed by the planner; null = not recently. */
   weeksSinceLastProposed: number | null;
+  /** D-083 (P3-1): weeks since this activity was actually last done (user_activities.last_done_at); null/undefined = no record, or not recently. A real completion is a stronger recency signal than merely having been proposed, so this and weeksSinceLastProposed are combined (most-recent wins) before the penalty curve is applied. Optional so existing callers/tests that only care about the proposed-recency signal don't need updating. */
+  weeksSinceLastDone?: number | null;
 }
 
 export interface ActivityScoreResult {
@@ -33,13 +35,25 @@ function recencyPenaltyScore(weeksSinceLastProposed: number | null): number {
   return 20; // proposed this same weekend
 }
 
+/** Combines the two recency signals by taking whichever is more recent (smaller) -- either one alone is reason enough to ease off proposing the same thing again straight away. */
+function combinedWeeksSinceRecent(
+  weeksSinceLastProposed: number | null,
+  weeksSinceLastDone: number | null | undefined
+): number | null {
+  if (weeksSinceLastProposed == null) return weeksSinceLastDone ?? null;
+  if (weeksSinceLastDone == null) return weeksSinceLastProposed;
+  return Math.min(weeksSinceLastProposed, weeksSinceLastDone);
+}
+
 export function scoreActivity(inputs: ActivityScoreInputs): ActivityScoreResult {
   const componentScores: Record<ScoringComponent, number> = {
     weatherSuitability: clamp(inputs.weatherSuitabilityScore, 0, 100),
     conditionData: clamp(inputs.conditionDataScore ?? NEUTRAL_CONDITION_SCORE, 0, 100),
     travelFeasibility: clamp(inputs.travelFeasibilityScore, 0, 100),
     enjoymentFit: clamp((inputs.enjoymentRank / 10) * 100, 0, 100),
-    recencyPenalty: recencyPenaltyScore(inputs.weeksSinceLastProposed),
+    recencyPenalty: recencyPenaltyScore(
+      combinedWeeksSinceRecent(inputs.weeksSinceLastProposed, inputs.weeksSinceLastDone)
+    ),
   };
 
   const breakdown = Object.fromEntries(

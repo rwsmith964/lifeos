@@ -255,6 +255,9 @@ const userActivityBaseSchema = z.object({
   // outing; big_trip_max = how far they'd go for an exceptional outing.
   typical_drive_minutes: z.number().int().min(0).nullable().optional(),
   big_trip_max_drive_minutes: z.number().int().min(0).nullable().optional(),
+  // D-083 (P3-1): set automatically when an opportunity for this activity
+  // is marked "Acted on", or manually here on the edit form.
+  last_done_at: isoDate.nullable().optional(),
   is_active: z.boolean().optional(),
 });
 

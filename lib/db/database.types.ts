@@ -498,6 +498,8 @@ export interface UserActivityRow {
   // (e.g. a specifically great fishing spot worth the extra drive).
   typical_drive_minutes: number | null;
   big_trip_max_drive_minutes: number | null;
+  // D-083 (P3-1): date-only -- see the migration comment for why.
+  last_done_at: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -510,6 +512,7 @@ export type UserActivityInsert = Insert<
   | "preferred_companions"
   | "typical_drive_minutes"
   | "big_trip_max_drive_minutes"
+  | "last_done_at"
   | "is_active"
   | "created_at"
   | "updated_at"

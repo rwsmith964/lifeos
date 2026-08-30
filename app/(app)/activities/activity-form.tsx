@@ -20,6 +20,7 @@ export interface ActivityFormDefaults {
   preferredCompanionIds: string[];
   typicalDriveMinutes: number | null;
   bigTripMaxDriveMinutes: number | null;
+  lastDoneAt: string | null;
   locationName: string;
   locationLat: number | null;
   locationLng: number | null;
@@ -111,6 +112,22 @@ export function ActivityForm({
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" name="requiresPrep" defaultChecked={d.requiresPrep} /> Requires prep beforehand
       </label>
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="lastDoneAt">Last done (optional)</Label>
+        <Input
+          id="lastDoneAt"
+          name="lastDoneAt"
+          type="date"
+          defaultValue={d.lastDoneAt ?? undefined}
+          aria-invalid={!!fieldError("lastDoneAt") || undefined}
+          onChange={() => clearErrorField("lastDoneAt")}
+        />
+        <p className="text-xs text-muted-foreground">
+          Set automatically when you mark an opportunity for this activity as acted on — set it here if you did it
+          another way.
+        </p>
+        {fieldError("lastDoneAt") && <p className="text-xs text-destructive">{fieldError("lastDoneAt")}</p>}
+      </div>
       <div className="flex flex-col gap-2">
         <Label htmlFor="prepLeadTimeHours">Prep lead time (hours, if any)</Label>
         <Input

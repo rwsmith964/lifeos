@@ -37,6 +37,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     big_trip_max_drive_minutes: formData.get("bigTripMaxDriveMinutes")
       ? Number(formData.get("bigTripMaxDriveMinutes"))
       : null,
+    last_done_at: formData.get("lastDoneAt") ? String(formData.get("lastDoneAt")) : null,
   });
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
@@ -47,6 +48,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       prep_lead_time_hours: "prepLeadTimeHours",
       typical_drive_minutes: "typicalDriveMinutes",
       big_trip_max_drive_minutes: "bigTripMaxDriveMinutes",
+      last_done_at: "lastDoneAt",
     };
     const field = issue?.path[0] ? fieldMap[String(issue.path[0])] : undefined;
     return NextResponse.json({ error: issue?.message ?? "Invalid input.", field }, { status: 400 });

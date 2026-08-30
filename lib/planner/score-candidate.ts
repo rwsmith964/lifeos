@@ -26,6 +26,7 @@ export interface ScoreActivityCandidateInput {
   targetDate: Date;
   availableMinutes: number;
   weeksSinceLastProposed: number | null;
+  weeksSinceLastDone?: number | null;
 }
 
 export interface ScoreActivityCandidateResult {
@@ -58,6 +59,7 @@ export async function scoreActivityCandidate(
     travelFeasibilityScore: travelScore,
     enjoymentRank: input.activity.enjoyment_rank,
     weeksSinceLastProposed: input.weeksSinceLastProposed,
+    weeksSinceLastDone: input.weeksSinceLastDone,
   });
 
   return { score, weatherScore, forecastPeriod, travel };
