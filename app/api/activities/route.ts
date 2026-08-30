@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { activityLocationsRepo, userActivitiesRepo } from "@/lib/db/repositories/activities";
 import { userActivityInsertSchema, activityLocationInsertSchema } from "@/lib/db/schemas";
+import { geocodeAddress } from "@/lib/external/geocode";
 
 export async function POST(request: Request) {
   const { supabase, household, selfPerson } = await requireHouseholdContext();
@@ -58,12 +59,31 @@ export async function POST(request: Request) {
       if (odfwZoneUrl) externalIds.odfw_zone_url = odfwZoneUrl;
       if (noaaStation) externalIds.noaa_station = noaaStation;
 
+      // P1-7/D-070: nobody ever fills in the raw manual lat/lng inputs by
+      // hand (confirmed against production data — every existing location
+      // row had null lat/lng), which silently broke drive-time estimation
+      // for every activity. When coordinates weren't typed in but we have a
+      // location name (and/or address) to geocode, try the same free
+      // Nominatim lookup Settings/People already use — additive only, never
+      // overrides a manually-entered lat/lng.
+      let lat = formData.get("locationLat") ? Number(formData.get("locationLat")) : null;
+      let lng = formData.get("locationLng") ? Number(formData.get("locationLng")) : null;
+      const locationAddress = String(formData.get("locationAddress") ?? "").trim() || null;
+      if (lat == null && lng == null) {
+        const geocodeQuery = locationAddress ?? locationName;
+        const geocoded = await geocodeAddress(geocodeQuery);
+        if (geocoded.status === "ok") {
+          lat = geocoded.result.lat;
+          lng = geocoded.result.lng;
+        }
+      }
+
       const locationParsed = activityLocationInsertSchema.safeParse({
         user_activity_id: activity.id,
         name: locationName,
-        address: String(formData.get("locationAddress") ?? "").trim() || null,
-        lat: formData.get("locationLat") ? Number(formData.get("locationLat")) : null,
-        lng: formData.get("locationLng") ? Number(formData.get("locationLng")) : null,
+        address: locationAddress,
+        lat,
+        lng,
         external_ids: externalIds,
       });
       if (locationParsed.success) {

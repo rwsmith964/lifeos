@@ -3,7 +3,7 @@
 // scores every candidate with the deterministic scoring function, then asks
 // the AI to narrate the already-scored result (never to invent the score).
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { addDays, format, setHours, startOfDay } from "date-fns";
+import { addDays, format, setHours } from "date-fns";
 import { AiBudgetExceededError, AiUnavailableError, callAi } from "../ai/client";
 import { buildChildTokenMap, type ChildTokenMap } from "../ai/context";
 import { parseAiJson } from "../ai/parse-json";
@@ -22,31 +22,23 @@ import { householdsRepo, usersRepo } from "../db/repositories/households";
 import { listPeopleForHousehold, peopleRepo } from "../db/repositories/people";
 import { getWeekendPlanForDate, weekendPlansRepo } from "../db/repositories/system";
 import { getNoaaTidePredictions } from "../external/noaa-tides";
-import { getNwsForecast } from "../external/nws";
 import { getOdfwReport } from "../external/odfw";
 import { computeSolunarPeriods } from "../external/solunar";
-import { getTravelTime } from "../external/travel";
 import { getUsgsGaugeReading } from "../external/usgs";
 import { findOpenBlocks, largestOpenBlock } from "./available-blocks";
 import { findOverdueCompanions } from "./companions";
-import { scoreActivity } from "./scoring";
-import { scoreTravelFeasibility } from "./travel-score";
-import { parseWindMph, scoreWeatherSuitability } from "./weather-score";
+import { nextSaturdayFrom, listRecentlyProposedActivityTypes, weeksSinceLastProposed } from "./recency";
+import { scoreActivityCandidate } from "./score-candidate";
+import { pickBestLocation } from "./travel-estimate";
 
 const WAKING_HOUR_START = 8;
 const WAKING_HOUR_END = 20;
-const RECENCY_LOOKBACK_WEEKS = 4;
 
 export type GenerateWeekendPlanResult =
   | { status: "generated"; contentMarkdown: string }
   | { status: "ai_unavailable"; reason: string }
   | { status: "budget_exceeded"; reason: string }
   | { status: "no_candidates" };
-
-function nextSaturdayFrom(today: Date): Date {
-  const daysUntilSaturday = (6 - today.getDay() + 7) % 7;
-  return startOfDay(addDays(today, daysUntilSaturday === 0 ? 7 : daysUntilSaturday));
-}
 
 export async function generateWeekendPlan(
   client: SupabaseClient,
@@ -71,11 +63,11 @@ export async function generateWeekendPlan(
   const windowStart = setHours(saturday, WAKING_HOUR_START);
   const windowEnd = setHours(sunday, WAKING_HOUR_END);
 
-  const [events, custodyBlocks, cadenceRows, recentPlans] = await Promise.all([
+  const [events, custodyBlocks, cadenceRows, recentActivityTypes] = await Promise.all([
     listEventsInRange(client, householdId, windowStart.toISOString(), windowEnd.toISOString()),
     listCustodyBlocksForHouseholdInRange(client, householdId, windowStart.toISOString(), windowEnd.toISOString()),
     listActiveCadencesForHousehold(client, householdId),
-    listRecentWeekendPlans(client, householdId, today),
+    listRecentlyProposedActivityTypes(client, householdId, today),
   ]);
 
   const busyPeriods = [
@@ -87,7 +79,6 @@ export async function generateWeekendPlan(
   const availableMinutes = bestBlock?.durationMinutes ?? 0;
 
   const cadenceByPersonId = new Map(cadenceRows.map((c) => [c.person_id, c]));
-  const recentActivityTypes = recentPlans.map((p) => p.activityType);
 
   // Section 6.5 / docs/privacy.md: any person handed to the AI prompt goes
   // through the child-token map first, same as the brief and gift engines —
@@ -100,12 +91,32 @@ export async function generateWeekendPlan(
   const scored: (ScoredActivityContext & { totalScore: number; activityId: string })[] = [];
 
   for (const activity of activities) {
-    const location = activity.locations[0];
-    const point = location?.lat != null && location.lng != null ? { lat: location.lat, lng: location.lng } : home;
+    // P1-7/D-070: prefer a location we can actually route to when an
+    // activity has more than one on file (e.g. Shooting).
+    const location = pickBestLocation(activity.locations);
 
-    const [forecast, travel, usgs, odfw, tides] = await Promise.all([
-      getNwsForecast(client, point.lat, point.lng),
-      getTravelTime(home, point, {}),
+    // D-070 (P1-8): the exact same scoring path Opportunities uses --
+    // weather + travel (real coords when we have them, a tagged estimate or
+    // "unknown" otherwise, never a false 0) + enjoyment + recency, weighted
+    // by scoreActivity(). This also fixes a latent bug: the old code here
+    // read `forecast.data?.periods[0]` ("today's" period) regardless of
+    // which day was actually being scored -- wrong for anything but a
+    // same-day run. scoreActivityCandidate looks up the period that
+    // actually overlaps `targetDate` (the target Saturday).
+    const candidate = await scoreActivityCandidate(client, {
+      activity,
+      location,
+      home,
+      targetDate: saturday,
+      availableMinutes,
+      weeksSinceLastProposed: weeksSinceLastProposed(activity.activity_type, recentActivityTypes),
+    });
+    const point = candidate.travel.point;
+    const todayPeriod = candidate.forecastPeriod;
+    const travelMinutes = candidate.travel.minutes;
+    const result = candidate.score;
+
+    const [usgs, odfw, tides] = await Promise.all([
       location?.external_ids?.usgs_gauge
         ? getUsgsGaugeReading(client, location.external_ids.usgs_gauge)
         : Promise.resolve(null),
@@ -127,39 +138,12 @@ export async function generateWeekendPlan(
     );
     const solunar = isFishingRelevantLocation ? computeSolunarPeriods(saturday, point.lat, point.lng) : null;
 
-    const todayPeriod = forecast.data?.periods[0] ?? null;
-    const weatherScore = scoreWeatherSuitability({
-      tempF: todayPeriod?.temperatureF ?? null,
-      precipChancePercent: todayPeriod?.precipitationChancePercent ?? null,
-      windMph: todayPeriod ? parseWindMph(todayPeriod.windSpeed) : null,
-    });
-
-    const travelMinutes = travel.minutes;
-    const travelScore = scoreTravelFeasibility(travelMinutes, availableMinutes);
-
-    // Condition-data scoring (river flow/tide/solunar) needs validated
-    // domain thresholds this build doesn't have — see DECISIONS.md D-020.
-    // Left neutral (null) rather than fabricating a "good range."
-    const conditionDataScore: number | null = null;
-
-    const weeksSinceLastProposed = recentActivityTypes.includes(activity.activity_type)
-      ? recentActivityTypes.lastIndexOf(activity.activity_type) // index doubles as a rough recency proxy
-      : null;
-
     const overdueCompanions = findOverdueCompanions(activity.preferred_companions, cadenceByPersonId, today);
     const overdueCompanionLabels = await labelPeople(
       client,
       overdueCompanions.map((c) => c.personId),
       tokenMap
     );
-
-    const result = scoreActivity({
-      weatherSuitabilityScore: weatherScore,
-      conditionDataScore,
-      travelFeasibilityScore: travelScore,
-      enjoymentRank: activity.enjoyment_rank,
-      weeksSinceLastProposed,
-    });
 
     const conditionParts: string[] = [];
     if (usgs?.data) {
@@ -288,24 +272,9 @@ async function labelPeople(client: SupabaseClient, personIds: string[], tokenMap
   return labels;
 }
 
-interface RecentPlanSummary {
-  activityType: string;
-}
-
-async function listRecentWeekendPlans(
-  client: SupabaseClient,
-  householdId: string,
-  today: Date
-): Promise<RecentPlanSummary[]> {
-  const summaries: RecentPlanSummary[] = [];
-  for (let i = 1; i <= RECENCY_LOOKBACK_WEEKS; i++) {
-    const saturday = format(addDays(nextSaturdayFrom(today), -7 * i), "yyyy-MM-dd");
-    const plan = await getWeekendPlanForDate(client, householdId, saturday);
-    const content = plan?.content_json as WeekendPlanAiResponse | undefined;
-    if (content?.recommendation) summaries.push({ activityType: content.recommendation.activityType });
-  }
-  return summaries;
-}
+// listRecentWeekendPlans moved to lib/planner/recency.ts as
+// listRecentlyProposedActivityTypes (D-070/P1-8) -- now shared with the
+// opportunity detector instead of duplicated per surface.
 
 function buildTemplatedWeekendPlan(
   scored: (ScoredActivityContext & { totalScore: number })[]

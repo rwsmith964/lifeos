@@ -29,7 +29,8 @@ import {
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
 import { listWorkSchedulesForPeople, listTimeOffForPeopleInRange } from "@/lib/db/repositories/work-schedule";
 import { getWeekendPlanForDate } from "@/lib/db/repositories/system";
-import { listOpenOpportunitiesForHouseholdInDateRange } from "@/lib/db/repositories/opportunities";
+import { listOpenOpportunitiesWithSubjectForHouseholdInDateRange } from "@/lib/db/repositories/opportunities";
+import { getPresentedOpportunities } from "@/lib/opportunities/present";
 import { birthdaysInRange, birthdayTitle } from "@/lib/calendar/birthdays";
 import { workShiftsInRange, timeOffInRange, workShiftTitle, timeOffTitle } from "@/lib/calendar/work-schedule";
 import { buildChildColorMap } from "@/lib/custody/colors";
@@ -346,12 +347,15 @@ export default async function CalendarPage({
   // D-061: surface a nudge here (in addition to the Opportunities page and
   // Brief card) when a detected opportunity falls within the same
   // Saturday/Sunday window this card already computes.
-  const weekendOpportunities = await listOpenOpportunitiesForHouseholdInDateRange(
+  const rawWeekendOpportunities = await listOpenOpportunitiesWithSubjectForHouseholdInDateRange(
     supabase,
     household.id,
     upcomingSaturday,
     upcomingSunday
   );
+  // P1-6/D-070: same threshold/dedupe/tiering the Opportunities page and
+  // Brief card use, scoped to just this weekend's window.
+  const weekendOpportunities = getPresentedOpportunities(rawWeekendOpportunities).flat;
 
   return (
     <div className="flex flex-col gap-4 p-4">

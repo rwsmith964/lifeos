@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bestDaytimePeriodForDate } from "./detect";
+import { bestForecastPeriodForDate } from "./forecast-period";
 import type { NwsForecastPeriod } from "../external/nws";
 
 function makePeriod(name: string, startTime: string, endTime: string): NwsForecastPeriod {
@@ -14,7 +14,7 @@ function makePeriod(name: string, startTime: string, endTime: string): NwsForeca
   };
 }
 
-describe("bestDaytimePeriodForDate", () => {
+describe("bestForecastPeriodForDate", () => {
   // Sat Aug 29, 2026, Pacific offset -07:00 for all fixtures below.
   const targetDate = new Date(2026, 7, 29);
 
@@ -24,7 +24,7 @@ describe("bestDaytimePeriodForDate", () => {
       makePeriod("Saturday", "2026-08-29T06:00:00-07:00", "2026-08-29T18:00:00-07:00"),
       makePeriod("Saturday Night", "2026-08-29T18:00:00-07:00", "2026-08-30T06:00:00-07:00"),
     ];
-    const best = bestDaytimePeriodForDate(periods, targetDate);
+    const best = bestForecastPeriodForDate(periods, targetDate);
     expect(best?.name).toBe("Saturday");
   });
 
@@ -36,7 +36,7 @@ describe("bestDaytimePeriodForDate", () => {
       makePeriod("Saturday", "2026-08-29T08:00:00-07:00", "2026-08-29T14:00:00-07:00"),
       makePeriod("Saturday Night", "2026-08-29T19:00:00-07:00", "2026-08-30T07:00:00-07:00"),
     ];
-    const best = bestDaytimePeriodForDate(periods, targetDate);
+    const best = bestForecastPeriodForDate(periods, targetDate);
     expect(best?.name).toBe("Saturday");
   });
 
@@ -44,10 +44,10 @@ describe("bestDaytimePeriodForDate", () => {
     const periods = [
       makePeriod("Next Monday", "2026-09-01T06:00:00-07:00", "2026-09-01T18:00:00-07:00"),
     ];
-    expect(bestDaytimePeriodForDate(periods, targetDate)).toBeNull();
+    expect(bestForecastPeriodForDate(periods, targetDate)).toBeNull();
   });
 
   it("returns null for an empty periods list", () => {
-    expect(bestDaytimePeriodForDate([], targetDate)).toBeNull();
+    expect(bestForecastPeriodForDate([], targetDate)).toBeNull();
   });
 });

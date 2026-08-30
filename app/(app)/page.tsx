@@ -6,7 +6,8 @@ import { generateDailyBrief } from "@/lib/brief/generate";
 import { createSupabaseServiceRoleClient } from "@/lib/db/client-service-role";
 import { briefsRepo, getBriefForPersonAndDate } from "@/lib/db/repositories/system";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
-import { listOpenOpportunitiesForHousehold } from "@/lib/db/repositories/opportunities";
+import { listOpenOpportunitiesWithSubjectForHousehold } from "@/lib/db/repositories/opportunities";
+import { getPresentedOpportunities } from "@/lib/opportunities/present";
 import type { BriefContent } from "@/lib/brief/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -36,8 +37,11 @@ export default async function BriefPage() {
   // directly in their own table, not threaded through the AI-generated
   // content_json/brief schema — deliberate simplification so this section
   // never depends on the brief's AI-generation budget or timing.
-  const openOpportunities = await listOpenOpportunitiesForHousehold(supabase, household.id);
-  const topOpportunities = openOpportunities.slice(0, 2);
+  const rawOpportunities = await listOpenOpportunitiesWithSubjectForHousehold(supabase, household.id);
+  // P1-6/D-070: same threshold/dedupe/tiering the Opportunities page and
+  // Calendar nudge use, so this card never shows something that wouldn't
+  // also show up there.
+  const topOpportunities = getPresentedOpportunities(rawOpportunities).flat.slice(0, 2);
 
   // D-048 (tappability): brief content stores each person by their real
   // full_name (lib/ai/context.ts's labelFor), never a stable id — the brief

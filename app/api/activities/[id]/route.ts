@@ -8,6 +8,7 @@ import { NextResponse } from "next/server";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { activityLocationsRepo, userActivitiesRepo, listLocationsForActivity } from "@/lib/db/repositories/activities";
 import { userActivityUpdateSchema, activityLocationInsertSchema } from "@/lib/db/schemas";
+import { geocodeAddress } from "@/lib/external/geocode";
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -67,8 +68,20 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       if (odfwZoneUrl) externalIds.odfw_zone_url = odfwZoneUrl;
       if (noaaStation) externalIds.noaa_station = noaaStation;
 
-      const lat = formData.get("locationLat") ? Number(formData.get("locationLat")) : null;
-      const lng = formData.get("locationLng") ? Number(formData.get("locationLng")) : null;
+      let lat = formData.get("locationLat") ? Number(formData.get("locationLat")) : null;
+      let lng = formData.get("locationLng") ? Number(formData.get("locationLng")) : null;
+      // P1-7/D-070: same additive geocode-on-save fallback as POST
+      // /api/activities — only fires when no manual lat/lng was entered.
+      // Skips re-geocoding when the location name is unchanged and already
+      // has coordinates, so editing an unrelated field doesn't re-fire a
+      // network call.
+      if (lat == null && lng == null && !(existingLocation?.name === locationName && existingLocation.lat != null)) {
+        const geocoded = await geocodeAddress(locationName);
+        if (geocoded.status === "ok") {
+          lat = geocoded.result.lat;
+          lng = geocoded.result.lng;
+        }
+      }
 
       if (existingLocation) {
         const locationParsed = activityLocationInsertSchema

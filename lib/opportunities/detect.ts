@@ -16,8 +16,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { addDays, format, setHours, startOfDay } from "date-fns";
 import { findOpenBlocks, largestOpenBlock } from "../planner/available-blocks";
-import { scoreTravelFeasibility } from "../planner/travel-score";
-import { parseWindMph, scoreWeatherSuitability } from "../planner/weather-score";
+import { bestForecastPeriodForDate } from "../planner/forecast-period";
+import { listRecentlyProposedActivityTypes, weeksSinceLastProposed } from "../planner/recency";
+import { scoreActivityCandidate } from "../planner/score-candidate";
+import { formatTravelClause, pickBestLocation } from "../planner/travel-estimate";
 import { listActivitiesWithLocations } from "../db/repositories/activities";
 import { listCustodyBlocksForHouseholdInRange, listEventsInRange } from "../db/repositories/calendar";
 import { householdsRepo, usersRepo } from "../db/repositories/households";
@@ -28,8 +30,8 @@ import {
 } from "../db/repositories/opportunities";
 import { listPeopleForHousehold, peopleRepo } from "../db/repositories/people";
 import { listTripIdeasForHousehold } from "../db/repositories/trip-ideas";
-import { getNwsForecast, type NwsForecastPeriod } from "../external/nws";
-import { getTravelTime } from "../external/travel";
+import { getNwsForecast } from "../external/nws";
+import { parseWindMph, scoreWeatherSuitability } from "../planner/weather-score";
 import { dispatchNotification } from "../notifications/dispatch";
 
 // NWS's forecast endpoint only returns ~7 days of periods (day+night) --
@@ -86,6 +88,11 @@ export async function detectOpportunitiesForHousehold(
     ...custodyBlocks.map((c) => ({ start: new Date(c.starts_at), end: new Date(c.ends_at) })),
   ];
 
+  // Same lookback the weekend planner uses (P1-8/D-070) -- feeding both
+  // surfaces the same recency signal is part of what makes their scores
+  // agree for the same activity/day.
+  const recentActivityTypes = await listRecentlyProposedActivityTypes(client, householdId, today);
+
   const newHeadlines: string[] = [];
 
   for (let i = 0; i < OPPORTUNITY_SCAN_DAYS_AHEAD; i++) {
@@ -104,27 +111,34 @@ export async function detectOpportunitiesForHousehold(
       const existing = await findExistingActivityOpportunity(client, householdId, activity.id, forDateStr);
       if (existing) continue;
 
-      const location = activity.locations[0];
-      const point = location?.lat != null && location.lng != null ? { lat: location.lat, lng: location.lng } : home;
+      // P1-7/D-070: prefer a location we can actually route to when an
+      // activity has more than one on file (e.g. Shooting).
+      const location = pickBestLocation(activity.locations);
 
-      const forecast = await getNwsForecast(client, point.lat, point.lng);
-      const period = bestDaytimePeriodForDate(forecast.data?.periods ?? [], dayStart);
-      if (!period) continue; // beyond the forecast horizon, or the adapter has no data right now
-
-      const weatherScore = scoreWeatherSuitability({
-        tempF: period.temperatureF,
-        precipChancePercent: period.precipitationChancePercent,
-        windMph: parseWindMph(period.windSpeed),
+      const candidate = await scoreActivityCandidate(client, {
+        activity,
+        location,
+        home,
+        targetDate: dayStart,
+        availableMinutes,
+        weeksSinceLastProposed: weeksSinceLastProposed(activity.activity_type, recentActivityTypes),
       });
+      const { forecastPeriod: period, weatherScore, travel, score } = candidate;
+      if (!period) continue; // beyond the forecast horizon, or the adapter has no data right now
       if (weatherScore < ACTIVITY_WEATHER_SCORE_THRESHOLD) continue;
-
-      const travel = await getTravelTime(home, point, {});
-      const travelScore = scoreTravelFeasibility(travel.minutes, availableMinutes);
-      if (travelScore <= 0) continue; // round-trip travel alone would eat the whole open block
+      // Round-trip travel alone would eat the whole open block -- only a real
+      // (non-estimated-unknown) 0 score means that; an "unknown" estimate
+      // gets a neutral score instead, so it's never gated out for lack of data.
+      if (travel.minutes != null && travel.minutes > 0 && score.breakdown.travelFeasibility <= 0) continue;
 
       const dayOfWeekLabel = format(dayStart, "EEEE");
-      const headline = `Exceptional ${activity.activity_type} weather ${dayOfWeekLabel}`;
-      const reasoning = `${period.shortForecast} on ${format(dayStart, "EEEE, MMM d")} (weather score ${weatherScore}/100) with a ${formatHours(availableMinutes)} open block${location?.name ? ` near ${location.name}` : ""} and about ${travel.minutes} min drive each way.`;
+      // Neutral headline -- no "Exceptional" here. Tiering (Exceptional /
+      // Great / Good) is applied only at presentation time, to the actual
+      // top-scoring candidates across the week (P1-6/D-070); every row
+      // written here is just a scored candidate, not yet a claim about how
+      // it ranks.
+      const headline = `${activity.activity_type} — good conditions ${dayOfWeekLabel}`;
+      const reasoning = `${period.shortForecast} on ${format(dayStart, "EEEE, MMM d")} (weather score ${weatherScore}/100) with a ${formatHours(availableMinutes)} open block${location?.name ? ` near ${location.name}` : ""}${formatTravelClause(travel)}. Overall score ${score.totalScore}/100.`;
 
       await opportunitiesRepo.create(client, {
         household_id: householdId,
@@ -132,7 +146,7 @@ export async function detectOpportunitiesForHousehold(
         trip_idea_id: null,
         opportunity_type: "activity_window",
         for_date: forDateStr,
-        score: weatherScore,
+        score: score.totalScore,
         headline,
         reasoning,
         expires_at: expiresAt,
@@ -151,7 +165,7 @@ export async function detectOpportunitiesForHousehold(
       // forecast anchor, the same assumption the daily brief's weather
       // section already makes.
       const forecast = await getNwsForecast(client, home.lat, home.lng);
-      const period = bestDaytimePeriodForDate(forecast.data?.periods ?? [], dayStart);
+      const period = bestForecastPeriodForDate(forecast.data?.periods ?? [], dayStart);
       if (!period) continue;
 
       const weatherScore = scoreWeatherSuitability({
@@ -215,29 +229,9 @@ function formatHours(minutes: number): string {
   return hours === Math.round(hours) ? `${hours}-hour` : `${hours.toFixed(1)}-hour`;
 }
 
-/**
- * NWS forecast periods aren't indexed by day -- each is a ~12hr day/night
- * span (startTime/endTime, ISO with offset) -- so for a given target date
- * there are usually two candidate periods (the daytime one and the
- * overnight one straddling midnight). Picks whichever period overlaps the
- * most of that date's waking hours (8am-8pm), and returns null if none of
- * the returned periods cover the date at all (i.e. it's beyond the
- * forecast horizon, or the adapter had no data).
- */
-export function bestDaytimePeriodForDate(periods: NwsForecastPeriod[], targetDate: Date): NwsForecastPeriod | null {
-  const wakingStart = setHours(startOfDay(targetDate), WAKING_HOUR_START).getTime();
-  const wakingEnd = setHours(startOfDay(targetDate), WAKING_HOUR_END).getTime();
-
-  let best: { period: NwsForecastPeriod; overlapMs: number } | null = null;
-  for (const period of periods) {
-    const start = new Date(period.startTime).getTime();
-    const end = new Date(period.endTime).getTime();
-    const overlapMs = Math.min(end, wakingEnd) - Math.max(start, wakingStart);
-    if (overlapMs <= 0) continue;
-    if (!best || overlapMs > best.overlapMs) best = { period, overlapMs };
-  }
-  return best?.period ?? null;
-}
+// bestDaytimePeriodForDate moved to lib/planner/forecast-period.ts as
+// bestForecastPeriodForDate (D-070/P1-8) -- now shared with the weekend
+// planner instead of duplicated per surface.
 
 async function findHouseholdOwnerUser(client: SupabaseClient, householdId: string) {
   const people = await peopleRepo.list(client, (q) =>
