@@ -65,11 +65,28 @@ export async function executeAction(
     }
     case "add_gift_budget": {
       if (!action.personId) throw new Error("Missing person");
+      // D-080 (P2-6): a capture that only states one side of the range
+      // ("Cal's gift budget is up to $150") used to zero-fill the other
+      // side, silently writing a $0 floor as a permanent person-specific
+      // override -- resolveGiftBudget() (lib/gifts/budget.ts) then always
+      // prefers that broken row over the household's real default, both
+      // for display on the person page and for actual gift-suggestion
+      // generation. Falling back to the household default for whichever
+      // side wasn't stated keeps the person's stored default in sync with
+      // the household default instead of introducing a competing number.
+      const minCents =
+        action.budgetMinDollars != null
+          ? Math.round(action.budgetMinDollars * 100)
+          : household.default_gift_budget_min_cents ?? 0;
+      const maxCents =
+        action.budgetMaxDollars != null
+          ? Math.round(action.budgetMaxDollars * 100)
+          : household.default_gift_budget_max_cents ?? 0;
       await personGiftBudgetsRepo.create(supabase, {
         person_id: action.personId,
         occasion_type: action.budgetOccasionType ?? "default",
-        min_cents: Math.round((action.budgetMinDollars ?? 0) * 100),
-        max_cents: Math.round((action.budgetMaxDollars ?? 0) * 100),
+        min_cents: minCents,
+        max_cents: maxCents,
       });
       return;
     }

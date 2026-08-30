@@ -89,6 +89,17 @@ body {
   color: var(--foreground);
 }
 
+/* D-081 (P2-5 follow-up): color-scheme (above) fixes native control chrome
+   (backgrounds/text) but does NOT set the checked-state fill browsers use
+   for checkboxes/radios -- that stays OS-default blue unless accent-color
+   is set explicitly, which is why checkboxes still looked unstyled after
+   the color-scheme fix. One rule, themed via the existing --primary token,
+   fixes every checkbox/radio app-wide without touching each raw input. */
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--primary);
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

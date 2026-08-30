@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { ConfirmDeleteButton } from "@/components/ui/confirm-delete-button";
 import {
@@ -24,7 +25,7 @@ import {
 } from "./actions";
 import { useAiHealth } from "@/lib/hooks/use-ai-health";
 import { useFormValidity } from "@/lib/hooks/use-form-validity";
-import { giftReactionDisplayLabel } from "@/lib/gifts/occasions";
+import { giftReactionDisplayLabel, occasionTypeDisplayLabel } from "@/lib/gifts/occasions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -153,7 +154,7 @@ export function AddBudgetForm({ personId }: { personId: string }) {
       >
         {OCCASION_OPTIONS.map((o) => (
           <option key={o} value={o}>
-            {o}
+            {occasionTypeDisplayLabel(o)}
           </option>
         ))}
       </select>
@@ -210,7 +211,7 @@ export function RecordGiftForm({ personId }: { personId: string }) {
         >
           {OCCASION_OPTIONS.map((o) => (
             <option key={o} value={o}>
-              {o}
+              {occasionTypeDisplayLabel(o)}
             </option>
           ))}
         </select>
@@ -257,6 +258,7 @@ export function GenerateSuggestionsForm({
   const formRef = useRef<HTMLFormElement>(null);
   const { invalid, checkValid, clearInvalid } = useFormValidity(formRef);
   const { aiAvailable } = useAiHealth();
+  const router = useRouter();
 
   function handleGenerate() {
     // The date field is `required` with no default — a click while it's
@@ -267,6 +269,19 @@ export function GenerateSuggestionsForm({
     if (!checkValid()) return;
     dispatch(new FormData(formRef.current!));
   }
+
+  // D-082 (P2-7): the ~10s generation used to just flip a small "Done" line
+  // in place with no way to see the result short of remembering to visit
+  // /gifts yourself. Results always land on /gifts (generateSuggestionsAction
+  // revalidates that path, never this page), so a run that actually produced
+  // new ideas navigates there automatically. When nothing new came back
+  // (state.message is only set on that empty-result branch) there's nothing
+  // to navigate to -- stay put and show the explanatory message instead.
+  useEffect(() => {
+    if (state.success && !state.message) {
+      router.push("/gifts");
+    }
+  }, [state, router]);
 
   const disabled = pending || aiAvailable === false;
 
@@ -281,7 +296,7 @@ export function GenerateSuggestionsForm({
         >
           {OCCASION_OPTIONS.map((o) => (
             <option key={o} value={o}>
-              {o}
+              {occasionTypeDisplayLabel(o)}
             </option>
           ))}
         </select>
@@ -309,7 +324,7 @@ export function GenerateSuggestionsForm({
       >
         {pending ? (
           <>
-            <Loader2 className="size-3 animate-spin" /> Thinking…
+            <Loader2 className="size-3 animate-spin" /> Reading through that…
           </>
         ) : (
           "Get gift ideas"
