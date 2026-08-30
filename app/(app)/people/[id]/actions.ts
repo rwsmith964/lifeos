@@ -40,6 +40,11 @@ export interface SimpleFormState {
 export interface GenerateSuggestionsState {
   error: string | null;
   success: boolean;
+  /** P1-11: distinguishes "generated N new ideas" from "found none because
+   * every AI suggestion this time fuzzy-duplicated one already active for
+   * this person" -- both are `success: true` (nothing went wrong), but the
+   * second deserves different copy than the default "Done" message. */
+  message?: string | null;
 }
 
 export async function generateSuggestionsAction(
@@ -68,6 +73,13 @@ export async function generateSuggestionsAction(
   }
 
   revalidatePath("/gifts");
+  if (result.suggestions.length === 0) {
+    return {
+      error: null,
+      success: true,
+      message: "No new ideas this time — similar gifts were already suggested for them.",
+    };
+  }
   return { error: null, success: true };
 }
 

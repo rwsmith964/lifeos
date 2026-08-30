@@ -12,6 +12,21 @@ export interface MonthDay {
 
 export const CHRISTMAS_MONTH_DAY: MonthDay = { month: 12, day: 25 };
 
+/** P1-11: human-readable label for an OccasionType, for the gift-list
+ * person/run group headers -- never render the raw enum value itself. */
+export const OCCASION_TYPE_DISPLAY_LABELS: Record<OccasionType, string> = {
+  birthday: "Birthday",
+  christmas: "Christmas",
+  anniversary: "Anniversary",
+  graduation: "Graduation",
+  just_because: "Just Because",
+  default: "Occasion",
+};
+
+export function occasionTypeDisplayLabel(occasionType: OccasionType): string {
+  return OCCASION_TYPE_DISPLAY_LABELS[occasionType] ?? "Occasion";
+}
+
 /** Parses just the month/day out of a stored `YYYY-MM-DD` date string —
  * the year is often a placeholder when birth_year_known is false, so it's
  * deliberately never read here. */

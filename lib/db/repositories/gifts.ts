@@ -49,6 +49,24 @@ export async function listDismissedSuggestionTitles(
   return rows.map((r) => r.title);
 }
 
+/**
+ * Titles of suggestions currently visible to the user (suggested/saved) or
+ * already fulfilled (converted_to_gift) for this person. Used at
+ * generation time (P1-11) to hard-block a new AI suggestion that fuzzy-
+ * duplicates one already active or already bought — distinct from
+ * listDismissedSuggestionTitles, which only feeds the AI prompt as a soft
+ * "don't repeat this" hint.
+ */
+export async function listActiveAndConvertedSuggestionTitlesForPerson(
+  client: SupabaseClient,
+  personId: string
+): Promise<string[]> {
+  const rows = await giftSuggestionsRepo.list(client, (q) =>
+    q.eq("person_id", personId).in("status", ["suggested", "saved", "converted_to_gift"])
+  );
+  return rows.map((r) => r.title);
+}
+
 export async function listSuggestionsDueForOrder(
   client: SupabaseClient,
   householdId: string,
@@ -75,7 +93,14 @@ export async function listActiveSuggestionsForHousehold(
     .select("*, person:people!inner(id, full_name, household_id)")
     .eq("person.household_id", householdId)
     .in("status", ["suggested", "saved"])
-    .order("order_by_date", { ascending: true });
+    // P1-11: order_by_date alone leaves ties (same date, or several rows
+    // that share it) in whatever order Postgres happens to return them,
+    // which is not guaranteed stable across requests. Chain deterministic
+    // tiebreakers so the list order never shuffles on reload.
+    .order("order_by_date", { ascending: true })
+    .order("person_id", { ascending: true })
+    .order("generated_at", { ascending: true })
+    .order("id", { ascending: true });
   if (error) throw error;
   return (data ?? []) as (GiftSuggestionRow & { person: { id: string; full_name: string } })[];
 }

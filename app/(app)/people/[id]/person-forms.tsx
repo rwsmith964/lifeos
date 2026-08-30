@@ -282,7 +282,9 @@ export function GenerateSuggestionsForm({
         />
       </div>
       {state.error && <p className="text-xs text-destructive">{state.error}</p>}
-      {state.success && <p className="text-xs text-muted-foreground">Done — see the Gifts tab.</p>}
+      {state.success && (
+        <p className="text-xs text-muted-foreground">{state.message ?? "Done — see the Gifts tab."}</p>
+      )}
       <Button
         type="button"
         size="sm"

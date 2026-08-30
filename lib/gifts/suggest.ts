@@ -20,9 +20,11 @@ import { householdsRepo } from "../db/repositories/households";
 import {
   getShippingWindows,
   giftSuggestionsRepo,
+  listActiveAndConvertedSuggestionTitlesForPerson,
   listDismissedSuggestionTitles,
   listGiftsForPerson,
 } from "../db/repositories/gifts";
+import { isFuzzyDuplicateTitle } from "./dedupe";
 import {
   listBudgetsForPerson,
   listGiftSitesForPerson,
@@ -60,14 +62,16 @@ export async function generateGiftSuggestions(
   if (!person) throw new Error(`Person ${params.personId} not found`);
   if (!household) throw new Error(`Household ${params.householdId} not found`);
 
-  const [interests, recentGifts, dismissedTitles, budgets, householdPeople, giftSites] = await Promise.all([
-    listInterestsForPerson(client, person.id),
-    listGiftsForPerson(client, person.id, 5),
-    listDismissedSuggestionTitles(client, person.id),
-    listBudgetsForPerson(client, person.id),
-    listPeopleForHousehold(client, params.householdId),
-    listGiftSitesForPerson(client, person.id),
-  ]);
+  const [interests, recentGifts, dismissedTitles, activeAndConvertedTitles, budgets, householdPeople, giftSites] =
+    await Promise.all([
+      listInterestsForPerson(client, person.id),
+      listGiftsForPerson(client, person.id, 5),
+      listDismissedSuggestionTitles(client, person.id),
+      listActiveAndConvertedSuggestionTitlesForPerson(client, person.id),
+      listBudgetsForPerson(client, person.id),
+      listPeopleForHousehold(client, params.householdId),
+      listGiftSitesForPerson(client, person.id),
+    ]);
 
   const budget = resolveGiftBudget(budgets, params.occasionType, household);
   const tokenMap = buildChildTokenMap(householdPeople);
@@ -129,8 +133,21 @@ export async function generateGiftSuggestions(
   const occasionDateStr = format(params.occasionDate, ISO_DATE_FORMAT);
 
   const created: GiftSuggestionRow[] = [];
+  // P1-11: hard-block a new suggestion whose title fuzzy-duplicates one
+  // already active (suggested/saved) or already bought for this person.
+  // Seeded from the DB lookup and grown as we go, so the 3 suggestions
+  // returned by a single AI call are also deduped against each other, not
+  // just against prior runs.
+  const seenTitles = [...activeAndConvertedTitles];
   let suggestionIndex = 0;
   for (const suggestion of validated.data) {
+    const title = tokenMap.restoreRealNames(suggestion.title);
+    if (isFuzzyDuplicateTitle(title, seenTitles)) {
+      console.log(`[gift_suggestion] skipped fuzzy-duplicate title for person ${person.id}: "${title}"`);
+      continue;
+    }
+    seenTitles.push(title);
+
     const windowDays =
       shippingWindows.find((w) => w.category === suggestion.category)?.shipping_window_days ?? 5;
     const { orderByDate } = computeOrderByDate({
@@ -140,7 +157,6 @@ export async function generateGiftSuggestions(
       personalBufferDays: household.gift_personal_buffer_days,
     });
 
-    const title = tokenMap.restoreRealNames(suggestion.title);
     const reasoning = tokenMap.restoreRealNames(suggestion.reasoning);
     // D-063: once this person has at least one saved preferred gift site,
     // route each suggestion's deep link there (round-robin across however
