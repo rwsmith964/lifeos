@@ -12,13 +12,21 @@ import { GiftSuggestionGroups } from "../gift-suggestion-groups";
  * there's no saved-gifts list anywhere in the app." This is that list —
  * every suggestion currently in "saved" status, grouped the same way as
  * the main Gifts page, with Move back / Dismiss actions.
+ *
+ * P3-4: also includes "ordered" suggestions — the middle step of the
+ * Saved -> Ordered -> Given shortlist lifecycle. Both statuses stay on
+ * this one shortlist page (an ordered gift is still "on the shortlist",
+ * just further along) rather than splitting into a second page; each
+ * card's own badge/actions (GiftSuggestionActions) already distinguish
+ * the two states.
  */
 export default async function SavedGiftsPage() {
   const { supabase, household } = await requireHouseholdContext();
   const rawSuggestions = await listActiveSuggestionsForHousehold(supabase, household.id);
   const deduped = dedupeSuggestionsPerPerson(rawSuggestions);
   const saved = deduped.filter(
-    (s): s is (typeof deduped)[number] & { status: "saved" } => s.status === "saved"
+    (s): s is (typeof deduped)[number] & { status: "saved" | "ordered" } =>
+      s.status === "saved" || s.status === "ordered"
   );
   const personGroups = groupSuggestionsByPersonAndRun(saved);
 

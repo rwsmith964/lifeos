@@ -59,6 +59,7 @@ export const priceTierSchema = z.enum(["low", "mid", "high"]);
 export const suggestionStatusSchema = z.enum([
   "suggested",
   "saved",
+  "ordered",
   "dismissed",
   "converted_to_gift",
 ]);

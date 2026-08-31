@@ -26,7 +26,11 @@ export default async function GiftsPage() {
   const pending = deduped.filter(
     (s): s is (typeof deduped)[number] & { status: "suggested" } => s.status === "suggested"
   );
-  const savedCount = deduped.filter((s) => s.status === "saved").length;
+  // P3-4: the Saved gifts page now also holds "ordered" suggestions (the
+  // middle step of Saved -> Ordered -> Given), so this count includes both
+  // — otherwise the badge would silently undercount once something moves
+  // past Saved, even though it's still sitting on that same shortlist page.
+  const savedCount = deduped.filter((s) => s.status === "saved" || s.status === "ordered").length;
   const personGroups = groupSuggestionsByPersonAndRun(pending);
 
   return (

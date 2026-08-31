@@ -34,7 +34,7 @@ export type GiftReaction = "loved_it" | "liked_it" | "neutral" | "missed";
 
 export type PriceTier = "low" | "mid" | "high";
 
-export type SuggestionStatus = "suggested" | "saved" | "dismissed" | "converted_to_gift";
+export type SuggestionStatus = "suggested" | "saved" | "ordered" | "dismissed" | "converted_to_gift";
 
 export type ContactType = "call" | "text" | "in_person" | "activity" | "other";
 

@@ -62,7 +62,7 @@ export async function listActiveAndConvertedSuggestionTitlesForPerson(
   personId: string
 ): Promise<string[]> {
   const rows = await giftSuggestionsRepo.list(client, (q) =>
-    q.eq("person_id", personId).in("status", ["suggested", "saved", "converted_to_gift"])
+    q.eq("person_id", personId).in("status", ["suggested", "saved", "ordered", "converted_to_gift"])
   );
   return rows.map((r) => r.title);
 }
@@ -92,7 +92,7 @@ export async function listActiveSuggestionsForHousehold(
     .from("gift_suggestions")
     .select("*, person:people!inner(id, full_name, household_id)")
     .eq("person.household_id", householdId)
-    .in("status", ["suggested", "saved"])
+    .in("status", ["suggested", "saved", "ordered"])
     // P1-11: order_by_date alone leaves ties (same date, or several rows
     // that share it) in whatever order Postgres happens to return them,
     // which is not guaranteed stable across requests. Chain deterministic

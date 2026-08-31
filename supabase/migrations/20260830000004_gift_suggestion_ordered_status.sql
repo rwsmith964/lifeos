@@ -1,0 +1,14 @@
+-- P3-4: saved-gifts shortlist lifecycle (Saved -> Ordered -> Given).
+--
+-- suggestion_status already had 'suggested' | 'saved' | 'dismissed' |
+-- 'converted_to_gift' but no intermediate "I bought this, waiting on it"
+-- state between Saved and the terminal Given/converted_to_gift. Add
+-- 'ordered' as an additive enum value (safe: no existing rows use it, no
+-- data backfill needed). The application writes an actual `gifts` row
+-- (status 'given') and flips the suggestion to 'converted_to_gift' at the
+-- Given step -- that's the existing terminal state, unchanged.
+--
+-- ALTER TYPE ... ADD VALUE cannot run in the same transaction as a
+-- statement that *uses* the new value, but this migration only adds it,
+-- so a plain single-statement migration is safe.
+alter type suggestion_status add value 'ordered' after 'saved';

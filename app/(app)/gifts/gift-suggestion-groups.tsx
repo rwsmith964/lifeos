@@ -9,13 +9,13 @@ import { GiftSuggestionActions } from "./gift-suggestion-actions";
 
 const TIER_LABELS: Record<string, string> = { low: "Low", mid: "Mid", high: "High" };
 
-type SuggestionWithStatus = GiftSuggestionRow & { status: "suggested" | "saved" };
+type SuggestionWithStatus = GiftSuggestionRow & { status: "suggested" | "saved" | "ordered" };
 
 /**
- * Shared card rendering for both the main Gifts page (status: suggested)
- * and the Saved gifts view (status: saved) — factored out (P1-12) so the
- * two lists can never visually drift from each other, per the "one part of
- * the app disagreeing with another" ground rule.
+ * Shared card rendering for the main Gifts page (status: suggested) and
+ * the Saved gifts view (status: saved or ordered, P3-4) — factored out
+ * (P1-12) so the lists can never visually drift from each other, per the
+ * "one part of the app disagreeing with another" ground rule.
  */
 export function GiftSuggestionGroups({ personGroups }: { personGroups: PersonGroup<SuggestionWithStatus>[] }) {
   return (
