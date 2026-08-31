@@ -882,6 +882,28 @@ export interface WeekendPlanRow {
 export type WeekendPlanInsert = Insert<WeekendPlanRow, "id" | "generated_at">;
 export type WeekendPlanUpdate = Update<WeekendPlanRow>;
 
+// brain_dump_batches -------------------------------------------------------
+
+export type BrainDumpParseStatus = "pending" | "ready" | "unavailable" | "error";
+
+export interface BrainDumpBatchRow {
+  id: string;
+  household_id: string;
+  created_by_person_id: string;
+  transcript: string;
+  parse_status: BrainDumpParseStatus;
+  parse_message: string | null;
+  items: unknown;
+  saved_count: number;
+  created_at: string;
+  updated_at: string;
+}
+export type BrainDumpBatchInsert = Insert<
+  BrainDumpBatchRow,
+  "id" | "parse_status" | "parse_message" | "items" | "saved_count" | "created_at" | "updated_at"
+>;
+export type BrainDumpBatchUpdate = Update<BrainDumpBatchRow>;
+
 // gift_shipping_windows -------------------------------------------------
 
 export interface GiftShippingWindowRow {

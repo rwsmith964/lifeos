@@ -1,16 +1,22 @@
-// Brain-dump execute endpoint (D-066). The review UI calls this once per
-// item the user approves (optionally after editing it) — never for items
-// the user discarded. Reuses the exact same executeAction as Quick Capture
-// (lib/ai/capture-actions.ts) so both features write identically.
+// Brain-dump execute endpoint (D-066, extended P3-7). The review UI calls
+// this once per item the user approves (optionally after editing it) —
+// never for items the user discarded. Reuses the exact same executeAction
+// as Quick Capture (lib/ai/capture-actions.ts) so both features write
+// identically.
 import { NextResponse } from "next/server";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { executeAction, isKnownPersonId } from "@/lib/ai/capture-actions";
 import { brainDumpItemSchema } from "@/lib/ai/prompts/brain-dump";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
 import { friendlyMutationError } from "@/lib/db/errors";
+import { incrementBrainDumpBatchSavedCount } from "@/lib/db/repositories/brain-dump";
 
 interface BrainDumpExecuteRequestBody {
   item: unknown;
+  // P3-7: which batch this item came from, so history can show how many
+  // of a batch's items actually got saved. Optional and best-effort —
+  // the save itself must never fail because this is missing or stale.
+  batchId?: string;
 }
 
 export async function POST(request: Request) {
@@ -49,6 +55,12 @@ export async function POST(request: Request) {
       status: "error",
       message: friendlyMutationError(error, { fallback: "Couldn't save that — please try again." }),
     });
+  }
+
+  if (body.batchId) {
+    // Best-effort — a failure here (e.g. a stale/foreign batchId) must
+    // never undo or fail the save that already succeeded above.
+    await incrementBrainDumpBatchSavedCount(supabase, body.batchId).catch(() => {});
   }
 
   return NextResponse.json({ status: "ready" });

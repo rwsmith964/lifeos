@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { format } from "date-fns";
-import { AlertTriangle, Check, Mic, MicOff, Trash2 } from "lucide-react";
+import { format, formatDistanceToNow } from "date-fns";
+import { AlertTriangle, Check, History, Mic, MicOff, RotateCcw, Trash2 } from "lucide-react";
 import { useAiHealth } from "@/lib/hooks/use-ai-health";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,6 +11,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { ConfirmDeleteButton } from "@/components/ui/confirm-delete-button";
+import { deleteBrainDumpBatchAction } from "./brain-dump-batch-actions";
+import type { BrainDumpParseStatus } from "@/lib/db/database.types";
 
 // Same ambient Web Speech API shape as components/capture/capture-button.tsx
 // (D-048) — duplicated rather than imported since it's a tiny type-only
@@ -52,6 +55,34 @@ interface PersonOption {
   id: string;
   label: string;
 }
+
+// Minimal shape the server passes down from brain_dump_batches for the
+// history list (P3-7) — deliberately not the full row (e.g. items/jsonb
+// isn't needed client-side; re-running always re-fetches fresh items from
+// the parse endpoint rather than resuming a stored review state).
+export interface BrainDumpBatchSummary {
+  id: string;
+  transcript: string;
+  parse_status: BrainDumpParseStatus;
+  parse_message: string | null;
+  saved_count: number;
+  created_at: string;
+}
+
+// Friendly labels only — the raw parse_status enum never reaches the UI
+// (ground rule: no raw enum values shown to the user).
+const BATCH_STATUS_LABEL: Record<BrainDumpParseStatus, string> = {
+  pending: "Processing…",
+  ready: "Processed",
+  unavailable: "Unavailable",
+  error: "Couldn't process",
+};
+const BATCH_STATUS_BADGE_VARIANT: Record<BrainDumpParseStatus, "default" | "secondary" | "destructive"> = {
+  pending: "secondary",
+  ready: "default",
+  unavailable: "secondary",
+  error: "destructive",
+};
 
 // Superset of every field any action type needs (mirrors BrainDumpItem /
 // CaptureAction), plus client-only bookkeeping. Kept as one flat shape so
@@ -285,7 +316,13 @@ function toExecutePayload(item: EditableItem): Record<string, unknown> {
   }
 }
 
-export function BrainDumpClient({ people }: { people: PersonOption[] }) {
+export function BrainDumpClient({
+  people,
+  initialBatches,
+}: {
+  people: PersonOption[];
+  initialBatches: BrainDumpBatchSummary[];
+}) {
   const router = useRouter();
   const { aiAvailable } = useAiHealth();
   const [transcript, setTranscript] = useState("");
@@ -293,6 +330,12 @@ export function BrainDumpClient({ people }: { people: PersonOption[] }) {
   const [parsing, setParsing] = useState(false);
   const [parseMessage, setParseMessage] = useState<string | null>(null);
   const [items, setItems] = useState<EditableItem[] | null>(null);
+  // P3-7: the batch this transcript/review is tied to, so saves get
+  // attributed to it and re-running (without editing the text) updates
+  // the same row instead of creating a duplicate. Cleared whenever the
+  // user starts typing genuinely new content (see the textarea onChange
+  // below) or starts over.
+  const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
 
   useEffect(() => {
@@ -335,6 +378,10 @@ export function BrainDumpClient({ people }: { people: PersonOption[] }) {
       }
       const prefix = baseTranscriptRef.current ? `${baseTranscriptRef.current} ` : "";
       setTranscript(prefix + liveText);
+      // Dictating more speech changes the transcript itself, so the next
+      // Process should create a new batch rather than silently re-running
+      // whatever batch an earlier attempt on the old text left active.
+      setActiveBatchId(null);
     };
     recognition.onerror = () => setListening(false);
     recognition.onend = () => setListening(false);
@@ -343,8 +390,14 @@ export function BrainDumpClient({ people }: { people: PersonOption[] }) {
     setListening(true);
   }
 
-  async function processTranscript() {
-    const text = transcript.trim();
+  // `overrideText`/`overrideBatchId` let the history list's Re-run button
+  // kick off a parse immediately (loading the stored transcript and its
+  // batch id in the same call) instead of waiting a render cycle for
+  // state to settle. Plain "Process" clicks call this with no arguments,
+  // falling back to current state as before.
+  async function processTranscript(overrideText?: string, overrideBatchId?: string | null) {
+    const text = (overrideText ?? transcript).trim();
+    const batchIdToUse = overrideBatchId !== undefined ? overrideBatchId : activeBatchId;
     if (!text || parsing) return;
     recognitionRef.current?.stop();
     setListening(false);
@@ -355,9 +408,10 @@ export function BrainDumpClient({ people }: { people: PersonOption[] }) {
       const res = await fetch("/api/brain-dump/parse", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript: text }),
+        body: JSON.stringify(batchIdToUse ? { batchId: batchIdToUse } : { transcript: text }),
       });
-      const data = (await res.json()) as { status: string; items?: ParsedApiItem[]; message?: string };
+      const data = (await res.json()) as { batchId?: string; status: string; items?: ParsedApiItem[]; message?: string };
+      if (data.batchId) setActiveBatchId(data.batchId);
       if (data.status === "ready" && data.items) {
         if (data.items.length === 0) {
           setParseMessage("Didn't find anything to save in that — add more detail and try again, or edit it below.");
@@ -367,11 +421,21 @@ export function BrainDumpClient({ people }: { people: PersonOption[] }) {
       } else {
         setParseMessage(data.message ?? "Couldn't process that — try again.");
       }
+      // Refresh the history list underneath so its status/preview reflects
+      // what just happened, whether this was a fresh dump or a re-run.
+      router.refresh();
     } catch {
       setParseMessage("Couldn't reach the server — try again.");
     } finally {
       setParsing(false);
     }
+  }
+
+  function rerunBatch(batch: BrainDumpBatchSummary) {
+    setTranscript(batch.transcript);
+    setParseMessage(null);
+    setItems(null);
+    void processTranscript(batch.transcript, batch.id);
   }
 
   function updateItem(clientId: string, patch: Partial<EditableItem>) {
@@ -390,7 +454,7 @@ export function BrainDumpClient({ people }: { people: PersonOption[] }) {
       const res = await fetch("/api/brain-dump/execute", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ item: toExecutePayload(item) }),
+        body: JSON.stringify({ item: toExecutePayload(item), batchId: activeBatchId ?? undefined }),
       });
       const data = (await res.json()) as { status: string; message?: string };
       if (data.status === "ready") {
@@ -422,6 +486,7 @@ export function BrainDumpClient({ people }: { people: PersonOption[] }) {
     setItems(null);
     setTranscript("");
     setParseMessage(null);
+    setActiveBatchId(null);
   }
 
   const pendingCount = items?.filter((it) => it.status === "pending" || it.status === "error").length ?? 0;
@@ -441,7 +506,15 @@ export function BrainDumpClient({ people }: { people: PersonOption[] }) {
         )}
         <Textarea
           value={transcript}
-          onChange={(e) => setTranscript(e.target.value)}
+          onChange={(e) => {
+            setTranscript(e.target.value);
+            // Editing the transcript by hand means this is no longer the
+            // stored text for whatever batch was active (a fresh dump, or
+            // a re-run the user is now tweaking) — the next Process
+            // should create its own new batch rather than overwrite one
+            // whose stored transcript would then no longer match.
+            setActiveBatchId(null);
+          }}
           placeholder={listening ? "Listening…" : "Ramble away — mention people, events, gift ideas, notes, time off, anything."}
           disabled={aiAvailable === false}
           className="min-h-40"
@@ -471,6 +544,51 @@ export function BrainDumpClient({ people }: { people: PersonOption[] }) {
           </Button>
         </div>
         {parseMessage && <p className="text-sm text-muted-foreground">{parseMessage}</p>}
+
+        {initialBatches.length > 0 && (
+          <div className="mt-4 flex flex-col gap-2">
+            <div className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+              <History className="size-4" />
+              Past brain dumps
+            </div>
+            {initialBatches.map((batch) => (
+              <Card key={batch.id}>
+                <CardContent className="flex items-start justify-between gap-3 py-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="line-clamp-2 text-sm text-foreground">{batch.transcript}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <span>{formatDistanceToNow(new Date(batch.created_at), { addSuffix: true })}</span>
+                      <Badge variant={BATCH_STATUS_BADGE_VARIANT[batch.parse_status]}>
+                        {BATCH_STATUS_LABEL[batch.parse_status]}
+                      </Badge>
+                      {batch.saved_count > 0 && <span>{batch.saved_count} saved</span>}
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={parsing}
+                      onClick={() => rerunBatch(batch)}
+                      aria-label="Re-run this brain dump"
+                    >
+                      <RotateCcw className="size-3.5" />
+                      Re-run
+                    </Button>
+                    <ConfirmDeleteButton
+                      action={() => deleteBrainDumpBatchAction(batch.id)}
+                      label="Delete"
+                      confirmLabel="Delete brain dump"
+                      dialogTitle="Delete this brain dump?"
+                      dialogDescription="This removes the saved transcript from your history. Anything you already saved from it stays untouched."
+                      successMessage="Brain dump removed."
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
     );
   }
