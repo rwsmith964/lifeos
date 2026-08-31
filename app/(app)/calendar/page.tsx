@@ -119,6 +119,12 @@ interface DayItem {
   attendees: string[];
   location: string | null;
   dotClassName: string;
+  // D-097: only set for kind === "custody". null means a one-off block
+  // (safe to edit directly); a schedule id means the block was generated
+  // by materializeCustodySchedule and gets overwritten on its next
+  // re-materialization, so it routes to an exception instead of a direct
+  // edit form. See app/api/calendar/custody/[id]/route.ts.
+  custodyScheduleId?: string | null;
 }
 
 export default async function CalendarPage({
@@ -218,6 +224,7 @@ export default async function CalendarPage({
       attendees: [],
       location: c.location,
       dotClassName: color.dot,
+      custodyScheduleId: c.custody_schedule_id,
     };
   });
 
@@ -583,6 +590,24 @@ export default async function CalendarPage({
                   {item.kind === "event" && (
                     <Button asChild size="icon" variant="ghost" className="size-8">
                       <Link href={`/calendar/${item.id}/edit`} aria-label="Edit event">
+                        <Pencil className="size-4" />
+                      </Link>
+                    </Button>
+                  )}
+                  {item.kind === "custody" && !item.custodyScheduleId && (
+                    <Button asChild size="icon" variant="ghost" className="size-8">
+                      <Link href={`/calendar/custody/one-off/${item.id}/edit`} aria-label="Edit custody block">
+                        <Pencil className="size-4" />
+                      </Link>
+                    </Button>
+                  )}
+                  {item.kind === "custody" && item.custodyScheduleId && (
+                    <Button asChild size="icon" variant="ghost" className="size-8">
+                      <Link
+                        href={`/calendar/custody/${item.custodyScheduleId}?date=${selectedDayKey}`}
+                        aria-label="Change who has custody this day"
+                        title="This day comes from a recurring schedule — add an exception to change just this day"
+                      >
                         <Pencil className="size-4" />
                       </Link>
                     </Button>

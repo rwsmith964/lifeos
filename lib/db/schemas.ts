@@ -426,6 +426,26 @@ export const custodyBlockInsertSchema = z
     path: ["ends_at"],
   });
 
+// D-097: edit for a one-off custody block only (custody_schedule_id left
+// out entirely — a schedule-generated block's fields get overwritten the
+// next time its schedule re-materializes, so this update path is only
+// ever reached from the one-off edit form/route, which already checks
+// custody_schedule_id is null before allowing the edit).
+export const custodyBlockUpdateSchema = z
+  .object({
+    child_person_id: uuid,
+    responsible_person_id: uuid,
+    starts_at: isoDateTime,
+    ends_at: isoDateTime,
+    block_type: custodyBlockTypeSchema.optional(),
+    notes: z.string().optional(),
+    location: z.string().nullable().optional(),
+  })
+  .refine((v) => new Date(v.ends_at) >= new Date(v.starts_at), {
+    message: "End date can't be before the start date.",
+    path: ["ends_at"],
+  });
+
 const custodyCycleAssignmentSchema = z.object({
   dayIndex: z.number().int().min(0),
   responsiblePersonId: uuid,

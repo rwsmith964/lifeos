@@ -3,6 +3,7 @@ import {
   activityLocationInsertSchema,
   calendarEventInsertSchema,
   custodyBlockInsertSchema,
+  custodyBlockUpdateSchema,
   giftInsertSchema,
   giftSuggestionInsertSchema,
   personGiftBudgetInsertSchema,
@@ -284,6 +285,32 @@ describe("custodyBlockInsertSchema", () => {
   it("rejects ends_at before starts_at", () => {
     const result = custodyBlockInsertSchema.safeParse({
       household_id: HOUSEHOLD_ID,
+      child_person_id: PERSON_ID,
+      responsible_person_id: PERSON_ID,
+      starts_at: "2026-09-06T17:00:00Z",
+      ends_at: "2026-09-05T17:00:00Z",
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+// D-097: update schema backing PATCH /api/calendar/custody/[id] (one-off
+// custody-block edit).
+describe("custodyBlockUpdateSchema", () => {
+  it("accepts a valid one-off block edit and deliberately has no household_id/custody_schedule_id fields", () => {
+    const result = custodyBlockUpdateSchema.safeParse({
+      child_person_id: PERSON_ID,
+      responsible_person_id: PERSON_ID,
+      starts_at: "2026-09-05T17:00:00Z",
+      ends_at: "2026-09-06T17:00:00Z",
+      block_type: "swap",
+      location: "Grandma's house",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects ends_at before starts_at", () => {
+    const result = custodyBlockUpdateSchema.safeParse({
       child_person_id: PERSON_ID,
       responsible_person_id: PERSON_ID,
       starts_at: "2026-09-06T17:00:00Z",

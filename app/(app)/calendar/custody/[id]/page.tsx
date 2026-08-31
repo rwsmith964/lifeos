@@ -12,8 +12,19 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ExceptionForm } from "./exception-form";
 import { DeleteExceptionButton } from "./delete-exception-button";
 
-export default async function CustodyScheduleDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function CustodyScheduleDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ date?: string }>;
+}) {
   const { id } = await params;
+  // D-097: when a schedule-generated custody block's edit pencil is
+  // clicked on the calendar day view, it lands here with that day
+  // pre-filled below — an exception is the correct "edit just this day"
+  // tool for a materialized block (see app/api/calendar/custody/[id]/route.ts).
+  const { date: prefillDate } = await searchParams;
   const { supabase, household } = await requireHouseholdContext();
 
   const schedule = await custodySchedulesRepo.getById(supabase, id);
@@ -99,6 +110,11 @@ export default async function CustodyScheduleDetailPage({ params }: { params: Pr
         <p className="text-xs text-muted-foreground">
           Override a single day — e.g. a holiday swap — without changing the underlying recurring cycle.
         </p>
+        {prefillDate && (
+          <p className="text-xs text-muted-foreground">
+            Change who has custody on {format(new Date(`${prefillDate}T00:00:00`), "EEEE, MMM d, yyyy")} using the form below.
+          </p>
+        )}
         {sortedExceptions.length === 0 ? (
           <Card>
             <CardContent className="text-sm text-muted-foreground">No exceptions yet.</CardContent>
@@ -126,7 +142,7 @@ export default async function CustodyScheduleDetailPage({ params }: { params: Pr
       {responsibleCandidates.length > 0 && (
         <Card>
           <CardContent>
-            <ExceptionForm scheduleId={schedule.id} responsibleCandidates={responsibleCandidates} />
+            <ExceptionForm scheduleId={schedule.id} responsibleCandidates={responsibleCandidates} initialDate={prefillDate} />
           </CardContent>
         </Card>
       )}

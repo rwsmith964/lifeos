@@ -13,12 +13,16 @@ const selectClass = "border-input h-9 rounded-md border bg-transparent px-3 text
 export function ExceptionForm({
   scheduleId,
   responsibleCandidates,
+  initialDate,
 }: {
   scheduleId: string;
   responsibleCandidates: PersonRow[];
+  /** D-097: pre-fills the date when arriving from the calendar day view's
+   * "change who has custody this day" link for a schedule-generated block. */
+  initialDate?: string;
 }) {
   const router = useRouter();
-  const [exceptionDate, setExceptionDate] = useState("");
+  const [exceptionDate, setExceptionDate] = useState(initialDate ?? "");
   const [responsiblePersonId, setResponsiblePersonId] = useState(responsibleCandidates[0]?.id ?? "");
   const [reason, setReason] = useState("");
   const [pending, setPending] = useState(false);
