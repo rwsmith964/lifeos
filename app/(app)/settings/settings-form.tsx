@@ -108,6 +108,31 @@ export function SettingsForm({
           </div>
 
           <div className="flex flex-col gap-2">
+            <Label>Notification delivery</Label>
+            <p className="text-xs text-muted-foreground">
+              Your daily brief and other alerts always show up in the notification bell in the app. Choose any
+              other ways you&apos;d like to hear about them too.
+            </p>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                name="notifyEmail"
+                defaultChecked={household.notification_channels.includes("email")}
+              />{" "}
+              Email
+            </label>
+            <label className="flex items-center gap-2 text-sm text-muted-foreground">
+              <input
+                type="checkbox"
+                name="notifyPush"
+                defaultChecked={household.notification_channels.includes("push")}
+                disabled
+              />{" "}
+              Push notifications (coming soon — requires the mobile app)
+            </label>
+          </div>
+
+          <div className="flex flex-col gap-2">
             <Label htmlFor="giftScanHorizonDays">Gift scan horizon (days)</Label>
             <Input
               id="giftScanHorizonDays"

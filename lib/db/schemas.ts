@@ -92,6 +92,11 @@ export const householdInsertSchema = z.object({
     .string()
     .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "expected HH:MM 24-hour time")
     .optional(),
+  // P3-5: only email/push are ever submitted from Settings (in_app is
+  // always-on application logic, sms is deferred and not exposed) — but
+  // this schema doesn't restrict beyond the enum since the dispatcher
+  // itself already no-ops safely on any channel it doesn't implement yet.
+  notification_channels: z.array(notificationChannelSchema).optional(),
 });
 
 export const userInsertSchema = z.object({

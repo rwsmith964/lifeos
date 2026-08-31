@@ -13,7 +13,7 @@ import {
   briefAiResponseSchema,
   type BriefContextInput,
 } from "../ai/prompts/brief";
-import type { PersonRow } from "../db/database.types";
+import type { NotificationChannel, PersonRow } from "../db/database.types";
 import { birthdayLeadTimeLabel, birthdaysToSurfaceInBrief } from "../calendar/birthdays";
 import { listActivitiesWithLocations } from "../db/repositories/activities";
 import { calendarEventsRepo, listCustodyBlocksForHouseholdInRange, listEventsInRange } from "../db/repositories/calendar";
@@ -293,7 +293,11 @@ export async function generateDailyBrief(
       body: markdown,
       linkPath: `/brief/${todayDateStr}`,
     },
-    ["in_app", "email"]
+    // P3-5: in_app is always sent (it backs the notification bell itself);
+    // everything beyond that is the household's own opt-in preference from
+    // Settings, not a hardcoded literal. Dedup with a Set in case in_app was
+    // ever stored in the preference array too.
+    Array.from(new Set<NotificationChannel>(["in_app", ...household.notification_channels]))
   );
   await briefsRepo.update(client, brief.id, {
     delivered_channels: delivered.filter((d) => d.result.delivered).map((d) => d.channel),

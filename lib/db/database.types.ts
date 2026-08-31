@@ -79,6 +79,9 @@ export interface HouseholdRow {
   gift_personal_buffer_days: number;
   ai_daily_spend_ceiling_cents: number;
   brief_time: string;
+  // P3-5: optional delivery channels beyond the always-on in_app channel
+  // (see migration 20260830000005 for why in_app itself isn't stored here).
+  notification_channels: NotificationChannel[];
   created_at: string;
   updated_at: string;
 }
@@ -93,6 +96,7 @@ export type HouseholdInsert = Insert<
   | "gift_personal_buffer_days"
   | "ai_daily_spend_ceiling_cents"
   | "brief_time"
+  | "notification_channels"
   | "created_at"
   | "updated_at"
 >;

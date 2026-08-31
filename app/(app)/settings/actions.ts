@@ -29,6 +29,12 @@ export async function updateHouseholdSettingsAction(
     // setting") — households that wanted a longer or shorter lead time on
     // gift suggestions had no self-service path to adjust it.
     gift_scan_horizon_days: Number(formData.get("giftScanHorizonDays") ?? household.gift_scan_horizon_days),
+    // P3-5: checkboxes only appear in FormData when checked, so an unchecked
+    // box means "not present" here, not "false" — this correctly turns email
+    // delivery off when the household unchecks it. Push isn't included: its
+    // checkbox is disabled (not implemented until the v2 Expo shell), so it
+    // never submits and is never persisted as an enabled channel.
+    notification_channels: formData.get("notifyEmail") != null ? ["email"] : [],
   });
   if (!parsedHousehold.success) {
     return { error: parsedHousehold.error.issues[0]?.message ?? "Invalid input.", saved: false };
