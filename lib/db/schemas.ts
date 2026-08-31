@@ -258,6 +258,11 @@ const userActivityBaseSchema = z.object({
   // D-083 (P3-1): set automatically when an opportunity for this activity
   // is marked "Acted on", or manually here on the edit form.
   last_done_at: isoDate.nullable().optional(),
+  // D-085 (P3-3): season window (1-12 inclusive) -- both set or both left
+  // blank for year-round (see withSeasonWindowRefinement below).
+  season_start_month: z.number().int().min(1).max(12).nullable().optional(),
+  season_end_month: z.number().int().min(1).max(12).nullable().optional(),
+  needs_daylight: z.boolean().optional(),
   is_active: z.boolean().optional(),
 });
 
@@ -279,7 +284,21 @@ function withDriveTimeOrderRefinement<
   );
 }
 
-export const userActivityInsertSchema = withDriveTimeOrderRefinement(userActivityBaseSchema);
+// A season window only makes sense as a pair -- "starts in March" with no
+// end month (or vice versa) is ambiguous, so require both or neither,
+// mirroring the drive-time-order refinement's shape just above.
+function withSeasonWindowRefinement<
+  T extends z.ZodType<{ season_start_month?: number | null; season_end_month?: number | null }>
+>(schema: T) {
+  return schema.refine((v) => (v.season_start_month == null) === (v.season_end_month == null), {
+    message: "Set both a start and end month for the season window, or leave both blank for year-round.",
+    path: ["season_end_month"],
+  });
+}
+
+export const userActivityInsertSchema = withSeasonWindowRefinement(
+  withDriveTimeOrderRefinement(userActivityBaseSchema)
+);
 
 export const activityLocationInsertSchema = z.object({
   user_activity_id: uuid,
@@ -296,11 +315,13 @@ export const activityLocationInsertSchema = z.object({
 // and person_id are immutable once created (an activity doesn't change
 // which household or person it belongs to via an edit form), so those
 // two keys are omitted rather than made optional-but-editable.
-export const userActivityUpdateSchema = withDriveTimeOrderRefinement(
-  userActivityBaseSchema.omit({
-    household_id: true,
-    person_id: true,
-  })
+export const userActivityUpdateSchema = withSeasonWindowRefinement(
+  withDriveTimeOrderRefinement(
+    userActivityBaseSchema.omit({
+      household_id: true,
+      person_id: true,
+    })
+  )
 );
 
 export const activityLocationUpdateSchema = activityLocationInsertSchema.omit({

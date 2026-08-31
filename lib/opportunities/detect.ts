@@ -31,6 +31,7 @@ import {
 import { listPeopleForHousehold, peopleRepo } from "../db/repositories/people";
 import { listTripIdeasForHousehold } from "../db/repositories/trip-ideas";
 import { getNwsForecast } from "../external/nws";
+import { computeDaylightWindow, hasSufficientDaylight, isActivityInSeason } from "../planner/seasonality";
 import { parseWindMph, scoreWeatherSuitability } from "../planner/weather-score";
 import { dispatchNotification } from "../notifications/dispatch";
 
@@ -104,9 +105,19 @@ export async function detectOpportunitiesForHousehold(
     const bestBlock = largestOpenBlock(openBlocks);
     const availableMinutes = bestBlock?.durationMinutes ?? 0;
     if (availableMinutes <= 0) continue;
+    // D-085 (P3-3): computed once per day (deterministic local math, no
+    // external call) -- every activity below is checked against the same
+    // day's sunrise/sunset.
+    const daylight = computeDaylightWindow(dayStart, home.lat, home.lng);
 
     for (const activity of activities) {
       if (availableMinutes < activity.typical_duration_minutes) continue;
+      // D-085 (P3-3): out-of-season activities, and needs_daylight
+      // activities whose typical duration doesn't fit inside the daylight
+      // portion of today's open block, are never proposed as an
+      // opportunity at all.
+      if (!isActivityInSeason(activity, dayStart)) continue;
+      if (!hasSufficientDaylight(activity, bestBlock, daylight)) continue;
 
       const existing = await findExistingActivityOpportunity(client, householdId, activity.id, forDateStr);
       if (existing) continue;

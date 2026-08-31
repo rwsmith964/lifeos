@@ -500,6 +500,13 @@ export interface UserActivityRow {
   big_trip_max_drive_minutes: number | null;
   // D-083 (P3-1): date-only -- see the migration comment for why.
   last_done_at: string | null;
+  // D-085 (P3-3): season window (1-12, inclusive, wrap-around allowed) --
+  // both null means year-round. needs_daylight gates on sunrise/sunset
+  // overlap instead of the fixed waking-hours window. See
+  // lib/planner/seasonality.ts.
+  season_start_month: number | null;
+  season_end_month: number | null;
+  needs_daylight: boolean;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -513,6 +520,9 @@ export type UserActivityInsert = Insert<
   | "typical_drive_minutes"
   | "big_trip_max_drive_minutes"
   | "last_done_at"
+  | "season_start_month"
+  | "season_end_month"
+  | "needs_daylight"
   | "is_active"
   | "created_at"
   | "updated_at"

@@ -4,6 +4,7 @@ import { useRef } from "react";
 import { useFormPost } from "@/lib/hooks/use-form-post";
 import { useFormValidity } from "@/lib/hooks/use-form-validity";
 import type { PersonRow } from "@/lib/db/database.types";
+import { MONTH_NAMES } from "@/lib/planner/month-names";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,6 +22,10 @@ export interface ActivityFormDefaults {
   typicalDriveMinutes: number | null;
   bigTripMaxDriveMinutes: number | null;
   lastDoneAt: string | null;
+  // D-085 (P3-3): both null = year-round (see withSeasonWindowRefinement).
+  seasonStartMonth: number | null;
+  seasonEndMonth: number | null;
+  needsDaylight: boolean;
   locationName: string;
   locationLat: number | null;
   locationLng: number | null;
@@ -127,6 +132,61 @@ export function ActivityForm({
           another way.
         </p>
         {fieldError("lastDoneAt") && <p className="text-xs text-destructive">{fieldError("lastDoneAt")}</p>}
+      </div>
+      <div className="flex flex-col gap-3 rounded-md border p-3">
+        <div>
+          <Label>Season window (optional)</Label>
+          <p className="text-xs text-muted-foreground">
+            Leave both as “Year-round” if this activity works in any month. Otherwise pick the first and last
+            month it&apos;s in season — the planner and opportunity alerts won&apos;t suggest it outside that window.
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="seasonStartMonth">From</Label>
+            <select
+              id="seasonStartMonth"
+              name="seasonStartMonth"
+              defaultValue={d.seasonStartMonth ?? ""}
+              aria-invalid={!!fieldError("seasonStartMonth") || undefined}
+              onChange={() => clearErrorField("seasonStartMonth")}
+              className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+            >
+              <option value="">Year-round</option>
+              {MONTH_NAMES.map((name, i) => (
+                <option key={name} value={i + 1}>
+                  {name}
+                </option>
+              ))}
+            </select>
+            {fieldError("seasonStartMonth") && (
+              <p className="text-xs text-destructive">{fieldError("seasonStartMonth")}</p>
+            )}
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="seasonEndMonth">Through</Label>
+            <select
+              id="seasonEndMonth"
+              name="seasonEndMonth"
+              defaultValue={d.seasonEndMonth ?? ""}
+              aria-invalid={!!fieldError("seasonEndMonth") || undefined}
+              onChange={() => clearErrorField("seasonEndMonth")}
+              className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+            >
+              <option value="">Year-round</option>
+              {MONTH_NAMES.map((name, i) => (
+                <option key={name} value={i + 1}>
+                  {name}
+                </option>
+              ))}
+            </select>
+            {fieldError("seasonEndMonth") && <p className="text-xs text-destructive">{fieldError("seasonEndMonth")}</p>}
+          </div>
+        </div>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" name="needsDaylight" defaultChecked={d.needsDaylight} /> Needs daylight (only suggest
+          when there&apos;s enough daylight left to do it)
+        </label>
       </div>
       <div className="flex flex-col gap-2">
         <Label htmlFor="prepLeadTimeHours">Prep lead time (hours, if any)</Label>

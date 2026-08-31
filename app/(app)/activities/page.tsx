@@ -5,6 +5,7 @@ import { requireHouseholdContext } from "@/lib/auth/session";
 import { listActivitiesWithLocations } from "@/lib/db/repositories/activities";
 import { listTripIdeasForHousehold } from "@/lib/db/repositories/trip-ideas";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
+import { seasonWindowLabel } from "@/lib/planner/month-names";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -73,6 +74,17 @@ export default async function ActivitiesPage() {
                       ? `Last done ${format(parseISO(activity.last_done_at), "MMM d")}`
                       : "Not logged as done yet"}
                   </p>
+                  {/* D-085 (P3-3): month names, never raw 1-12 integers or the raw boolean column. */}
+                  {(activity.season_start_month != null || activity.needs_daylight) && (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {activity.season_start_month != null && activity.season_end_month != null && (
+                        <Badge variant="secondary">
+                          Season: {seasonWindowLabel(activity.season_start_month, activity.season_end_month)}
+                        </Badge>
+                      )}
+                      {activity.needs_daylight && <Badge variant="secondary">Needs daylight</Badge>}
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center gap-1">
                   <MarkDoneButton activityId={activity.id} />

@@ -114,6 +114,16 @@ export async function generateWeekendPlanAction(): Promise<WeekendPlanActionStat
       return { error: result.reason };
     }
     if (result.status === "no_candidates") {
+      if (result.noCandidatesReason === "seasonally_unavailable") {
+        // D-085 (P3-3): distinct from the missing-setup case below --
+        // activities and a home address both exist, but every activity on
+        // file is out of season or needs daylight this weekend doesn't
+        // have. Telling someone to "add an activity" here would be wrong.
+        return {
+          error:
+            "None of your activities are in season (or have enough daylight) this weekend — check back closer to the date, or adjust an activity's season window.",
+        };
+      }
       // Was misdirecting people to "add one under Activities" — the real
       // missing input is the household owner's home address (used to
       // compute travel time/distance to every activity), which lives on

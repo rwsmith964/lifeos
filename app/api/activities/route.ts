@@ -27,6 +27,9 @@ export async function POST(request: Request) {
       ? Number(formData.get("bigTripMaxDriveMinutes"))
       : null,
     last_done_at: formData.get("lastDoneAt") ? String(formData.get("lastDoneAt")) : null,
+    season_start_month: formData.get("seasonStartMonth") ? Number(formData.get("seasonStartMonth")) : null,
+    season_end_month: formData.get("seasonEndMonth") ? Number(formData.get("seasonEndMonth")) : null,
+    needs_daylight: formData.get("needsDaylight") === "on",
   });
   if (!parsed.success) {
     // KNOWN-ISSUES.md 1.3: this form has several plausibly-invalid fields
@@ -43,6 +46,8 @@ export async function POST(request: Request) {
       typical_drive_minutes: "typicalDriveMinutes",
       big_trip_max_drive_minutes: "bigTripMaxDriveMinutes",
       last_done_at: "lastDoneAt",
+      season_start_month: "seasonStartMonth",
+      season_end_month: "seasonEndMonth",
     };
     const field = issue?.path[0] ? fieldMap[String(issue.path[0])] : undefined;
     return NextResponse.json({ error: issue?.message ?? "Invalid input.", field }, { status: 400 });

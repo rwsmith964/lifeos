@@ -29,6 +29,7 @@ import { findOpenBlocks, largestOpenBlock } from "./available-blocks";
 import { findOverdueCompanions } from "./companions";
 import { nextSaturdayFrom, listRecentlyProposedActivityTypes, weeksSinceLastDone, weeksSinceLastProposed } from "./recency";
 import { scoreActivityCandidate } from "./score-candidate";
+import { computeDaylightWindow, hasSufficientDaylight, isActivityInSeason } from "./seasonality";
 import { pickBestLocation } from "./travel-estimate";
 
 const WAKING_HOUR_START = 8;
@@ -38,7 +39,13 @@ export type GenerateWeekendPlanResult =
   | { status: "generated"; contentMarkdown: string }
   | { status: "ai_unavailable"; reason: string }
   | { status: "budget_exceeded"; reason: string }
-  | { status: "no_candidates" };
+  // D-085 (P3-3): `noCandidatesReason` distinguishes "nothing configured
+  // yet" (missing activities or home address) from "everything on file is
+  // seasonally/daylight-gated out for this particular weekend" -- callers
+  // show a different, accurate message for each rather than always
+  // pointing people at Settings/Activities when the real answer is
+  // "nothing golf-shaped is in season in January."
+  | { status: "no_candidates"; noCandidatesReason: "missing_setup" | "seasonally_unavailable" };
 
 export async function generateWeekendPlan(
   client: SupabaseClient,
@@ -57,7 +64,7 @@ export async function generateWeekendPlan(
 
   const activities = await listActivitiesWithLocations(client, householdId);
   if (activities.length === 0 || !home) {
-    return { status: "no_candidates" };
+    return { status: "no_candidates", noCandidatesReason: "missing_setup" };
   }
 
   const windowStart = setHours(saturday, WAKING_HOUR_START);
@@ -77,6 +84,10 @@ export async function generateWeekendPlan(
   const openBlocks = findOpenBlocks(windowStart, windowEnd, busyPeriods);
   const bestBlock = largestOpenBlock(openBlocks);
   const availableMinutes = bestBlock?.durationMinutes ?? 0;
+  // D-085 (P3-3): same day used for the weather lookup below (`saturday`),
+  // so the daylight check and the weather score always agree on which day
+  // they're describing.
+  const daylight = computeDaylightWindow(saturday, home.lat, home.lng);
 
   const cadenceByPersonId = new Map(cadenceRows.map((c) => [c.person_id, c]));
 
@@ -91,6 +102,13 @@ export async function generateWeekendPlan(
   const scored: (ScoredActivityContext & { totalScore: number; activityId: string })[] = [];
 
   for (const activity of activities) {
+    // D-085 (P3-3): out-of-season activities, and needs_daylight
+    // activities whose typical duration doesn't fit inside the daylight
+    // portion of the weekend's best open block, are left out of the
+    // weekend plan entirely rather than merely scored low.
+    if (!isActivityInSeason(activity, saturday)) continue;
+    if (!hasSufficientDaylight(activity, bestBlock, daylight)) continue;
+
     // P1-7/D-070: prefer a location we can actually route to when an
     // activity has more than one on file (e.g. Shooting).
     const location = pickBestLocation(activity.locations);
@@ -183,6 +201,16 @@ export async function generateWeekendPlan(
       travelMinutesEachWay: travelMinutes,
       overdueCompanionLabels,
     });
+  }
+
+  // D-085 (P3-3): the season/daylight gates above can filter out every
+  // activity (e.g. every activity on file is a winter-only or
+  // needs-daylight activity and this weekend doesn't qualify for any of
+  // them) even when the household has activities configured -- treat that
+  // exactly like having no activities at all rather than asking the AI to
+  // narrate an empty candidate list.
+  if (scored.length === 0) {
+    return { status: "no_candidates", noCandidatesReason: "seasonally_unavailable" };
   }
 
   scored.sort((a, b) => b.totalScore - a.totalScore);
