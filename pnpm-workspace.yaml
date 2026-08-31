@@ -2,3 +2,13 @@ allowBuilds:
   esbuild: true
   sharp: false
   unrs-resolver: false
+
+# D-108: force patched transitive versions of packages flagged by `pnpm
+# audit` inside @capacitor/assets' dependency tree (a devDependency-only,
+# local-run icon/splash-asset generator -- never bundled into the app or
+# run in CI). Pinned via overrides rather than left alone since a patched
+# version is available and compatible.
+overrides:
+  tar: ">=7.5.22"
+  sharp: ">=0.35.0"
+  uuid@<11.1.1: ">=11.1.1"

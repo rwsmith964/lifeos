@@ -15,23 +15,27 @@ const nextConfig: NextConfig = {
 
   // D-108: response security headers. Vercel already adds a strong
   // Strict-Transport-Security header by default (verified in production),
-  // so it's intentionally not duplicated here. The Supabase project URL
-  // (NEXT_PUBLIC_SUPABASE_URL) is allowlisted in connect-src because
-  // lib/db/client-browser.ts talks to it directly from the browser.
-  // script-src/style-src need 'unsafe-inline' because Next.js's own App
-  // Router hydration payload and critical-CSS injection rely on inline
-  // <script>/<style> tags with no nonce wired up (that would need a
-  // middleware.ts nonce pipeline, which is a bigger change than this
-  // hardening pass calls for) -- every other directive is left strict.
+  // so it's intentionally not duplicated here. connect-src is left at
+  // 'self' only: lib/db/client-browser.ts (a direct browser Supabase
+  // client) exists in the repo but is dead code -- nothing in app/ or
+  // components/ imports it, every data access goes through server
+  // actions/route handlers (lib/db/client-server.ts,
+  // client-service-role.ts) -- so the browser never talks to Supabase
+  // directly today. If that changes, add the project's REST/Realtime
+  // origins here then. script-src/style-src need 'unsafe-inline' because
+  // Next.js's own App Router hydration payload and critical-CSS injection
+  // rely on inline <script>/<style> tags with no nonce wired up (that
+  // would need a middleware.ts nonce pipeline, which is a bigger change
+  // than this hardening pass calls for) -- every other directive is left
+  // strict.
   async headers() {
-    const supabaseUrl = "https://moblcysnsaxohnslubym.supabase.co";
     const csp = [
       "default-src 'self'",
       "script-src 'self' 'unsafe-inline'",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data:",
       "font-src 'self' data:",
-      `connect-src 'self' ${supabaseUrl} wss://${new URL(supabaseUrl).host}`,
+      "connect-src 'self'",
       "frame-ancestors 'none'",
       "form-action 'self'",
       "base-uri 'self'",
