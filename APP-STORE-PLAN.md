@@ -50,7 +50,7 @@ and real-device testing remain, and those also need Xcode/Android Studio
 - [x] `capacitor.config.ts` created — app id `com.rwsmith.lifeos`, hosted mode pointing at production
 - [x] `npx cap add ios` run successfully — generates `ios/App/App.xcodeproj` and supporting files
 - [x] Typecheck still clean after these changes
-- [x] GitHub Actions macOS CI workflow added (D-106),
+- [x] GitHub Actions macOS CI workflow added and passing (D-106),
   `.github/workflows/ios-build.yml` — builds the Capacitor iOS project for
   the **simulator** on every push touching `ios/`, with
   `CODE_SIGNING_ALLOWED=NO`, so it needs no Apple Developer account, no
@@ -58,11 +58,15 @@ and real-device testing remain, and those also need Xcode/Android Studio
   scheme (`ios/App/App.xcodeproj/xcshareddata/xcschemes/App.xcscheme`) the
   workflow needs — `npx cap add ios` doesn't check one in by default, only
   a local user-level scheme Xcode creates lazily on first open, which CI
-  never gets. This catches Swift/CocoaPods/SPM/plugin build breakage on
-  every push, well before an Apple Developer account is needed for
-  anything else. **Not yet run for real** — needs an actual push or manual
-  `workflow_dispatch` trigger to confirm it passes on a live runner; no
-  Actions run has happened yet in this sandbox.
+  never gets. Live-verified on a real GitHub Actions runner: the first two
+  pushes failed for infrastructure reasons (a pnpm version conflict, then
+  a hardcoded Xcode 15.4 too old for Capacitor 8's prebuilt xcframework,
+  which surfaced as a misleading "CAPPluginCall has no member reject"
+  Swift error) — both fixed by moving to the `macos-15` runner and
+  selecting its newest installed Xcode dynamically. The workflow now
+  builds clean end to end, confirming the actual native iOS project
+  compiles — not just that the config file is well-formed. See
+  [run 33421952708](https://github.com/rwsmith964/lifeos/actions/runs/33421952708).
 - [ ] Actual signed Xcode build/archive/upload — **still needs an Apple
   Developer account + macOS signing setup**, see §5/§6/§8
 
