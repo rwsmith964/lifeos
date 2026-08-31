@@ -176,6 +176,11 @@ export async function addWorkScheduleAction(
     return { error: friendlyMutationError(error, { fallback: "Couldn't save that shift — please try again." }) };
   }
   revalidatePath(`/people/${personId}`);
+  // Settings is the second consumer of this same action — the account
+  // owner's own work schedule (relationship_type "self") is intentionally
+  // excluded from /people (P0-5) and managed from Settings instead, reusing
+  // this exact action rather than a parallel one (single source of truth).
+  revalidatePath("/settings");
   revalidatePath("/calendar");
   return { error: null };
 }
@@ -188,6 +193,7 @@ export async function deleteWorkScheduleAction(personId: string, scheduleId: str
     return { error: friendlyMutationError(error, { fallback: "Couldn't remove that shift — please try again." }) };
   }
   revalidatePath(`/people/${personId}`);
+  revalidatePath("/settings");
   revalidatePath("/calendar");
   return { error: null };
 }
@@ -217,6 +223,7 @@ export async function addTimeOffAction(
     return { error: friendlyMutationError(error, { fallback: "Couldn't save that time off — please try again." }) };
   }
   revalidatePath(`/people/${personId}`);
+  revalidatePath("/settings");
   revalidatePath("/calendar");
   return { error: null };
 }
@@ -229,6 +236,7 @@ export async function deleteTimeOffAction(personId: string, entryId: string): Pr
     return { error: friendlyMutationError(error, { fallback: "Couldn't remove that time off — please try again." }) };
   }
   revalidatePath(`/people/${personId}`);
+  revalidatePath("/settings");
   revalidatePath("/calendar");
   return { error: null };
 }

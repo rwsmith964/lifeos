@@ -1,10 +1,14 @@
+import { format } from "date-fns";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { listInvitesForHousehold, listMembersOfHousehold, usersRepo } from "@/lib/db/repositories/households";
+import { listPeopleForHousehold } from "@/lib/db/repositories/people";
 import { listCalendarFeedsForHousehold } from "@/lib/db/repositories/calendar";
+import { listWorkSchedulesForPerson, listTimeOffForPerson } from "@/lib/db/repositories/work-schedule";
 import { SettingsForm } from "./settings-form";
 import { HouseholdMembers, type HouseholdMemberDisplay } from "./household-members";
 import { HouseholdSwitcher, type HouseholdSwitcherItem } from "./household-switcher";
 import { CalendarFeeds } from "./calendar-feeds";
+import { MySchedule } from "./my-schedule";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -18,11 +22,24 @@ export default async function SettingsPage() {
     role: m.role,
   }));
 
-  const [members, invites, calendarFeeds] = await Promise.all([
+  const [members, invites, calendarFeeds, people] = await Promise.all([
     listMembersOfHousehold(supabase, household.id),
     listInvitesForHousehold(supabase, household.id),
     listCalendarFeedsForHousehold(supabase, household.id),
+    listPeopleForHousehold(supabase, household.id),
   ]);
+  // The account owner's own person record (relationship_type "self") is
+  // intentionally excluded from /people (P0-5), so their own work schedule
+  // and time off -- otherwise unreachable -- are managed here instead.
+  const selfPerson = people.find((p) => p.relationship_type === "self");
+  const [myWorkSchedules, myTimeOff] = selfPerson
+    ? await Promise.all([
+        listWorkSchedulesForPerson(supabase, selfPerson.id),
+        listTimeOffForPerson(supabase, selfPerson.id),
+      ])
+    : [[], []];
+  const todayStr = format(new Date(), "yyyy-MM-dd");
+  const myUpcomingTimeOff = myTimeOff.filter((entry) => entry.end_date >= todayStr);
   const memberUsers = await Promise.all(members.map((m) => usersRepo.getById(supabase, m.user_id)));
   const memberDisplays: HouseholdMemberDisplay[] = members.map((m, i) => ({
     memberId: m.id,
@@ -51,6 +68,9 @@ export default async function SettingsPage() {
         timezone={user?.timezone ?? "America/Los_Angeles"}
         homeAddress={user?.home_address ?? ""}
       />
+      {selfPerson && (
+        <MySchedule personId={selfPerson.id} workSchedules={myWorkSchedules} upcomingTimeOff={myUpcomingTimeOff} />
+      )}
       <HouseholdSwitcher households={switcherItems} activeHouseholdId={household.id} />
       <HouseholdMembers
         members={memberDisplays}
