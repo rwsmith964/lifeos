@@ -72,6 +72,7 @@ export const calendarEventTypeSchema = z.enum([
   "kid_activity",
   "prep",
   "travel",
+  "external",
 ]);
 export const eventVisibilitySchema = z.enum(["private", "household", "shared_with_coparent"]);
 export const attendanceStatusSchema = z.enum(["required", "optional", "informational"]);
@@ -358,6 +359,22 @@ export const calendarEventInsertSchema = z
     message: "End time must be after the start time.",
     path: ["ends_at"],
   });
+
+// P3-6: a household's connected Google Calendar/iCal feed. `feed_url` is
+// the only thing a person actually types in; the rest are sync bookkeeping
+// the server writes.
+export const calendarFeedInsertSchema = z.object({
+  household_id: uuid,
+  created_by_person_id: uuid,
+  label: z.string().trim().min(1, "Give this calendar a name.").max(80),
+  feed_url: z
+    .string()
+    .trim()
+    .url("Enter a valid calendar URL.")
+    .refine((v) => v.startsWith("https://") || v.startsWith("http://"), {
+      message: "The calendar URL must start with http:// or https://.",
+    }),
+});
 
 // D-056: household_id/created_by_person_id are immutable on edit (same
 // rationale as userActivityUpdateSchema above); the refine() rule still

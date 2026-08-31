@@ -1,8 +1,10 @@
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { listInvitesForHousehold, listMembersOfHousehold, usersRepo } from "@/lib/db/repositories/households";
+import { listCalendarFeedsForHousehold } from "@/lib/db/repositories/calendar";
 import { SettingsForm } from "./settings-form";
 import { HouseholdMembers, type HouseholdMemberDisplay } from "./household-members";
 import { HouseholdSwitcher, type HouseholdSwitcherItem } from "./household-switcher";
+import { CalendarFeeds } from "./calendar-feeds";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -16,9 +18,10 @@ export default async function SettingsPage() {
     role: m.role,
   }));
 
-  const [members, invites] = await Promise.all([
+  const [members, invites, calendarFeeds] = await Promise.all([
     listMembersOfHousehold(supabase, household.id),
     listInvitesForHousehold(supabase, household.id),
+    listCalendarFeedsForHousehold(supabase, household.id),
   ]);
   const memberUsers = await Promise.all(members.map((m) => usersRepo.getById(supabase, m.user_id)));
   const memberDisplays: HouseholdMemberDisplay[] = members.map((m, i) => ({
@@ -55,6 +58,7 @@ export default async function SettingsPage() {
         canManage={canManage}
         currentUserId={userId}
       />
+      <CalendarFeeds feeds={calendarFeeds} canManage={canManage} />
     </div>
   );
 }

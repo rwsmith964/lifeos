@@ -59,6 +59,7 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
   kid_activity: "Kid activity",
   prep: "Prep",
   travel: "Travel",
+  external: "Imported",
 };
 const BLOCK_TYPE_LABELS: Record<string, string> = {
   regular: "Regular",

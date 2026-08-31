@@ -3,6 +3,7 @@
     { "path": "/api/cron/brief", "schedule": "0 13 * * *" },
     { "path": "/api/cron/gift-scan", "schedule": "0 14 * * *" },
     { "path": "/api/cron/weekend-plan", "schedule": "0 13 * * 3" },
-    { "path": "/api/cron/opportunities", "schedule": "0 15 * * *" }
+    { "path": "/api/cron/opportunities", "schedule": "0 15 * * *" },
+    { "path": "/api/cron/calendar-sync", "schedule": "0 12 * * *" }
   ]
 }

@@ -45,7 +45,11 @@ export type CalendarEventType =
   | "custody"
   | "kid_activity"
   | "prep"
-  | "travel";
+  | "travel"
+  // P3-6: rows materialized from a household's imported Google
+  // Calendar/iCal feed (calendar_feeds) -- distinct from "personal" so
+  // the calendar UI can label them as imported rather than user-typed.
+  | "external";
 
 export type EventVisibility = "private" | "household" | "shared_with_coparent";
 
@@ -667,6 +671,33 @@ export type CalendarEventInsert = Insert<
   | "updated_at"
 >;
 export type CalendarEventUpdate = Update<CalendarEventRow>;
+
+// calendar_feeds ---------------------------------------------------------
+
+export type CalendarFeedSyncStatus = "never" | "ok" | "error";
+
+export interface CalendarFeedRow {
+  id: string;
+  household_id: string;
+  created_by_person_id: string;
+  label: string;
+  feed_url: string;
+  last_synced_at: string | null;
+  last_sync_status: CalendarFeedSyncStatus;
+  last_sync_error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+export type CalendarFeedInsert = Insert<
+  CalendarFeedRow,
+  | "id"
+  | "last_synced_at"
+  | "last_sync_status"
+  | "last_sync_error"
+  | "created_at"
+  | "updated_at"
+>;
+export type CalendarFeedUpdate = Update<CalendarFeedRow>;
 
 // event_attendees ------------------------------------------------------
 

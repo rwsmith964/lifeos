@@ -4,6 +4,9 @@ import type {
   CalendarEventInsert,
   CalendarEventRow,
   CalendarEventUpdate,
+  CalendarFeedInsert,
+  CalendarFeedRow,
+  CalendarFeedUpdate,
   CustodyBlockInsert,
   CustodyBlockRow,
   CustodyBlockUpdate,
@@ -17,6 +20,12 @@ export const calendarEventsRepo = createRepository<
   CalendarEventInsert,
   CalendarEventUpdate
 >("calendar_events");
+
+export const calendarFeedsRepo = createRepository<
+  CalendarFeedRow,
+  CalendarFeedInsert,
+  CalendarFeedUpdate
+>("calendar_feeds");
 
 export const eventAttendeesRepo = createRepository<
   EventAttendeeRow,
@@ -133,4 +142,54 @@ export async function listCustodyBlocksForHouseholdInRange(
       .gt("ends_at", startsAtISO)
       .order("starts_at", { ascending: true })
   );
+}
+
+// calendar_feeds ---------------------------------------------------------
+// P3-6: a household's connected Google Calendar/iCal feeds, and the
+// imported calendar_events rows each one owns (tagged via
+// external_source, see lib/calendar/ics-import.ts).
+
+export async function listCalendarFeedsForHousehold(
+  client: SupabaseClient,
+  householdId: string
+): Promise<CalendarFeedRow[]> {
+  return calendarFeedsRepo.list(client, (q) =>
+    q.eq("household_id", householdId).order("created_at", { ascending: true })
+  );
+}
+
+/**
+ * Replace every previously-imported occurrence for one feed with a fresh
+ * batch in a single round trip: delete-then-insert rather than a diffing
+ * upsert, since a feed resync has no stable identity to diff against
+ * beyond "everything this feed produced last time" (a recurring event's
+ * RRULE can change entirely between syncs -- e.g. more/fewer occurrences,
+ * a different weekday). Simpler and just as correct for a household-sized
+ * feed, and it's what the resync button optimizes for (see D-088).
+ */
+export async function replaceImportedEventsForFeed(
+  client: SupabaseClient,
+  householdId: string,
+  externalSource: string,
+  freshEvents: CalendarEventInsert[]
+): Promise<number> {
+  await deleteImportedEventsForFeed(client, householdId, externalSource);
+
+  if (freshEvents.length === 0) return 0;
+  const inserted = await calendarEventsRepo.createMany(client, freshEvents);
+  return inserted.length;
+}
+
+/** Delete-only counterpart of replaceImportedEventsForFeed, used when a feed itself is removed rather than resynced. */
+export async function deleteImportedEventsForFeed(
+  client: SupabaseClient,
+  householdId: string,
+  externalSource: string
+): Promise<void> {
+  const { error } = await client
+    .from("calendar_events")
+    .delete()
+    .eq("household_id", householdId)
+    .eq("external_source", externalSource);
+  if (error) throw error;
 }
