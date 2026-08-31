@@ -27,7 +27,13 @@ on:
 
 jobs:
   build-simulator:
-    runs-on: macos-14
+    # macos-15, not macos-14: macos-14 (Sonoma) is being deprecated by
+    # GitHub and its Xcode lineup tops out around 16.x, which is too old
+    # for Capacitor 8's prebuilt Capacitor.xcframework (compiled with a
+    # newer Swift ABI) - building against it silently resolves to a
+    # mismatched module interface and fails with misleading "has no
+    # member" errors on APIs that do exist (e.g. CAPPluginCall.reject).
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
 
@@ -48,7 +54,15 @@ jobs:
         run: npx cap sync ios
 
       - name: Select Xcode version
-        run: sudo xcode-select -s /Applications/Xcode_15.4.app
+        # Capacitor 8's prebuilt xcframework needs a current Xcode - pin
+        # the newest one installed on the macos-15 image rather than the
+        # default (older) Xcode, and rather than an old hardcoded version
+        # that will eventually vanish from the runner image entirely.
+        run: |
+          LATEST_XCODE=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
+          echo "Selecting $LATEST_XCODE"
+          sudo xcode-select -s "$LATEST_XCODE"
+          xcodebuild -version
 
       - name: Resolve Swift Package dependencies
         working-directory: ios/App
