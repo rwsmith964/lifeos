@@ -143,6 +143,22 @@ export function HouseholdMembers({
   const pastInvites = invites.filter((i) => i.status !== "pending");
   const self = members.find((m) => m.userId === currentUserId);
   const canLeave = self && self.role !== "owner";
+  // Accepting an invite and later leaving/being removed are two independent
+  // actions -- household_invites has no status for "accepted then left," and
+  // adding one is a bigger schema change than this display fix warrants. An
+  // invite's own status column is a historical record of the invite itself,
+  // not a live membership check, so "Accepted" alone can misleadingly imply
+  // someone is still a current member after they've left. Cross-check against
+  // the live members list (already loaded on this same page) at render time
+  // instead of adding a new persisted status value.
+  const activeMemberUserIds = new Set(members.map((m) => m.userId));
+  function pastInviteStatusLabel(invite: HouseholdInviteRow): string {
+    const label = invite.status.charAt(0).toUpperCase() + invite.status.slice(1);
+    if (invite.status === "accepted" && invite.accepted_by_user_id && !activeMemberUserIds.has(invite.accepted_by_user_id)) {
+      return `${label}, then left`;
+    }
+    return label;
+  }
 
   return (
     <Card>
@@ -201,7 +217,7 @@ export function HouseholdMembers({
             <ul className="mt-2 flex flex-col gap-1">
               {pastInvites.map((invite) => (
                 <li key={invite.id}>
-                  {invite.invited_email} — {invite.status.charAt(0).toUpperCase() + invite.status.slice(1)}
+                  {invite.invited_email} — {pastInviteStatusLabel(invite)}
                 </li>
               ))}
             </ul>
