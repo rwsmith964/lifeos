@@ -1650,3 +1650,17 @@ Corrected an inaccurate note carried over from D-100/D-099: `USE_BIOMETRIC`/`USE
 - Committed `7292e2d`, pushed, Vercel auto-deployed to production.
 - Live-verified in a real browser session against production: 6 consecutive failed sign-in attempts with a throwaway test email (`brute-force-lockout-test@example.com`) returned "Invalid login credentials" for attempts 1–5, then "Too many sign-in attempts for this account. Please wait a few minutes and try again." on attempt 6 — confirming the lockout fires exactly at the configured threshold.
 - Immediately after, signed in with the real production account (`rwsmith964@gmail.com`) and confirmed it succeeded normally, landing on Brief with real household data — confirming the per-email scoping means one locked-out address never affects any other account.
+
+## D-112 | 2026-08-31 | Disable Android app-data backup (allowBackup=false)
+
+**Context:** Reviewed iOS App Transport Security and the Android network security config for the Capacitor native wrapper as part of the cybersecurity hardening pass.
+
+**Findings:** `ios/App/App/Info.plist` has no `NSAppTransportSecurity` key at all — Apple's ATS defaults apply, meaning no arbitrary loads and no exception domains are permitted. `capacitor.config.ts` sets `cleartext: false` and points `server.url` at the HTTPS-only production origin. `android/app/src/main/AndroidManifest.xml` has no `usesCleartextTraffic` override, so it defaults to `false` (HTTPS-only) on the API levels this app targets. All of that was already correct with nothing to change.
+
+One real gap: `android:allowBackup="true"` on the `<application>` tag. LifeOS ships as a hosted-URL Capacitor wrapper — the WKWebView/Android WebView's private storage holds the live Supabase auth session (cookies, localStorage). With `allowBackup` true, that storage is included in Android's automatic cloud backup and in local `adb backup`, so anyone with backup access to the device (a stolen/borrowed phone with backup enabled, or physical USB access) could potentially extract and replay an active session without ever knowing the password.
+
+**Decision:** Set `android:allowBackup="false"`. No meaningful functionality or data is lost — all real household data lives in Supabase, not on-device, so users don't need their local app state restored on a new device.
+
+**Verification:** Native Android manifest-only change touching no Next.js app code, so per D-105 precedent `typecheck`/`lint`/`test`/`build` are not applicable. Confirmed no CI workflow builds `android/**` (only `ios-build.yml` exists, and it doesn't watch this path), so this push doesn't trigger CI. Validated the edited XML still parses correctly with `xml.etree.ElementTree`. Committed `486ebc8`, pushed. No Android emulator is available in this sandbox to launch-test the APK directly — flagged below as something Richard would need to spot-check once he builds a release APK himself.
+
+**What could not be done here:** No Android emulator/device is available in this sandbox, so the change could not be launch-tested end-to-end on a running Android app. The change is a single well-understood manifest attribute with no other code path depending on it, so risk is low, but Richard should do one quick sanity check (app launches and logs in normally) the first time he builds a release APK.
