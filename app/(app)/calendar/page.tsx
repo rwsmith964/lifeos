@@ -490,6 +490,10 @@ export default async function CalendarPage({
           reuses this exact same grid markup unmodified: gridDays is just a
           7-element array in that case, which grid-cols-7 renders as a
           single row for free. */}
+      {/* Desktop mockup A/B: at lg+ the month grid and the selected-day
+          agenda sit side by side instead of stacked, so picking a day
+          doesn't require scrolling past the calendar to see it. */}
+      <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[380px_1fr] lg:items-start lg:gap-5">
       <Card>
         <CardHeader className="flex-row items-center justify-between space-y-0">
           <Button asChild size="icon" variant="ghost" className="size-7" aria-label={`Previous ${range}`}>
@@ -620,6 +624,7 @@ export default async function CalendarPage({
             </Card>
           ))
         )}
+      </div>
       </div>
     </div>
   );

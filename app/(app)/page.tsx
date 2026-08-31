@@ -137,103 +137,108 @@ export default async function BriefPage() {
         </Card>
       </Link>
 
-      {content.today.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <CalendarClock className="size-4" /> Today
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2">
-            {content.today.map((item, i) => (
-              <div key={i} className="text-sm">
-                <span className="font-medium">{item.time ?? "All day"}</span> — {item.title}
-                {item.note && <span className="text-muted-foreground"> ({item.note})</span>}
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
-
-      {content.headsUp.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <Gift className="size-4" /> Heads up
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2">
-            {content.headsUp.map((item, i) => (
-              <div key={i} className="text-sm">
-                <span className="font-medium">{item.title}</span>
-                <p className="text-muted-foreground">{item.detail}</p>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
-
-      {content.people.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <Users className="size-4" /> People
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2">
-            {content.people.map((item, i) => {
-              const personId = idByUniqueName.get(item.personLabel);
-              return (
+      {/* Desktop mockup A/B: at lg+ these cards flow into a 2-column grid
+          instead of one long single-column stack, so the extra width is
+          actually used instead of just widening empty margins. */}
+      <div className="flex flex-col gap-4 lg:grid lg:grid-cols-2 lg:items-start lg:gap-5">
+        {content.today.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <CalendarClock className="size-4" /> Today
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-2">
+              {content.today.map((item, i) => (
                 <div key={i} className="text-sm">
-                  {personId ? (
-                    <Link href={`/people/${personId}`} className="font-medium underline-offset-2 hover:underline">
-                      {item.personLabel}
-                    </Link>
-                  ) : (
-                    <span className="font-medium">{item.personLabel}</span>
-                  )}
-                  <span className="text-muted-foreground">: {item.reason}</span>
+                  <span className="font-medium">{item.time ?? "All day"}</span> — {item.title}
+                  {item.note && <span className="text-muted-foreground"> ({item.note})</span>}
                 </div>
-              );
-            })}
-          </CardContent>
-        </Card>
-      )}
+              ))}
+            </CardContent>
+          </Card>
+        )}
 
-      {topOpportunities.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <Zap className="size-4" /> Opportunities
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2">
-            {topOpportunities.map((opp) => (
-              <div key={opp.id} className="text-sm">
-                <span className="font-medium">{opp.headline}</span>
-                <p className="text-muted-foreground">{opp.reasoning}</p>
-              </div>
-            ))}
-            <Link href="/opportunities" className="text-sm underline-offset-2 hover:underline">
-              See all opportunities
-            </Link>
-          </CardContent>
-        </Card>
-      )}
+        {content.headsUp.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <Gift className="size-4" /> Heads up
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-2">
+              {content.headsUp.map((item, i) => (
+                <div key={i} className="text-sm">
+                  <span className="font-medium">{item.title}</span>
+                  <p className="text-muted-foreground">{item.detail}</p>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
 
-      {content.suggestion && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <Sparkles className="size-4" /> Suggestion
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm font-medium">{content.suggestion.title}</p>
-            <p className="text-sm text-muted-foreground">{content.suggestion.detail}</p>
-          </CardContent>
-        </Card>
-      )}
+        {content.people.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <Users className="size-4" /> People
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-2">
+              {content.people.map((item, i) => {
+                const personId = idByUniqueName.get(item.personLabel);
+                return (
+                  <div key={i} className="text-sm">
+                    {personId ? (
+                      <Link href={`/people/${personId}`} className="font-medium underline-offset-2 hover:underline">
+                        {item.personLabel}
+                      </Link>
+                    ) : (
+                      <span className="font-medium">{item.personLabel}</span>
+                    )}
+                    <span className="text-muted-foreground">: {item.reason}</span>
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+        )}
+
+        {topOpportunities.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <Zap className="size-4" /> Opportunities
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-2">
+              {topOpportunities.map((opp) => (
+                <div key={opp.id} className="text-sm">
+                  <span className="font-medium">{opp.headline}</span>
+                  <p className="text-muted-foreground">{opp.reasoning}</p>
+                </div>
+              ))}
+              <Link href="/opportunities" className="text-sm underline-offset-2 hover:underline">
+                See all opportunities
+              </Link>
+            </CardContent>
+          </Card>
+        )}
+
+        {content.suggestion && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <Sparkles className="size-4" /> Suggestion
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm font-medium">{content.suggestion.title}</p>
+              <p className="text-sm text-muted-foreground">{content.suggestion.detail}</p>
+            </CardContent>
+          </Card>
+        )}
+      </div>
 
       {content.weather && (
         <>

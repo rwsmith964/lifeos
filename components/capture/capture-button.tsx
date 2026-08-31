@@ -159,12 +159,15 @@ export function CaptureButton() {
           the real viewport edge, so on any screen wider than ~448px the
           button drifts far outside the app's visual "phone frame" instead
           of sitting in its bottom-right corner. */}
-      <div className="pointer-events-none fixed inset-x-0 bottom-24 z-40 mx-auto flex max-w-md justify-end">
+      {/* lg+ (desktop mockup): the app shell drops its max-w-md phone
+          frame, so anchor directly to the viewport's bottom-right corner
+          instead of the mx-auto centering trick used below lg. */}
+      <div className="pointer-events-none fixed inset-x-0 bottom-24 z-40 mx-auto flex max-w-md justify-end lg:inset-x-auto lg:right-8 lg:bottom-8 lg:max-w-none">
         <Button
           onClick={() => setOpen(true)}
           size="icon"
           aria-label="Quick capture"
-          className="pointer-events-auto mr-4 size-12 rounded-full shadow-lg"
+          className="pointer-events-auto mr-4 size-12 rounded-full shadow-lg lg:mr-0"
         >
           <Sparkles className="size-5" />
         </Button>

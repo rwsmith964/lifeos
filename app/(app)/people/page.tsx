@@ -63,7 +63,7 @@ export default async function PeoplePage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2 lg:grid lg:grid-cols-3 lg:gap-3">
           {others.map((person) => (
             <Link key={person.id} href={`/people/${person.id}`}>
               <Card>
