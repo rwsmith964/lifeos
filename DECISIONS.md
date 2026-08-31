@@ -1602,3 +1602,51 @@ Corrected an inaccurate note carried over from D-100/D-099: `USE_BIOMETRIC`/`USE
 - Migration is SQL-only against the Supabase project; no application code was touched, so per D-105 precedent `typecheck`/`lint`/`test`/`build` and `deploy` are not applicable — nothing in the live Next.js app changed.
 
 **What could not be done here:** Enabling leaked-password protection requires Richard to click one toggle in the Supabase dashboard himself (see above) — no available tool can do this.
+
+## D-109 | 2026-08-31 | HTTP response security headers (CSP, HSTS, X-Frame-Options, etc.)
+
+**Context:** Continuing the cybersecurity hardening pass. The Next.js app was shipping with no explicit security headers beyond Vercel's default HSTS — no Content-Security-Policy, no clickjacking protection, no MIME-sniffing protection.
+
+**Decision:** Added `async headers()` to `next.config.ts` returning, for every route:
+- `Content-Security-Policy`: `default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' <supabase-url> wss://<supabase-host>; frame-ancestors 'none'; form-action 'self'; base-uri 'self'; object-src 'none'` (the `connect-src` Supabase allowlist was later removed in D-110 once it turned out to be unnecessary)
+- `X-Content-Type-Options: nosniff`
+- `X-Frame-Options: DENY`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+- `Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()`
+
+`script-src`/`style-src` need `'unsafe-inline'` because Next.js's own App Router hydration payload and critical-CSS injection rely on inline `<script>`/`<style>` tags with no nonce wired up — a stricter nonce-based CSP would need a `middleware.ts` nonce pipeline, a bigger change than this hardening pass calls for. `Strict-Transport-Security` was deliberately not duplicated — Vercel already injects a strong one (`max-age=63072000; includeSubDomains; preload`, confirmed via `curl -sI`).
+
+**Verification:**
+- `pnpm exec tsc --noEmit`, `pnpm lint`, `pnpm test -- --run` (432/432), `pnpm build` all clean.
+- Committed `953f6b3`, pushed, Vercel auto-deployed to production.
+- `curl -sI https://lifeos-seven-rho.vercel.app/` confirmed every header present with the exact values above.
+- Logged into production in a real browser session and loaded Brief/People/Calendar with a `securitypolicyviolation` event listener attached — zero CSP violations fired, confirming the policy doesn't break any real page.
+
+## D-110 | 2026-08-31 | Dependency vulnerability audit (pnpm audit) + CSP connect-src tightening
+
+**Context:** Ran `pnpm audit` against the full dependency tree as part of the cybersecurity checklist.
+
+**Findings:** 14 findings (1 critical, 9 high, 4 moderate), all traced to exactly 3 packages — `tar`, `sharp`, `uuid` — nested entirely inside `@capacitor/assets@3.0.5`, a devDependency-only local CLI tool used to generate app icon/splash assets. Confirmed via `grep` it is never imported in `app/`/`lib/`/`components/` and never invoked by any `.github/workflows/*.yml` — it only ever runs manually on a developer machine. `@capacitor/assets@3.0.5` is the latest published version (`npm view @capacitor/assets versions`) and still internally pins an old `@capacitor/cli@5.7.8` (separate from the top-level `@capacitor/cli@8.5.0`, which already has a patched `tar@7.5.22`).
+
+**Decision:** Pinned patched versions via `pnpm-workspace.yaml` `overrides` (pnpm v11 moved `overrides` out of `package.json` — a first attempt there produced `[WARN] The "pnpm" field in package.json is no longer read by pnpm` and was reverted with no net diff): `tar >=7.5.22`, `sharp >=0.35.0`, `uuid@<11.1.1 → >=11.1.1`. Re-ran `pnpm install` then `pnpm audit` → "No known vulnerabilities found". Confirmed `capacitor-assets --version` still runs correctly after the override, so the pinned versions didn't break the tool.
+
+**Secondary finding — dead code discovered while auditing the client bundle for secret exposure:** Grepped `app/`, `lib/`, `components/` for every `process.env.*` reference and confirmed none of the non-`NEXT_PUBLIC_` server secrets (`ANTHROPIC_API_KEY`, `CRON_SECRET`, `RESEND_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`) are referenced from any `"use client"` file — all are confined to server actions, route handlers, or server-only modules. Grepped the actual compiled `.next/static` client bundle for secret-key fingerprints and common key prefixes (`sk-ant-`, `re_...`, `service_role`) — zero matches. While doing this, found `lib/db/client-browser.ts` (a direct browser Supabase client) is dead code: nothing in `app/` or `components/` imports it — every request goes through server actions/route handlers instead. The D-109 CSP's `connect-src` allowlist for the Supabase origin existed only for this unused code path, so tightened `connect-src` down to `'self'` only and corrected the misleading comment in `next.config.ts` to document that the browser never talks to Supabase directly today.
+
+**Verification:**
+- `pnpm exec tsc --noEmit`, `pnpm lint`, `pnpm test -- --run` (432/432), `pnpm build` all clean, both for the dependency override and again after the CSP tightening.
+- Committed `4f97b0e`, pushed, Vercel auto-deployed to production.
+- `curl -sI https://lifeos-seven-rho.vercel.app/` confirmed the tightened `connect-src 'self'` is live.
+- Logged into production in a real browser session with a `securitypolicyviolation` listener attached — signed in successfully, landed on Brief with real household data, zero CSP violations.
+
+## D-111 | 2026-08-31 | Per-email lockout for password sign-in (brute-force protection)
+
+**Context:** `app/actions.ts` had no application-level protection against repeated password guesses on `signInWithPassword` beyond whatever Supabase Auth provides natively. Checked Supabase's own documentation (`supabase.com/docs/guides/auth/rate-limits`): the `/auth/v1/token` limit is IP-address-based only — 1,800 requests/hour with bursts up to 30, not customizable — with no documented per-account lockout. An attacker rotating source IPs, or simply staying under that generic quota, could still run a large number of password guesses against one specific known email address per day. Per the standing "make cybersecurity calls autonomously" directive, treated this as a real gap worth closing rather than something to flag for Richard.
+
+**Decision:** Added `auth_login_attempts` (migration `20260831000002_login_rate_limiting.sql`): `email_key` (normalized lowercase/trimmed email) + `attempted_at`, RLS enabled with **zero** grants/policies for `anon`/`authenticated` (explicit `revoke all ... from anon, authenticated` in addition to RLS, since this is pure server-side security bookkeeping, never user-facing data — only the service-role client touches it). Wired a 5-failed-attempts-per-15-minutes lockout into `signInWithPassword`: a locked email returns a generic "too many sign-in attempts" message without even calling Supabase Auth; every failure records a row; a success clears that email's rows. Chose per-email over per-IP because it directly protects a specific targeted account regardless of how many source IPs an attacker rotates through — the classic credential-stuffing/account-takeover vector — while Supabase's own IP-based limit still provides a coarser second layer. Rows are pruned opportunistically per-email on each check (no separate cron needed) to keep the table bounded.
+
+**Verification:**
+- `pnpm exec tsc --noEmit`, `pnpm lint` (0 errors, same 34 pre-existing warnings), `pnpm test -- --run` (432/432), `pnpm build` all clean.
+- Migration applied directly to production (`moblcysnsaxohnslubym`).
+- Committed `7292e2d`, pushed, Vercel auto-deployed to production.
+- Live-verified in a real browser session against production: 6 consecutive failed sign-in attempts with a throwaway test email (`brute-force-lockout-test@example.com`) returned "Invalid login credentials" for attempts 1–5, then "Too many sign-in attempts for this account. Please wait a few minutes and try again." on attempt 6 — confirming the lockout fires exactly at the configured threshold.
+- Immediately after, signed in with the real production account (`rwsmith964@gmail.com`) and confirmed it succeeded normally, landing on Brief with real household data — confirming the per-email scoping means one locked-out address never affects any other account.
