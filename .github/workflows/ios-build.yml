@@ -1,0 +1,68 @@
+name: iOS simulator build
+
+# Verifies the Capacitor iOS project actually builds, using a macOS GitHub
+# Actions runner (Xcode isn't available on Linux, and Richard's own machine
+# is Windows — see APP-STORE-PLAN.md §5). This is a *simulator* build only:
+# no signing certificate or provisioning profile is required, so it needs
+# no Apple Developer account and does not produce an App Store-uploadable
+# artifact. Its only job is to catch iOS build breakage (Swift errors,
+# CocoaPods/SPM resolution failures, Capacitor plugin issues) on every push,
+# well before an Apple Developer account or real device is involved.
+#
+# Once Richard has enrolled in the Apple Developer Program (§6) and set up
+# a signing certificate + provisioning profile (§8), this workflow can be
+# extended with a signed `xcodebuild archive` step and a fastlane TestFlight
+# upload — see APP-STORE-PLAN.md §5 for the recommended next step.
+
+on:
+  push:
+    branches: [main, capacitor-app-store-prep]
+    paths:
+      - "ios/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "capacitor.config.ts"
+      - ".github/workflows/ios-build.yml"
+  workflow_dispatch: {}
+
+jobs:
+  build-simulator:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Sync Capacitor iOS project
+        run: npx cap sync ios
+
+      - name: Select Xcode version
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app
+
+      - name: Resolve Swift Package dependencies
+        working-directory: ios/App
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project App.xcodeproj \
+            -scheme App
+
+      - name: Build for iOS Simulator (Debug, unsigned)
+        working-directory: ios/App
+        run: |
+          xcodebuild build \
+            -project App.xcodeproj \
+            -scheme App \
+            -configuration Debug \
+            -destination "generic/platform=iOS Simulator" \
+            -sdk iphonesimulator \
+            CODE_SIGNING_ALLOWED=NO

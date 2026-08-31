@@ -15,7 +15,8 @@ shell exists to (a) get a real app icon on the home screen and (b) host the
 native plugins in §3 that a browser tab cannot provide.
 
 `capacitor.config.ts` and the generated `ios/` Xcode project already exist
-on the `capacitor-app-store-prep` branch (not yet merged to `main`).
+on `main` (originally built on the `capacitor-app-store-prep` branch, since
+merged).
 
 ## 2. The Guideline 4.2 risk, and how this plan addresses it
 
@@ -49,12 +50,28 @@ and real-device testing remain, and those also need Xcode/Android Studio
 - [x] `capacitor.config.ts` created — app id `com.rwsmith.lifeos`, hosted mode pointing at production
 - [x] `npx cap add ios` run successfully — generates `ios/App/App.xcodeproj` and supporting files
 - [x] Typecheck still clean after these changes
-- [ ] Actual Xcode build/archive/sign — **cannot happen here**, see §5
+- [x] GitHub Actions macOS CI workflow added (D-106),
+  `.github/workflows/ios-build.yml` — builds the Capacitor iOS project for
+  the **simulator** on every push touching `ios/`, with
+  `CODE_SIGNING_ALLOWED=NO`, so it needs no Apple Developer account, no
+  certificate, and no provisioning profile. Also added the shared Xcode
+  scheme (`ios/App/App.xcodeproj/xcshareddata/xcschemes/App.xcscheme`) the
+  workflow needs — `npx cap add ios` doesn't check one in by default, only
+  a local user-level scheme Xcode creates lazily on first open, which CI
+  never gets. This catches Swift/CocoaPods/SPM/plugin build breakage on
+  every push, well before an Apple Developer account is needed for
+  anything else. **Not yet run for real** — needs an actual push or manual
+  `workflow_dispatch` trigger to confirm it passes on a live runner; no
+  Actions run has happened yet in this sandbox.
+- [ ] Actual signed Xcode build/archive/upload — **still needs an Apple
+  Developer account + macOS signing setup**, see §5/§6/§8
 
 ## 5. What requires a macOS environment (blocked here, needs Richard's next action)
 
-Xcode only runs on macOS; Richard's own device is Windows. Options, cheapest
-first:
+Xcode only runs on macOS; Richard's own device is Windows. The unsigned
+simulator build above now runs on a GitHub Actions macOS runner with no
+account needed — what's still blocked is *signed* builds (archive, upload,
+TestFlight), which need real certificates. Options, cheapest first:
 
 1. **GitHub Actions macOS runner** — free tier includes macOS minutes; can
    run `xcodebuild` headlessly for CI builds and even TestFlight uploads via
@@ -103,13 +120,29 @@ the repo already lives there — revisit if the workflow proves too fiddly.
 - [x] iPhone 6.9" screenshots, 1320×2868px, 5 captured (Brief, People,
   Calendar, Gifts, Activities) — done, using the demo household (see §14),
   `store-assets/screenshots/ios-0{1..5}-*.png`
+- [x] iPad Pro 12.9" screenshots, 2048×2732px, 3 captured (Brief, People,
+  Calendar) — done (D-106), `store-assets/screenshots/ipad-0{1..3}-*.png`.
+  Required because the app is Universal (`TARGETED_DEVICE_FAMILY = "1,2"`
+  in the Xcode project targets both iPhone and iPad); confirms the desktop
+  sidebar/side-by-side layout (D-101) renders cleanly at iPad width too.
 - [x] Android phone screenshots, 1080×2400px, same 5 pages — done,
-  `store-assets/screenshots/android-0{1..5}-*.png`. Tablet screenshots
-  remain optional and not yet done.
+  `store-assets/screenshots/android-0{1..5}-*.png`
+- [x] Android tablet screenshots (optional), 1600×2560px, 3 captured
+  (Brief, People, Calendar) — done (D-106),
+  `store-assets/screenshots/android-tablet-0{1..3}-*.png`
 - [x] Demo account credentials for the App Review team — reuse the demo
   household created for screenshots: email
   `lifeos-demo-screenshots@example.com`, password
   `Demo-Screenshots-Only-2026!`
+- [x] Apple App Privacy ("nutrition label") questionnaire draft — done
+  (D-106), `store-assets/apple-app-privacy-answers.md`. Data types, sharing,
+  and tracking answers derived directly from the app's real data practices
+  (same source as `/privacy`, D-103). First draft — Richard is the
+  accountable party for label accuracy and should review before submitting.
+- [x] Google Play Data Safety form draft — done (D-106),
+  `store-assets/play-data-safety-answers.md`, same caveats as the Apple
+  draft above; also includes a non-binding content-rating recommendation
+  (Richard completes the actual IARC questionnaire himself).
 
 ## 8. Submission pipeline (once a macOS build path exists)
 
@@ -172,10 +205,16 @@ needed the way Xcode required one for iOS.
 - [x] Public privacy policy URL (D-103) — live at
   [lifeos-seven-rho.vercel.app/privacy](https://lifeos-seven-rho.vercel.app/privacy),
   satisfies both this and the iOS requirement in §7
-- [ ] Not yet done: feature graphic (1024×500), Play Console hi-res icon
-  (512×512 — can reuse the same brand mark), phone + tablet screenshots,
-  short/full store description, content rating questionnaire, target
-  audience + Data Safety form
+- [x] Feature graphic, hi-res icon, phone + tablet screenshots, and store
+  description — all done, see §7 and D-104/D-105/D-106
+- [x] Data Safety form draft — done (D-106),
+  `store-assets/play-data-safety-answers.md`. First draft from the app's
+  actual data practices; Richard fills in the real Play Console form and
+  completes the linked IARC content-rating questionnaire himself (his call,
+  not decided here — see the recommendation in that file).
+- [ ] Not yet done: target audience answer in Play Console (Richard's own
+  call on whether children are a primary audience — affects Families
+  Policy requirements)
 - [ ] Not yet done: real on-device/emulator testing (no Android emulator
   display in this sandbox — Gradle CLI builds are headless-verified only)
 
