@@ -19,7 +19,16 @@ export async function createSupabaseServerClient() {
       setAll(cookiesToSet) {
         try {
           for (const { name, value, options } of cookiesToSet) {
-            cookieStore.set(name, value, options);
+            // D-113: @supabase/ssr's own DEFAULT_COOKIE_OPTIONS omits `secure`
+            // entirely (sameSite: "lax", httpOnly: false, no secure flag at
+            // all), so the session cookie ships without Secure in production
+            // unless we force it here. Matches the same
+            // `process.env.NODE_ENV === "production"` pattern
+            // app/auth/callback/route.ts already uses for RESET_FLOW_COOKIE.
+            cookieStore.set(name, value, {
+              ...options,
+              secure: process.env.NODE_ENV === "production",
+            });
           }
         } catch {
           // Called from a Server Component that can't set cookies — safe to
