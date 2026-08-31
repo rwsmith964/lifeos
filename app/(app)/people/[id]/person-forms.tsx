@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { format } from "date-fns";
 import { Loader2 } from "lucide-react";
 import { ConfirmDeleteButton } from "@/components/ui/confirm-delete-button";
 import {
@@ -9,6 +10,7 @@ import {
   addBudgetAction,
   addGiftSiteAction,
   recordGiftAction,
+  updateGiftAction,
   setCadenceAction,
   logInteractionAction,
   deleteInterestAction,
@@ -26,6 +28,7 @@ import {
 import { useAiHealth } from "@/lib/hooks/use-ai-health";
 import { useFormValidity } from "@/lib/hooks/use-form-validity";
 import { giftReactionDisplayLabel, occasionTypeDisplayLabel } from "@/lib/gifts/occasions";
+import type { OccasionType, GiftReaction } from "@/lib/db/database.types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -475,6 +478,145 @@ export function AddGiftSiteForm({ personId }: { personId: string }) {
 
 export function DeleteGiftButton({ personId, giftId }: { personId: string; giftId: string }) {
   return <ConfirmDeleteButton action={() => deleteGiftAction(personId, giftId)} />;
+}
+
+// D-094: inline edit for an already-recorded gift. Mirrors RecordGiftForm's
+// fields exactly (same occasion/reaction option lists, same validation
+// message) so editing feels like the same form, just pre-filled and with
+// "Save changes" / "Cancel" instead of "Record gift". Rendered in place of
+// the static row by GiftHistoryItem below, not as its own always-visible
+// form -- there's no natural standalone location for it on the page.
+function EditGiftForm({
+  personId,
+  gift,
+  onDone,
+  onCancel,
+}: {
+  personId: string;
+  gift: { id: string; description: string; occasion_type: OccasionType; occasion_date: string; cost_cents: number | null; reaction: GiftReaction | null };
+  onDone: () => void;
+  onCancel: () => void;
+}) {
+  const action = updateGiftAction.bind(null, personId, gift.id);
+  const [state, dispatch, pending] = useActionState(action, initialState);
+  const formRef = useRef<HTMLFormElement>(null);
+  const { invalid, checkValid, clearInvalid } = useFormValidity(formRef);
+  const justSubmittedRef = useRef(false);
+
+  function handleSave() {
+    if (!checkValid()) return;
+    justSubmittedRef.current = true;
+    dispatch(new FormData(formRef.current!));
+  }
+
+  useEffect(() => {
+    if (justSubmittedRef.current && !state.error) {
+      onDone();
+    }
+    justSubmittedRef.current = false;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
+
+  return (
+    <form ref={formRef} noValidate onChange={clearInvalid} className="flex flex-col gap-2 rounded-md border border-border bg-muted/30 p-2">
+      <Input name="description" defaultValue={gift.description} placeholder="What did you give them?" required />
+      <div className="flex gap-2">
+        <select
+          name="occasionType"
+          defaultValue={gift.occasion_type}
+          aria-label="Occasion"
+          className="border-input h-8 flex-1 rounded-md border bg-transparent px-2 text-sm"
+        >
+          {OCCASION_OPTIONS.map((o) => (
+            <option key={o} value={o}>
+              {occasionTypeDisplayLabel(o)}
+            </option>
+          ))}
+        </select>
+        <Input
+          name="occasionDate"
+          type="date"
+          defaultValue={gift.occasion_date}
+          required
+          className="h-8"
+          aria-label="Occasion date"
+        />
+      </div>
+      <div className="flex gap-2">
+        <Input
+          name="costDollars"
+          type="number"
+          min={0}
+          defaultValue={gift.cost_cents != null ? (gift.cost_cents / 100).toFixed(2) : ""}
+          placeholder="Cost $"
+          className="h-8"
+        />
+        <select
+          name="reaction"
+          defaultValue={gift.reaction ?? ""}
+          aria-label="Their reaction"
+          className="border-input h-8 flex-1 rounded-md border bg-transparent px-2 text-sm"
+        >
+          {REACTION_OPTIONS.map((r) => (
+            <option key={r} value={r}>
+              {r ? giftReactionDisplayLabel(r) : "reaction (optional)"}
+            </option>
+          ))}
+        </select>
+      </div>
+      {invalid && <p className="text-xs text-destructive">Description and occasion date are required.</p>}
+      {state.error && <p className="text-xs text-destructive">{state.error}</p>}
+      <div className="flex gap-2">
+        <Button type="button" size="sm" onClick={handleSave} disabled={pending}>
+          {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save changes"}
+        </Button>
+        <Button type="button" size="sm" variant="ghost" onClick={onCancel} disabled={pending}>
+          Cancel
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+export function GiftHistoryItem({
+  personId,
+  gift,
+}: {
+  personId: string;
+  gift: {
+    id: string;
+    description: string;
+    occasion_type: OccasionType;
+    occasion_date: string;
+    cost_cents: number | null;
+    reaction: GiftReaction | null;
+  };
+}) {
+  const [editing, setEditing] = useState(false);
+
+  if (editing) {
+    return <EditGiftForm personId={personId} gift={gift} onDone={() => setEditing(false)} onCancel={() => setEditing(false)} />;
+  }
+
+  return (
+    <div className="flex items-start justify-between gap-2 text-sm">
+      <div>
+        <p className="font-medium">{gift.description}</p>
+        <p className="text-xs text-muted-foreground">
+          {occasionTypeDisplayLabel(gift.occasion_type)} ·{" "}
+          {format(new Date(`${gift.occasion_date}T00:00:00`), "EEEE, MMMM d")}
+          {gift.cost_cents != null && ` · $${(gift.cost_cents / 100).toFixed(2)}`}
+          {gift.reaction && ` · ${giftReactionDisplayLabel(gift.reaction)}`}
+        </p>
+      </div>
+      <div className="flex shrink-0 items-center gap-1">
+        <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setEditing(true)}>
+          Edit
+        </Button>
+        <DeleteGiftButton personId={personId} giftId={gift.id} />
+      </div>
+    </div>
+  );
 }
 
 export function DeleteGiftSiteButton({ personId, siteId }: { personId: string; siteId: string }) {

@@ -13,7 +13,7 @@ import {
   listUpcomingEventsForPerson,
 } from "@/lib/db/repositories/calendar";
 import { evaluateCadence } from "@/lib/contact/cadence";
-import { giftReactionDisplayLabel, nearestUpcomingOccasionForPerson, occasionTypeDisplayLabel } from "@/lib/gifts/occasions";
+import { nearestUpcomingOccasionForPerson, occasionTypeDisplayLabel } from "@/lib/gifts/occasions";
 import { estimateAgeYears } from "@/lib/ai/prompts/gift-suggestion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -26,7 +26,7 @@ import {
   AddWorkScheduleForm,
   CadenceForm,
   DeleteBudgetButton,
-  DeleteGiftButton,
+  GiftHistoryItem,
   DeleteGiftSiteButton,
   DeleteInterestButton,
   DeleteTimeOffButton,
@@ -370,18 +370,7 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
           {gifts.length > 0 && (
             <div className="flex flex-col gap-2">
               {gifts.map((gift) => (
-                <div key={gift.id} className="flex items-start justify-between gap-2 text-sm">
-                  <div>
-                    <p className="font-medium">{gift.description}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {occasionTypeDisplayLabel(gift.occasion_type)} ·{" "}
-                      {format(new Date(`${gift.occasion_date}T00:00:00`), "EEEE, MMMM d")}
-                      {gift.cost_cents != null && ` · $${(gift.cost_cents / 100).toFixed(2)}`}
-                      {gift.reaction && ` · ${giftReactionDisplayLabel(gift.reaction)}`}
-                    </p>
-                  </div>
-                  <DeleteGiftButton personId={id} giftId={gift.id} />
-                </div>
+                <GiftHistoryItem key={gift.id} personId={id} gift={gift} />
               ))}
             </div>
           )}

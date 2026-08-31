@@ -155,10 +155,14 @@ a custody-block form (`/calendar/custody/new`), and delete actions for
 interests, budgets, gifts, calendar events, and custody blocks were all
 added after the first UI pass too — every table the app touches now has a
 real create AND delete path through the UI, and person records also
-support edit. What's still genuinely not built: no *edit* (only
-add/delete) for interests, budgets, gifts, activities, or calendar events
-— re-adding is the workaround for now. Low remaining risk given how small
-those forms are.
+support edit. **Update (D-094):** interests, budgets, and gift-shopping
+sites turned out to already have an effective edit path (each upserts on
+its unique key, so re-adding with new details updates the existing row);
+gift history had no such path and now has a real inline Edit control
+(D-094). Calendar events and custody blocks already had edit UIs before
+this note was written. Activities still have no dedicated edit form —
+remove-and-re-add is the workaround; low remaining risk given how small
+that form is.
 
 ### Phase 8 — Polish and documentation: done
 This file, `README.md`, `docs/privacy.md`, `docs/ai-costs.md`,

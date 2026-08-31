@@ -300,6 +300,44 @@ export async function recordGiftAction(
   return { error: null };
 }
 
+// D-094: correcting a typo'd description, cost, date, occasion, or
+// reaction on an already-recorded gift previously had no path except
+// delete-and-re-add. Reuses giftInsertSchema (minus the fields that don't
+// change post-creation) rather than a separate update schema, so the two
+// validation rules can never drift apart (person_id is fixed to the
+// existing row; status stays "given" for a historical record).
+// Deliberately does NOT re-run applyGiftFeedback: that already ran once at
+// creation time off whatever reaction was recorded then, and re-running it
+// on every later correction (e.g. fixing an unrelated typo in the
+// description) would double- or triple-count the same reaction's nudge to
+// the matched interest's strength.
+export async function updateGiftAction(
+  personId: string,
+  giftId: string,
+  _prevState: SimpleFormState,
+  formData: FormData
+): Promise<SimpleFormState> {
+  const { supabase } = await requireHouseholdContext();
+
+  const reaction = String(formData.get("reaction") ?? "");
+  const parsed = giftInsertSchema.omit({ person_id: true, status: true }).safeParse({
+    occasion_type: String(formData.get("occasionType") ?? "just_because"),
+    occasion_date: String(formData.get("occasionDate") ?? ""),
+    description: String(formData.get("description") ?? "").trim(),
+    cost_cents: formData.get("costDollars") ? Math.round(Number(formData.get("costDollars")) * 100) : null,
+    reaction: reaction || null,
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
+
+  try {
+    await giftsRepo.update(supabase, giftId, parsed.data);
+  } catch (error) {
+    return { error: friendlyMutationError(error, { fallback: "Couldn't save those changes — please try again." }) };
+  }
+  revalidatePath(`/people/${personId}`);
+  return { error: null };
+}
+
 export async function setCadenceAction(
   personId: string,
   _prevState: SimpleFormState,
