@@ -100,13 +100,16 @@ the repo already lives there — revisit if the workflow proves too fiddly.
   `store-assets/store-listing-copy.md`. First draft, Richard's review needed
   before submission (it's public marketing copy, plus category/age-rating
   choices are his call).
-- [ ] iPhone 6.9" screenshots, 1320×2868px, at least 3 per Apple's minimum —
-  **blocked on a decision, see §14**
-- [ ] Android phone (and optional 7"/10" tablet) screenshots — **blocked on
-  the same decision, see §14**
-- [ ] Demo account credentials for the App Review team (can reuse Richard's
-  own seeded household, or a dedicated review-only household — Richard's
-  call)
+- [x] iPhone 6.9" screenshots, 1320×2868px, 5 captured (Brief, People,
+  Calendar, Gifts, Activities) — done, using the demo household (see §14),
+  `store-assets/screenshots/ios-0{1..5}-*.png`
+- [x] Android phone screenshots, 1080×2400px, same 5 pages — done,
+  `store-assets/screenshots/android-0{1..5}-*.png`. Tablet screenshots
+  remain optional and not yet done.
+- [x] Demo account credentials for the App Review team — reuse the demo
+  household created for screenshots: email
+  `lifeos-demo-screenshots@example.com`, password
+  `Demo-Screenshots-Only-2026!`
 
 ## 8. Submission pipeline (once a macOS build path exists)
 
@@ -221,12 +224,10 @@ take days.
   (screenshots, descriptions) are ready
 - Confirm receipt and secure backup of the release keystore (§11) before
   it's needed for a first Play Store upload
-- **Screenshot data source (blocking §7):** store-listing screenshots for
-  both Apple and Google go on a public listing page anyone can view. Taking
-  them from Richard's real household would put his family's actual names,
-  schedule, and (for the People page) custody/childcare details in front of
-  the public. Before generating screenshots, Richard should choose: (a) a
-  dedicated demo household seeded with placeholder names/events for
-  screenshot purposes, (b) using the real household but with Richard
-  reviewing/approving each screenshot first, or (c) taking the screenshots
-  himself. Not decided unilaterally here.
+- Screenshot data source (§7) — RESOLVED (D-105): Richard chose a dedicated
+  demo household seeded with placeholder names/events. "The Rivera
+  Household" was created directly in production Supabase (6 people, 7
+  calendar events, 4 custody blocks, gift suggestions/history, 2
+  activities), live-verified via login, then used to capture all iOS and
+  Android store screenshots. See D-105 in DECISIONS.md and
+  store-assets/seed-demo-household.sql for the seed script.
