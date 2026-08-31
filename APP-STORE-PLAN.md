@@ -85,10 +85,10 @@ the repo already lives there — revisit if the workflow proves too fiddly.
 
 - 1024×1024 App Store icon (no alpha, no rounded corners — Apple applies the mask)
 - iPhone 6.9" screenshots, 1320×2868px, at least 3 per Apple's minimum
-- Public privacy policy URL — repo has `docs/privacy.md`; needs to be hosted
-  somewhere public (e.g. a route on the production Vercel deployment, or a
-  simple static page) since App Store Connect requires a live URL, not a
-  repo file
+- Public privacy policy URL — **done (D-103):** live at
+  [lifeos-seven-rho.vercel.app/privacy](https://lifeos-seven-rho.vercel.app/privacy).
+  This is a first draft written from the app's actual data practices; Richard
+  should review it for accuracy before relying on it for a real submission.
 - Support URL — same hosting need as above
 - Demo account credentials for the App Review team (can reuse Richard's own
   seeded household, or a dedicated review-only household — Richard's call)
@@ -151,6 +151,9 @@ needed the way Xcode required one for iOS.
   `AndroidManifest.xml` edit — `aapt dump badging` on the debug APK
   confirms both are already present, auto-merged in from the biometric
   plugin's own bundled manifest.
+- [x] Public privacy policy URL (D-103) — live at
+  [lifeos-seven-rho.vercel.app/privacy](https://lifeos-seven-rho.vercel.app/privacy),
+  satisfies both this and the iOS requirement in §7
 - [ ] Not yet done: feature graphic (1024×500), Play Console hi-res icon
   (512×512 — can reuse the same brand mark), phone + tablet screenshots,
   short/full store description, content rating questionnaire, target
