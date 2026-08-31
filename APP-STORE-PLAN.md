@@ -28,17 +28,20 @@ Mitigation: ship with at least 2–3 real native features (below) wired
 through Capacitor plugins, so the reviewer sees functionality a Safari tab
 genuinely cannot provide, not just a WebView with an app icon.
 
-## 3. Native features (native code, out of scope for this sandbox)
+## 3. Native features
 
-| Feature | Why it's a real 4.2 justification | Capacitor plugin |
-|---|---|---|
-| Push notifications | Custody handover reminders, gift-date alerts — LifeOS's core value ("never miss a gift") depends on proactive nudges a website tab can't send | `@capacitor/push-notifications` + Apple Push Notification service (APNs) cert |
-| Face ID / biometric app-lock | Household data (kids' schedules, custody details) benefits from a device-level lock a browser can't offer | `@capacitor/biometric-auth` (community) or native `LAContext` via a small Swift plugin |
-| Home-screen widget | "Today's brief" / "next handover" glanceable without opening the app — a genuinely native-only surface | WidgetKit (Swift, iOS 14+) — not a Capacitor plugin; written directly in the generated `ios/` Xcode project |
+| Feature | Why it's a real 4.2 justification | Capacitor plugin | Status |
+|---|---|---|---|
+| Face ID / biometric app-lock | Household data (kids' schedules, custody details) benefits from a device-level lock a browser can't offer | `@aparajita/capacitor-biometric-auth` + `@capacitor/app` | **Built (D-100).** `components/native/app-lock-gate.tsx`, no-ops outside the native shell. Real Face ID/Touch ID prompt still unverified — needs a simulator/device (§5). |
+| Push notifications | Custody handover reminders, gift-date alerts — LifeOS's core value ("never miss a gift") depends on proactive nudges a website tab can't send | `@capacitor/push-notifications` + Apple Push Notification service (APNs) cert | Not started — needs an Apple Developer account for an APNs key first |
+| Home-screen widget | "Today's brief" / "next handover" glanceable without opening the app — a genuinely native-only surface | WidgetKit (Swift, iOS 14+) — not a Capacitor plugin; written directly in the generated `ios/` Xcode project | Not started — needs Xcode/macOS |
 
-None of these can be built or tested in this Linux sandbox — they require
-Xcode, a macOS build agent, and (for push) an Apple Developer account to
-generate an APNs key. They are scoped here as a plan, not implemented.
+Push notifications and the widget can't be built or tested in this Linux
+sandbox — they require Xcode, a macOS build agent, and (for push) an Apple
+Developer account to generate an APNs key. Biometric lock's application
+code is done; only the native Info.plist/AndroidManifest permission entries
+and real-device testing remain, and those also need Xcode/Android Studio
+(§5).
 
 ## 4. What's already done here (sandbox-side prep)
 
@@ -105,9 +108,9 @@ the repo already lives there — revisit if the workflow proves too fiddly.
 
 ## 9. Open decisions for Richard
 
-- Which native feature to build first — push notifications is the highest
-  product value (matches "never miss a gift/handover") but needs an APNs
-  key; biometric lock is technically simplest to ship first
+- Biometric app-lock is code-complete (D-100); push notifications is next
+  in line for native features but needs an APNs key from an Apple Developer
+  account first
 - Whether to enroll in Apple Developer Program now (so the App ID and
   provisioning profile exist before any native feature work starts) or wait
   until at least one native feature is code-complete
