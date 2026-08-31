@@ -115,3 +115,91 @@ the repo already lives there — revisit if the workflow proves too fiddly.
   provisioning profile exist before any native feature work starts) or wait
   until at least one native feature is code-complete
 - macOS build path: GitHub Actions runner vs. Codemagic vs. borrowed Mac (see §5)
+
+## 10. Android / Google Play Store prep (D-102)
+
+Unlike iOS, the Android toolchain (Gradle CLI, Android SDK command-line
+tools, `aapt`, `apksigner`/`jarsigner`) runs headlessly on Linux, so this
+sandbox could do real build/sign/verify work directly — no CI workaround
+needed the way Xcode required one for iOS.
+
+- [x] `npx cap add android` — generates the `android/` Gradle project,
+  app id `com.rwsmith.lifeos` (matches iOS bundle id for consistency)
+- [x] Android SDK command-line tools installed locally (`platform-tools`,
+  `platforms;android-35`, `build-tools;35.0.0`)
+- [x] JDK toolchain fixed — system default is OpenJDK 25, incompatible with
+  this project's Gradle 8.14.3; pinned Gradle to OpenJDK 21 via
+  `org.gradle.java.home` in `android/gradle.properties` rather than
+  changing the system Node/tooling default
+- [x] Debug APK builds successfully (`./gradlew assembleDebug`)
+- [x] Release AAB builds successfully (`./gradlew bundleRelease`)
+- [x] **Real app icon** — replaced the generic default Capacitor "blue X"
+  icon with the actual LifeOS brand mark (black circle, white triangle) at
+  every mipmap density, plus a matching adaptive-icon foreground/background
+  pair, derived from `public/icon-512.png` / `icon-512-maskable.png`
+- [x] **Branded splash screen** — replaced the default white
+  Capacitor-logo splash with a black background + centered white triangle,
+  generated at every density/orientation Capacitor ships
+- [x] **Real release signing keystore generated** — `lifeos-release.keystore`
+  (PKCS12, RSA 2048, 30-year validity), wired into
+  `android/app/build.gradle` via a local `android/keystore.properties`
+  file that is git-ignored (never committed — see §11). Verified with
+  `jarsigner -verify` → `jar verified`, signer cert visible, not just a
+  debug/auto-generated key.
+- [x] Corrected an earlier inaccurate note in this plan: `USE_BIOMETRIC`
+  and `USE_FINGERPRINT` permissions do **not** need a manual
+  `AndroidManifest.xml` edit — `aapt dump badging` on the debug APK
+  confirms both are already present, auto-merged in from the biometric
+  plugin's own bundled manifest.
+- [ ] Not yet done: feature graphic (1024×500), Play Console hi-res icon
+  (512×512 — can reuse the same brand mark), phone + tablet screenshots,
+  short/full store description, content rating questionnaire, target
+  audience + Data Safety form
+- [ ] Not yet done: real on-device/emulator testing (no Android emulator
+  display in this sandbox — Gradle CLI builds are headless-verified only)
+
+## 11. Android signing keystore — what Richard needs to do
+
+The release keystore (`android/keystore-secure/lifeos-release.keystore`)
+and its passwords are **deliberately excluded from git** — a signing key
+leak in a public or even private repo history is permanent and
+unrecoverable. That means this file only exists in this sandbox's
+workspace and was shared with Richard directly; it is not preserved by
+`git push`.
+
+**Action required:** download the shared keystore file and its password
+note, then store both somewhere durable and secure (a password manager,
+an encrypted drive, etc.) — not just this chat. If this keystore is lost
+before Play Console's "Play App Signing" is set up on first upload,
+future app updates become impossible without going through Google's
+key-loss recovery process, which requires identity verification and can
+take days.
+
+## 12. Google Play Console — cost and account (Richard's own, not delegable)
+
+- **Google Play Console registration: one-time $25**, Richard's own
+  Google account and payment method —
+  [play.google.com/console/signup](https://play.google.com/console/signup/).
+  Same rule as the Apple $99/year fee in §6: this must be done by Richard
+  personally, not on his behalf.
+
+## 13. Play Store submission pipeline (once Richard has a Play Console account)
+
+1. Create the app listing in Play Console (package name `com.rwsmith.lifeos`)
+2. Opt in to Play App Signing (Google re-signs the app for distribution;
+   Richard's upload keystore from §10/§11 only signs the upload, not the
+   final distributed APK)
+3. Upload the signed release AAB to an Internal Testing track first —
+   Richard tests on his own Android device before wider release
+4. Fill in the Play Console listing: short/full description, hi-res icon,
+   feature graphic, phone/tablet screenshots, privacy policy URL, content
+   rating questionnaire, Data Safety form, target audience
+5. Promote from Internal Testing → Production once verified
+
+## 14. Open decisions for Richard (Android)
+
+- Whether to register the Google Play Console account now (unlocks real
+  upload/testing-track work) or wait until more store-listing assets
+  (screenshots, descriptions) are ready
+- Confirm receipt and secure backup of the release keystore (§11) before
+  it's needed for a first Play Store upload
