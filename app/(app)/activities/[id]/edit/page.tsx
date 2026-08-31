@@ -3,6 +3,7 @@ import { requireHouseholdContext } from "@/lib/auth/session";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
 import { userActivitiesRepo, listLocationsForActivity } from "@/lib/db/repositories/activities";
 import { ActivityForm, type ActivityFormDefaults } from "../../activity-form";
+import { ActivityLocationsSection } from "../../activity-locations-section";
 
 export default async function EditActivityPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -17,6 +18,7 @@ export default async function EditActivityPage({ params }: { params: Promise<{ i
   ]);
   const possibleCompanions = people.filter((p) => p.relationship_type !== "self");
   const location = locations[0] ?? null;
+  const additionalLocations = locations.slice(1);
   const externalIds = (location?.external_ids ?? {}) as Record<string, string>;
 
   const defaults: ActivityFormDefaults = {
@@ -52,6 +54,7 @@ export default async function EditActivityPage({ params }: { params: Promise<{ i
         pendingLabel="Saving…"
         defaults={defaults}
       />
+      <ActivityLocationsSection activityId={id} additionalLocations={additionalLocations} />
     </div>
   );
 }
