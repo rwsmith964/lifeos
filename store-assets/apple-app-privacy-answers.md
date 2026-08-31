@@ -55,6 +55,19 @@ processors when the questionnaire asks who data is shared with:
 - **Resend** — transactional email delivery (invites, childcare requests)
 - **Vercel** — application hosting
 
+## Biometric app-lock (Face ID / Touch ID)
+
+LifeOS optionally locks the app behind device Face ID/Touch ID on every
+open (D-100). This does **not** add a row to the data-collection table
+above: authentication happens entirely on-device via Apple's
+`LocalAuthentication` framework, and the app only receives a yes/no
+authentication result — it never receives, stores, or transmits any
+biometric data itself. Apple's App Privacy questionnaire does not have a
+data type for this because the app has no access to underlying biometric
+data to disclose. Technical note: this requires the
+`NSFaceIDUsageDescription` key in `Info.plist` (added — without it, Face
+ID silently fails and Apple review would reject the build).
+
 ## Children's data note
 
 Household data about children (custody schedules, activity locations) is

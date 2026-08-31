@@ -4,6 +4,8 @@
 <dict>
   <key>CAPACITOR_DEBUG</key>
 	<string>$(CAPACITOR_DEBUG)</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>LifeOS uses Face ID to unlock the app so only you can see your household's calendar and information.</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>

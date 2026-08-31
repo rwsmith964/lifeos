@@ -43,6 +43,16 @@ request, that would need a small feature addition before this can be
 answered "yes" to that specific sub-question — flagging this as a possible
 follow-up, not yet built.
 
+## Biometric app-lock (fingerprint / face unlock)
+
+Same note as the Apple draft: LifeOS's optional app-lock (D-100) uses
+Android's `BiometricPrompt` API entirely on-device — the app receives
+only a pass/fail result, never raw biometric data, so this is not a
+collected data type under Play's taxonomy either. `USE_BIOMETRIC` (a
+normal, automatically-granted permission) has been added to
+`AndroidManifest.xml` to make this explicit rather than relying solely on
+the androidx.biometric library's own manifest merge.
+
 ## Children's data
 
 Same note as the Apple draft: data about children is parent-entered, not

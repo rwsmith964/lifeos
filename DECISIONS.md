@@ -1561,3 +1561,20 @@ Corrected an inaccurate note carried over from D-100/D-099: `USE_BIOMETRIC`/`USE
 **What could not be done here:** A real (signed) Xcode archive/upload still needs Richard's Apple Developer account and macOS signing setup (§5/§6/§8) — the new CI workflow only proves the project *builds*, not that it can be distributed. The IARC content-rating questionnaire and Play Console's "target audience" question remain Richard's own answers, not filled in here.
 
 **Next steps:** Beyond this, the remaining App Store/Play Store checklist is entirely Richard's own decisions and paid actions (developer account fees, category/age-rating/target-audience answers) rather than further buildable work.
+
+## D-107 | 2026-08-31 | Reviewed App Privacy / Data Safety drafts against code, found and fixed a real missing Face ID permission
+
+**Context:** Richard asked for a review of the Apple App Privacy and Google Play Data Safety drafts from D-106. Rather than a re-read of the prose, cross-checked every claim in both documents against the actual codebase: `package.json` for analytics/ad/crash-reporting SDKs, source for geolocation/camera/photo-upload usage, `AndroidManifest.xml` and `Info.plist` for declared permissions, and the `/privacy` page for consistency.
+
+**Findings:**
+- Every data-collection claim in both drafts checked out: no analytics/telemetry SDK, no crash reporter, no ad SDK, no geolocation plugin (location fields are free-text strings, not device GPS), no camera/photo-upload/avatar feature, no push notifications — all confirmed by `package.json` and source search, not assumed.
+- One real gap: neither draft, nor the native project, accounted for the Face ID/Touch ID app-lock feature (`components/native/app-lock-gate.tsx`, D-100) using `@aparajita/capacitor-biometric-auth`. `ios/App/App/Info.plist` was missing the required `NSFaceIDUsageDescription` key — without it, iOS silently refuses to present Face ID at all (confirmed against the plugin's own README and Apple's own LocalAuthentication docs), so the app-lock feature would silently fail to authenticate via Face ID on any device without Touch ID, and Apple review could reject the binary for using a privacy-sensitive API without its required usage string.
+
+**Decision:**
+- Added `NSFaceIDUsageDescription` to `ios/App/App/Info.plist` with a user-facing explanation string.
+- Added `android.permission.USE_BIOMETRIC` explicitly to `android/app/src/main/AndroidManifest.xml` — a normal, automatically-granted permission already pulled in via the androidx.biometric library's own manifest merge, but made explicit rather than relying on merge behavior.
+- Added a "Biometric app-lock" section to both `apple-app-privacy-answers.md` and `play-data-safety-answers.md` clarifying that Face ID/Touch ID authentication happens entirely on-device via the OS — the app only receives a pass/fail result, never raw biometric data — so this correctly adds no new row to either store's data-collection table, and documenting the permission fix.
+
+**Verification:** `Info.plist` validated by parsing with Python's `plistlib`; `AndroidManifest.xml` validated by parsing with `xml.etree.ElementTree`. Ran `pnpm exec tsc --noEmit` as a safety check (no `.ts`/`.tsx` touched) — clean. Pushed to `main`, which re-triggers `ios-build.yml` since it touches `ios/**`; confirmed the run still passes green on GitHub Actions, proving the Info.plist edit didn't break the native build.
+
+**What could not be done here:** Richard should still personally read both drafts end to end before submitting — this review confirmed technical accuracy against the code, not legal/compliance sign-off, which remains his responsibility as the store-accountable party.
