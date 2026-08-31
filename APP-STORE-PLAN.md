@@ -81,17 +81,32 @@ the repo already lives there — revisit if the workflow proves too fiddly.
   Apple only mandates Sign in with Apple when a third-party social login
   (Google, Facebook, etc.) is offered without an Apple equivalent.
 
-## 7. Store listing assets needed (not yet created)
+## 7. Store listing assets needed
 
-- 1024×1024 App Store icon (no alpha, no rounded corners — Apple applies the mask)
-- iPhone 6.9" screenshots, 1320×2868px, at least 3 per Apple's minimum
-- Public privacy policy URL — **done (D-103):** live at
+- [x] 1024×1024 App Store icon (no alpha, no rounded corners) — done in D-102,
+  `ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png`
+- [x] Public privacy policy URL — **done (D-103):** live at
   [lifeos-seven-rho.vercel.app/privacy](https://lifeos-seven-rho.vercel.app/privacy).
-  This is a first draft written from the app's actual data practices; Richard
-  should review it for accuracy before relying on it for a real submission.
-- Support URL — same hosting need as above
-- Demo account credentials for the App Review team (can reuse Richard's own
-  seeded household, or a dedicated review-only household — Richard's call)
+  First draft from the app's actual data practices; Richard should review
+  before relying on it for a real submission.
+- [x] Support URL — **done:** live at
+  [lifeos-seven-rho.vercel.app/support](https://lifeos-seven-rho.vercel.app/support)
+- [x] Play Store hi-res icon (512×512) and feature graphic (1024×500) — done,
+  `store-assets/play-hi-res-icon-512.png` and
+  `store-assets/play-feature-graphic-1024x500.png`, generated from the real
+  brand mark
+- [x] Draft store listing copy (Play short/full description, App Store
+  subtitle/description/keywords/promo text) — done,
+  `store-assets/store-listing-copy.md`. First draft, Richard's review needed
+  before submission (it's public marketing copy, plus category/age-rating
+  choices are his call).
+- [ ] iPhone 6.9" screenshots, 1320×2868px, at least 3 per Apple's minimum —
+  **blocked on a decision, see §14**
+- [ ] Android phone (and optional 7"/10" tablet) screenshots — **blocked on
+  the same decision, see §14**
+- [ ] Demo account credentials for the App Review team (can reuse Richard's
+  own seeded household, or a dedicated review-only household — Richard's
+  call)
 
 ## 8. Submission pipeline (once a macOS build path exists)
 
@@ -206,3 +221,12 @@ take days.
   (screenshots, descriptions) are ready
 - Confirm receipt and secure backup of the release keystore (§11) before
   it's needed for a first Play Store upload
+- **Screenshot data source (blocking §7):** store-listing screenshots for
+  both Apple and Google go on a public listing page anyone can view. Taking
+  them from Richard's real household would put his family's actual names,
+  schedule, and (for the People page) custody/childcare details in front of
+  the public. Before generating screenshots, Richard should choose: (a) a
+  dedicated demo household seeded with placeholder names/events for
+  screenshot purposes, (b) using the real household but with Richard
+  reviewing/approving each screenshot first, or (c) taking the screenshots
+  himself. Not decided unilaterally here.
