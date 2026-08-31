@@ -15,6 +15,9 @@ Questions that genuinely cannot be decided without Richard's input, per Section 
 
 ## LOW
 
+## Q-006 | Golf activity / stray location | Priority: LOW | Opened 2026-08-31
+**Question:** While building D-095 (multi-location activities), found that the Golf activity already had a second, previously-hidden location row whose name is literally `"Eugene, Oregon"` (likely a leftover from an early geocode-on-save fallback, before there was any UI to see or manage it). It's now visible and editable/removable on the Golf edit page under "Other locations." Want it renamed to an actual course name, or removed? Left as-is since it's your real data, not mine to guess at.
+
 ## Q-005 | daily brief / "look-ahead" | Priority: LOW | Opened 2026-08-30
 **Question:** An early backlog line mentioned a "look-ahead" for the daily brief, but the detailed wording wasn't recoverable from the repo or session history when this was picked up. What should "look-ahead" mean here — a longer brief event window (e.g. showing the next 3-5 days, not just today/tomorrow), a weekly preview section, or something else? Everything else on that same backlog line (markdown rendering, seeing-them-today suppression, People-link tappability) was concrete enough to build without asking and is done (D-048).
 
