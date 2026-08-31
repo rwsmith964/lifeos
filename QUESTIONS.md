@@ -10,11 +10,13 @@ Questions that genuinely cannot be decided without Richard's input, per Section 
 
 ## MEDIUM
 
-(none open)
+## Q-004 | shell layout / desktop-tablet | Priority: MEDIUM | Opened 2026-08-30
+**Question:** The whole app shell is intentionally a narrow ~448px mobile-width column, centered with large unused margins on tablet/desktop (confirmed by the D-049 audit — zero functional bugs, just an unused-space product question). Should LifeOS ever get a real multi-column desktop layout, or is "phone-shaped app centered on desktop" fine indefinitely? It's a legitimate, common pattern for personal apps used mostly on a phone, so there's no wrong answer here — just needs your call before investing in a desktop-specific layout.
 
 ## LOW
 
-(none open)
+## Q-005 | daily brief / "look-ahead" | Priority: LOW | Opened 2026-08-30
+**Question:** An early backlog line mentioned a "look-ahead" for the daily brief, but the detailed wording wasn't recoverable from the repo or session history when this was picked up. What should "look-ahead" mean here — a longer brief event window (e.g. showing the next 3-5 days, not just today/tomorrow), a weekly preview section, or something else? Everything else on that same backlog line (markdown rendering, seeing-them-today suppression, People-link tappability) was concrete enough to build without asking and is done (D-048).
 
 ---
 

@@ -81,7 +81,7 @@ The detection cron, Brief card, Calendar nudge, and new `/opportunities` page ar
 
 **Known limitation, not a bug:** trip ideas have no location field (by design, per D-059), so trip-idea opportunities always score weather against the household's home coordinates rather than the trip's actual destination — reasonable for "someday" ideas without a fixed place yet, but worth revisiting if trip ideas ever gain a location field later.
 
-**No CRON_SECRET configured in production** (same as the gift-scan and weekend-plan crons before it) — the new `/api/cron/opportunities` route is technically callable by anyone who knows the URL, with no auth. Same pre-existing, already-accepted risk posture as the other two crons; not a new gap introduced by this feature. Worth a single pass to set `CRON_SECRET` for all three/four cron routes at once if this ever needs hardening.
+**Fixed (D-093):** `CRON_SECRET` is now set in Vercel production and all five cron routes (gift-scan, brief, weekend-plan, opportunities, calendar-sync) confirmed returning 401 on unauthenticated requests — no code change needed, the auth check was already correct and just waiting for the env var.
 
 ## Fixed and verified live this pass (D-062 — birthdays auto-populate on the calendar)
 
