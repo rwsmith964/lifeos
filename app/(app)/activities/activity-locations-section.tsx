@@ -32,17 +32,20 @@ export function ActivityLocationsSection({
   const [state, dispatch, pending] = useActionState(action, initialState);
   const formRef = useRef<HTMLFormElement>(null);
   const { invalid, checkValid, clearInvalid } = useFormValidity(formRef);
-  const wasPending = useRef(false);
+  const justSubmittedRef = useRef(false);
 
+  // Same proven pattern as AddInterestForm (D-032): clear the fields after a
+  // successful add so a second click can't accidentally double-add.
   useEffect(() => {
-    if (wasPending.current && !pending && !state.error) {
+    if (justSubmittedRef.current && !state.error) {
       formRef.current?.reset();
     }
-    wasPending.current = pending;
-  }, [pending, state]);
+    justSubmittedRef.current = false;
+  }, [state]);
 
   function handleAdd() {
     if (!checkValid()) return;
+    justSubmittedRef.current = true;
     dispatch(new FormData(formRef.current!));
   }
 
