@@ -144,6 +144,39 @@ export async function listCustodyBlocksForHouseholdInRange(
   );
 }
 
+// Module 4 (D-120) two-way sync helpers ----------------------------------
+
+/** LifeOS-native events already round-tripped to a given sync account -- used by two-way-sync.ts to avoid re-importing an event we ourselves pushed (the classic "push echoes back on next pull" duplication bug). */
+export async function listEventsSyncedToAccount(
+  client: SupabaseClient,
+  syncAccountId: string
+): Promise<CalendarEventRow[]> {
+  return calendarEventsRepo.list(client, (q) => q.eq("synced_to_account_id", syncAccountId));
+}
+
+/**
+ * LifeOS-native events eligible for a first push to a two-way sync
+ * account: not already synced anywhere, not themselves imported from an
+ * external source, and within the same forward-looking window feed-sync
+ * already uses for imports (see IMPORT_WINDOW_DAYS in ics-import.ts) --
+ * pushing years of past events on every cron run would be pure waste.
+ */
+export async function listUnsyncedLocalEventsForHousehold(
+  client: SupabaseClient,
+  householdId: string,
+  windowEndISO: string
+): Promise<CalendarEventRow[]> {
+  return calendarEventsRepo.list(client, (q) =>
+    q
+      .eq("household_id", householdId)
+      .is("synced_to_account_id", null)
+      .is("external_source", null)
+      .neq("event_type", "external")
+      .lt("starts_at", windowEndISO)
+      .order("starts_at", { ascending: true })
+  );
+}
+
 // calendar_feeds ---------------------------------------------------------
 // P3-6: a household's connected Google Calendar/iCal feeds, and the
 // imported calendar_events rows each one owns (tagged via

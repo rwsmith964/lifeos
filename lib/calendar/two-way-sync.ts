@@ -1,0 +1,201 @@
+// Module 4 (scheduling_v2, D-120) — two-way CalDAV sync orchestration.
+// Mirrors the shape of feed-sync.ts (fetch/parse/write, never throws,
+// records outcome on the owning row) but in both directions:
+//   pull:  remote CalDAV resources -> calendar_events rows (external_source-tagged, like an ICS feed import)
+//   push:  LifeOS-native calendar_events rows -> CalDAV resources (round-trip identity tracked on the event row)
+// Kept as its own module rather than folded into feed-sync.ts because the
+// two directions have genuinely different write targets and failure modes,
+// even though they share the underlying parse/format primitives.
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { CalendarEventInsert, CalendarSyncAccountRow } from "../db/database.types";
+import {
+  listEventsSyncedToAccount,
+  listUnsyncedLocalEventsForHousehold,
+  replaceImportedEventsForFeed,
+  calendarEventsRepo,
+} from "../db/repositories/calendar";
+import { calendarSyncAccountsRepo } from "../db/repositories/scheduling";
+import { buildIcsEventDocument } from "./ics-export";
+import { IMPORT_WINDOW_DAYS, parseIcsFeed } from "./ics-import";
+import { adapterForAccount, ProviderNotReadyError } from "./sync-providers";
+
+export interface SyncAccountResult {
+  ok: boolean;
+  count: number;
+  error: string | null;
+  /** True when the account was skipped as a known-unsupported provider (e.g. google pre-QUEUE-015) rather than a real failure -- callers shouldn't surface this as an error. */
+  skipped: boolean;
+}
+
+/** The external_source tag every pulled-from-this-account calendar_events row shares -- same role as ics-import's externalSourceForFeed, scoped to a sync account instead of a one-way feed. */
+export function externalSourceForSyncAccount(accountId: string): string {
+  return `caldav:${accountId}`;
+}
+
+function skippedResult(): SyncAccountResult {
+  return { ok: true, count: 0, error: null, skipped: true };
+}
+
+/**
+ * Pull: list every remote resource, skip any that are actually events we
+ * ourselves pushed there (identified by href against every LifeOS-native
+ * event already round-tripped to this account) to avoid re-importing our
+ * own pushed events as a second, external-tagged duplicate, then
+ * replace-write the rest as external_source-tagged calendar_events rows.
+ */
+export async function pullFromSyncAccount(
+  client: SupabaseClient,
+  account: CalendarSyncAccountRow
+): Promise<SyncAccountResult> {
+  const adapter = adapterForAccount(account);
+  if (!adapter.isReady(account)) {
+    if (account.provider === "google") return skippedResult(); // TODO(QUEUE-015): unimplemented, not a failure
+    return recordPullOutcome(client, account, { ok: false, count: 0, error: "Missing or invalid calendar credentials.", skipped: false });
+  }
+
+  let remoteEvents;
+  try {
+    remoteEvents = await adapter.listRemoteEvents(account);
+  } catch (error) {
+    return recordPullOutcome(client, account, { ok: false, count: 0, error: describeError(error), skipped: false });
+  }
+
+  let pushedHrefs: Set<string>;
+  try {
+    const pushedRows = await listEventsSyncedToAccount(client, account.id);
+    pushedHrefs = new Set(pushedRows.map((row) => row.external_caldav_href).filter((href): href is string => Boolean(href)));
+  } catch (error) {
+    return recordPullOutcome(client, account, { ok: false, count: 0, error: describeError(error), skipped: false });
+  }
+
+  const remoteOnly = remoteEvents.filter((remote) => !pushedHrefs.has(remote.href));
+
+  // Wide window: individual CalDAV resources aren't pre-filtered by date the
+  // way a bulk ICS feed export is, so unlike feed-sync.ts's rolling
+  // IMPORT_WINDOW_DAYS window, pull takes whatever the remote calendar
+  // actually has -- a person's real calendar is not adversarially huge.
+  const windowStart = new Date(Date.UTC(1970, 0, 1));
+  const windowEnd = new Date(Date.UTC(2100, 0, 1));
+  const externalSource = externalSourceForSyncAccount(account.id);
+
+  const freshEvents: CalendarEventInsert[] = [];
+  for (const remote of remoteOnly) {
+    let occurrences;
+    try {
+      occurrences = parseIcsFeed(remote.icsText, windowStart, windowEnd);
+    } catch {
+      continue; // one malformed remote resource shouldn't fail the whole pull, same posture as feed-sync's per-feed isolation
+    }
+    for (const occ of occurrences) {
+      freshEvents.push({
+        household_id: account.household_id,
+        created_by_person_id: account.created_by_person_id,
+        title: occ.title,
+        starts_at: occ.startsAt.toISOString(),
+        ends_at: occ.endsAt.toISOString(),
+        all_day: occ.allDay,
+        event_type: "external",
+        visibility: "household",
+        external_source: externalSource,
+        external_id: `${remote.href}:${occ.externalId}`,
+        external_caldav_href: remote.href,
+        external_caldav_etag: remote.etag,
+      });
+    }
+  }
+
+  try {
+    const imported = await replaceImportedEventsForFeed(client, account.household_id, externalSource, freshEvents);
+    return recordPullOutcome(client, account, { ok: true, count: imported, error: null, skipped: false });
+  } catch (error) {
+    return recordPullOutcome(client, account, { ok: false, count: 0, error: describeError(error), skipped: false });
+  }
+}
+
+/**
+ * Push: LifeOS-native events that have never been synced anywhere yet.
+ * QUEUE-017: v1 pushes each event once on creation and does not re-push
+ * later edits or propagate local deletes to the remote calendar --
+ * continuous bidirectional update propagation needs a change-tracking
+ * signal (e.g. compare updated_at against a last-pushed-at) that the
+ * "start narrow" instruction argues against building speculatively before
+ * anyone has used one-shot push/pull. Assumption recorded, reversal cost
+ * Medium (additive: one more nullable timestamp column + a comparison).
+ */
+export async function pushToSyncAccount(
+  client: SupabaseClient,
+  account: CalendarSyncAccountRow
+): Promise<SyncAccountResult> {
+  if (account.sync_direction !== "two_way") return skippedResult();
+
+  const adapter = adapterForAccount(account);
+  if (!adapter.isReady(account)) {
+    if (account.provider === "google") return skippedResult();
+    return recordPushOutcome(client, account, { ok: false, count: 0, error: "Missing or invalid calendar credentials.", skipped: false });
+  }
+
+  const windowEnd = new Date(Date.now() + IMPORT_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+  let candidates;
+  try {
+    candidates = await listUnsyncedLocalEventsForHousehold(client, account.household_id, windowEnd.toISOString());
+  } catch (error) {
+    return recordPushOutcome(client, account, { ok: false, count: 0, error: describeError(error), skipped: false });
+  }
+
+  let pushedCount = 0;
+  const errors: string[] = [];
+  for (const event of candidates) {
+    try {
+      const icsText = buildIcsEventDocument(event);
+      const ref = await adapter.pushEvent(account, icsText, null);
+      await calendarEventsRepo.update(client, event.id, {
+        synced_to_account_id: account.id,
+        external_caldav_href: ref.href,
+        external_caldav_etag: ref.etag,
+      });
+      pushedCount += 1;
+    } catch (error) {
+      // One event failing to push (e.g. a transient 5xx) shouldn't block the rest -- same per-item isolation as feed-sync/gift-scan crons.
+      errors.push(`${event.id}: ${describeError(error)}`);
+    }
+  }
+
+  return recordPushOutcome(client, account, {
+    ok: errors.length === 0,
+    count: pushedCount,
+    error: errors.length > 0 ? errors.join("; ") : null,
+    skipped: false,
+  });
+}
+
+async function recordPullOutcome(
+  client: SupabaseClient,
+  account: CalendarSyncAccountRow,
+  result: SyncAccountResult
+): Promise<SyncAccountResult> {
+  await calendarSyncAccountsRepo.update(client, account.id, {
+    last_pull_at: new Date().toISOString(),
+    last_pull_status: result.ok ? "ok" : "error",
+    last_pull_error: result.error,
+  });
+  return result;
+}
+
+async function recordPushOutcome(
+  client: SupabaseClient,
+  account: CalendarSyncAccountRow,
+  result: SyncAccountResult
+): Promise<SyncAccountResult> {
+  await calendarSyncAccountsRepo.update(client, account.id, {
+    last_push_at: new Date().toISOString(),
+    last_push_status: result.ok ? "ok" : "error",
+    last_push_error: result.error,
+  });
+  return result;
+}
+
+function describeError(error: unknown): string {
+  if (error instanceof ProviderNotReadyError) return error.message;
+  if (error instanceof Error) return error.message || "Unknown calendar sync error.";
+  return "Unknown calendar sync error.";
+}
