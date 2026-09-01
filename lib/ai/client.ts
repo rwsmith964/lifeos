@@ -43,6 +43,17 @@ export interface AiCallParams {
   userPrompt: string;
   /** Default 2048 — these are short structured-JSON features, not chat. */
   maxTokens?: number;
+  /**
+   * Module 3 (D-119, universal_intake_v2): optional image/PDF attachment
+   * for intake's image/screenshot/pdf sources (lib/intake/parse.ts). When
+   * set, the user turn becomes [attachment, userPrompt] instead of plain
+   * text — every existing caller omits this and gets exactly the prior
+   * text-only behavior.
+   */
+  attachment?: {
+    base64Data: string;
+    mediaType: "image/png" | "image/jpeg" | "image/webp" | "application/pdf";
+  };
 }
 
 export interface AiCallResult {
@@ -86,11 +97,25 @@ export async function callAi(dbClient: SupabaseClient, params: AiCallParams): Pr
 
   let response: Anthropic.Message;
   try {
+    // Additive: only build a multi-block content array when an attachment
+    // was actually passed. Every pre-existing caller has no `attachment`
+    // field at all, so `content` stays the plain string it always was.
+    const content: Anthropic.MessageParam["content"] = params.attachment
+      ? [
+          params.attachment.mediaType === "application/pdf"
+            ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: params.attachment.base64Data } }
+            : {
+                type: "image",
+                source: { type: "base64", media_type: params.attachment.mediaType, data: params.attachment.base64Data },
+              },
+          { type: "text", text: params.userPrompt },
+        ]
+      : params.userPrompt;
     response = await anthropic.messages.create({
       model: AI_MODEL,
       max_tokens: params.maxTokens ?? 2048,
       system: params.systemPrompt,
-      messages: [{ role: "user", content: params.userPrompt }],
+      messages: [{ role: "user", content }],
     });
   } catch (error) {
     if (error instanceof Anthropic.AuthenticationError) {
