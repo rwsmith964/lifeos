@@ -26,6 +26,7 @@ const PRIVATE_EVENT = "80000000-0000-0000-0000-000000000002"; // "Team standup"
 const HOUSEHOLD_EVENT = "80000000-0000-0000-0000-000000000001"; // "Golf with Mike"
 const SHARED_EVENT = "80000000-0000-0000-0000-000000000008"; // "Kids handoff to Jennifer"
 const DAVE_PERSON = "30000000-0000-0000-0000-000000000005"; // seeded, friend
+const RICHARD_PERSON = "30000000-0000-0000-0000-000000000001"; // seeded, self
 
 describe("RLS end-to-end (PGlite, real migrations + real seed data)", () => {
   let db: PGlite;
@@ -653,6 +654,178 @@ describe("RLS end-to-end (PGlite, real migrations + real seed data)", () => {
         db.query(`select count(*)::int as n from feature_flags where household_id = '${FRESH_HOUSEHOLD}';`)
       );
       expect((rows.rows[0] as { n: number }).n).toBe(0);
+    });
+  });
+
+  describe("person_profile_details, person_wishlist_items, person_relationships, conversation_log_entries (Module 1, D-117, household-readable like person_interests)", () => {
+    it("household members can read profile details/wishlist/relationships/log entries the owner adds; the outsider sees none", async () => {
+      await asUser(db, RICHARD_USER, () =>
+        db.exec(
+          `insert into person_profile_details (person_id, food_preferences) values ('${DAVE_PERSON}', 'Loves Thai food') on conflict (person_id) do nothing;`
+        )
+      );
+      await asUser(db, RICHARD_USER, () =>
+        db.exec(`insert into person_wishlist_items (person_id, item) values ('${DAVE_PERSON}', 'A new fishing rod');`)
+      );
+      await asUser(db, RICHARD_USER, () =>
+        db.exec(
+          `insert into person_relationships (person_id, related_name, relation_label) values ('${DAVE_PERSON}', 'Jane', 'wife');`
+        )
+      );
+      await asUser(db, RICHARD_USER, () =>
+        db.exec(`insert into conversation_log_entries (person_id, content) values ('${DAVE_PERSON}', 'Mentioned wanting a new rod.');`)
+      );
+
+      for (const table of [
+        "person_profile_details",
+        "person_wishlist_items",
+        "person_relationships",
+        "conversation_log_entries",
+      ]) {
+        const childRead = await asUser(db, CHILD_USER, () =>
+          db.query(`select count(*)::int as n from ${table} where person_id = '${DAVE_PERSON}';`)
+        );
+        expect((childRead.rows[0] as { n: number }).n, `${table} should be readable by a child-role household member`).toBeGreaterThan(0);
+
+        const outsiderRead = await asUser(db, OUTSIDER_USER, () =>
+          db.query(`select count(*)::int as n from ${table} where person_id = '${DAVE_PERSON}';`)
+        );
+        expect((outsiderRead.rows[0] as { n: number }).n, `${table} should be invisible to an outsider`).toBe(0);
+      }
+    });
+
+    it("a child-role member cannot write to any of the four tables (owner/adult only)", async () => {
+      await expect(
+        asUser(db, CHILD_USER, () =>
+          db.exec(`insert into person_wishlist_items (person_id, item) values ('${DAVE_PERSON}', 'should not be allowed');`)
+        )
+      ).rejects.toThrow();
+
+      await expect(
+        asUser(db, CHILD_USER, () =>
+          db.exec(
+            `insert into person_relationships (person_id, related_name, relation_label) values ('${DAVE_PERSON}', 'Should Fail', 'friend');`
+          )
+        )
+      ).rejects.toThrow();
+
+      await expect(
+        asUser(db, CHILD_USER, () =>
+          db.exec(`insert into conversation_log_entries (person_id, content) values ('${DAVE_PERSON}', 'should not be allowed');`)
+        )
+      ).rejects.toThrow();
+
+      await expect(
+        asUser(db, CHILD_USER, () =>
+          db.exec(
+            `update person_profile_details set food_preferences = 'hacked' where person_id = '${DAVE_PERSON}';`
+          )
+        )
+      ).resolves.not.toThrow(); // UPDATE's `using` clause filters silently (0 rows), same as feature_flags above
+
+      const stillOriginal = await asServiceRole(db, () =>
+        db.query(`select food_preferences from person_profile_details where person_id = '${DAVE_PERSON}';`)
+      );
+      expect((stillOriginal.rows[0] as { food_preferences: string }).food_preferences).toBe("Loves Thai food");
+    });
+  });
+
+  describe("moments (Module 1, D-117, household-scoped like weekend_plans)", () => {
+    it("household members can read a moment the owner logs; the outsider sees none", async () => {
+      await asUser(db, RICHARD_USER, () =>
+        db.exec(
+          `insert into moments (household_id, title, occurred_on, participant_person_ids) values ('${SEEDED_HOUSEHOLD}', 'Beach day', '2026-07-04', array['${RICHARD_PERSON}','${DAVE_PERSON}']::uuid[]);`
+        )
+      );
+
+      const childRead = await asUser(db, CHILD_USER, () =>
+        db.query(`select count(*)::int as n from moments where household_id = '${SEEDED_HOUSEHOLD}';`)
+      );
+      expect((childRead.rows[0] as { n: number }).n).toBeGreaterThan(0);
+
+      const outsiderRead = await asUser(db, OUTSIDER_USER, () =>
+        db.query(`select count(*)::int as n from moments where household_id = '${SEEDED_HOUSEHOLD}';`)
+      );
+      expect((outsiderRead.rows[0] as { n: number }).n).toBe(0);
+    });
+
+    it("a child-role member can read moments but cannot insert one (owner/adult only)", async () => {
+      const childRead = await asUser(db, CHILD_USER, () =>
+        db.query(`select count(*)::int as n from moments where household_id = '${SEEDED_HOUSEHOLD}';`)
+      );
+      expect((childRead.rows[0] as { n: number }).n).toBeGreaterThan(0);
+
+      await expect(
+        asUser(db, CHILD_USER, () =>
+          db.exec(
+            `insert into moments (household_id, title, occurred_on) values ('${SEEDED_HOUSEHOLD}', 'Should fail', '2026-07-05');`
+          )
+        )
+      ).rejects.toThrow();
+    });
+  });
+
+  describe("gift_reciprocity_entries (Module 1, D-117, owner/adult-only read+write -- spoiler-safety, mirrors gifts RLS exactly per D-007)", () => {
+    it("a child-role member of the household cannot read reciprocity entries at all", async () => {
+      await asUser(db, RICHARD_USER, () =>
+        db.exec(
+          `insert into gift_reciprocity_entries (household_id, person_id, direction, description) values ('${SEEDED_HOUSEHOLD}', '${DAVE_PERSON}', 'received_from_them', 'A nice scarf');`
+        )
+      );
+
+      const childRead = await asUser(db, CHILD_USER, () =>
+        db.query(`select count(*)::int as n from gift_reciprocity_entries where person_id = '${DAVE_PERSON}';`)
+      );
+      expect((childRead.rows[0] as { n: number }).n).toBe(0);
+
+      const richardRead = await asUser(db, RICHARD_USER, () =>
+        db.query(`select count(*)::int as n from gift_reciprocity_entries where person_id = '${DAVE_PERSON}';`)
+      );
+      expect((richardRead.rows[0] as { n: number }).n).toBeGreaterThan(0);
+    });
+
+    it("the outsider sees none, and a child-role member cannot insert one", async () => {
+      const outsiderRead = await asUser(db, OUTSIDER_USER, () =>
+        db.query("select count(*)::int as n from gift_reciprocity_entries;")
+      );
+      expect((outsiderRead.rows[0] as { n: number }).n).toBe(0);
+
+      await expect(
+        asUser(db, CHILD_USER, () =>
+          db.exec(
+            `insert into gift_reciprocity_entries (household_id, person_id, direction, description) values ('${SEEDED_HOUSEHOLD}', '${DAVE_PERSON}', 'given_to_them', 'should not be allowed');`
+          )
+        )
+      ).rejects.toThrow();
+    });
+  });
+
+  describe("gift_suggestions.pipeline_stage (Module 1, D-117, purely additive column)", () => {
+    it("defaults to null on an existing table's real rows and is independently updatable by an owner", async () => {
+      const existing = await asUser(db, RICHARD_USER, () =>
+        db.query(`select id, pipeline_stage from gift_suggestions where person_id = '${DAVE_PERSON}' limit 1;`)
+      );
+      expect(existing.rows.length).toBeGreaterThan(0);
+      const { id, pipeline_stage } = existing.rows[0] as { id: string; pipeline_stage: string | null };
+      expect(pipeline_stage).toBeNull();
+
+      await asUser(db, RICHARD_USER, () =>
+        db.exec(`update gift_suggestions set pipeline_stage = 'idea' where id = '${id}';`)
+      );
+      const updated = await asUser(db, RICHARD_USER, () =>
+        db.query(`select pipeline_stage from gift_suggestions where id = '${id}';`)
+      );
+      expect((updated.rows[0] as { pipeline_stage: string }).pipeline_stage).toBe("idea");
+    });
+
+    it("rejects a value outside the 7-state pipeline", async () => {
+      const existing = await asUser(db, RICHARD_USER, () =>
+        db.query(`select id from gift_suggestions where person_id = '${DAVE_PERSON}' limit 1;`)
+      );
+      const { id } = existing.rows[0] as { id: string };
+      await expect(
+        asUser(db, RICHARD_USER, () => db.exec(`update gift_suggestions set pipeline_stage = 'bogus_stage' where id = '${id}';`))
+      ).rejects.toThrow();
     });
   });
 });

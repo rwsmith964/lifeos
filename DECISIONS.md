@@ -1779,3 +1779,97 @@ behavior" by construction, not just by testing.
 
 **Next:** Module 1 (Relationship & Gift Engine) on branch `feat/module-1-relationship-gift`, gated
 by `relationship_gift_engine_v2`.
+
+
+## D-117 | 2026-08-31 | Module 1: Relationship & Gift Engine (person profile details, wishlist, relationships, conversation log, moments, gift pipeline stages, reciprocity ledger)
+
+**Context:** First full feature module under the Build Brief's additive contract. Per
+`inventory-module1.md` (Phase 0), the gap was that `people` had no room for deeper relationship
+context (sizes/preferences, freeform wishlist items beyond `person_interests`, who-knows-whom,
+an overheard/inferred conversation log, shared-moment history) and `gift_suggestions` had no
+pipeline (idea → given) or reciprocity tracking (who-gave-what/promises owed).
+
+**Decision:** New migration `20260901000002_module1_relationship_gift_engine.sql` adds six new
+tables and one new nullable column — no renames, no altered types, no dropped columns, nothing
+touched on any existing table besides the addition:
+
+- `person_profile_details` — 1:1 extension of `people` (nullable text fields: food_preferences,
+  clothing_size, shoe_size, ring_size, preferred_brands, how_we_met), unique on `person_id` so
+  `upsert(..., "person_id")` gives clean create-or-update semantics.
+- `person_wishlist_items` — person_id FK, item, source (`manual`/`conversation_log`), noted_at,
+  `is_active` soft-delete flag (removal actions set `is_active: false` rather than deleting).
+- `person_relationships` — person_id FK, nullable related_person_id FK (for relationships to
+  someone already in the household) plus a freeform related_name/relation_label pair (for people
+  outside the household — a spouse's coworker, etc.), notes.
+- `conversation_log_entries` — person_id FK, entry_date, content, source
+  (`manual`/`overheard`/`inferred`), nullable `logged_by_person_id` FK `on delete set null` (so
+  deleting the logger's person record never cascades away the log entry itself).
+- `moments` — household_id FK (NOT person-scoped — a shared trip or beach day involves several
+  people), title, occurred_on, place, notes, `participant_person_ids uuid[]`, nullable
+  `created_by_person_id`. Array column chosen over a join table since moments are read far more
+  than written and the household's person count is small (avoids an extra table + RLS surface for
+  a rarely-queried many-to-many).
+- `gift_reciprocity_entries` — household_id FK, person_id FK, direction
+  (`given_to_them`/`received_from_them`), description, occasion_type, occurred_on, `is_promise`
+  flag, `promise_due_date`, `fulfilled_at` — powers an outstanding-promises view
+  (`listOutstandingPromisesForHousehold`) without needing a separate promises table.
+- `gift_suggestions.pipeline_stage` — new nullable text column with a 7-state check constraint
+  (idea/shortlisted/decided/ordered/shipped/arrived/given), deliberately **separate** from the
+  existing `suggestion_status` enum rather than extending or replacing it — `suggestion_status`
+  already drives existing UI/logic untouched by this module; `pipeline_stage` is an independent,
+  opt-in refinement that stays `null` for every row until a flagged caller sets it.
+
+**RLS strictness split (deliberate, not uniform):** `person_profile_details`,
+`person_wishlist_items`, `person_relationships`, and `conversation_log_entries` use the standard
+household-member-read / owner-adult-write pattern via the existing `person_is_in_my_household()` /
+`person_household_write_role_ok()` security-definer helpers (D-009/D-063/D-064 precedent — same
+pattern as `person_interests`, `person_gift_sites`, `work_schedules`). `moments` is
+household-scoped rather than person-scoped, so it uses `is_household_member()` /
+`household_role() in ('owner','adult')` directly (mirrors `weekend_plans`). `gift_reciprocity_entries`
+intentionally uses the **stricter** gifts pattern — owner/adult-only for READ **and** WRITE via
+`person_household_write_role_ok()` on both sides — matching the D-007 spoiler-safety precedent,
+since who-gave/received-what is exactly the kind of gift-adjacent information a child in the
+household shouldn't see.
+
+**Pipeline-stage logic kept pure and DB-free:** `lib/gifts/pipeline.ts` holds
+`GIFT_PIPELINE_STAGES`, `pipelineStageLabel`, `pipelineStageIndex`, `nextPipelineStage`,
+`previousPipelineStage`, `isTerminalPipelineStage` — no Supabase calls, fully unit-tested in
+`lib/gifts/pipeline.test.ts` (10 tests: every forward/backward transition, no-op at both
+boundaries, label formatting never leaks a raw enum value or `null`). The Server Actions that call
+it (`app/(app)/gifts/pipeline-actions.ts`) are a **new file**, not an edit to the existing
+`app/(app)/gifts/actions.ts` — this satisfies "write through existing functions" (both call the
+same `giftSuggestionsRepo.update`) while leaving every existing gift action's code and tests
+untouched, avoiding characterization-test debt entirely for code this module doesn't change.
+
+**Tenant scoping:** every new writer Server Action in
+`app/(app)/people/[id]/relationship-gift-engine-actions.ts` checks `isFeatureEnabled(client,
+householdId, "relationship_gift_engine_v2")` first, then verifies the target person's
+`household_id` matches the caller's household before writing (mirrors the ownership check already
+in `updatePersonAction`) — tenant scoping enforced at both the RLS layer and the action layer.
+
+**Verification:** Full pipeline green — `pnpm exec tsc --noEmit` clean (fixed one schema/type
+mismatch: `personProfileDetailsInsertSchema`'s optional nullable fields needed to drop `.optional()`
+since the hand-authored `PersonProfileDetailsInsert` type has `string | null` fields, not
+`string | null | undefined`, once `person_id` is the only DB-defaulted key); `pnpm lint` unchanged
+at 0 errors / 34 pre-existing warnings; `pnpm test -- --run` 470/470 (458 baseline + 10
+`pipeline.test.ts` + 12 new `lib/db/repositories/relationship-gift-engine.test.ts` fake-client
+characterization tests covering all 9 finder functions' exact filter/order/limit chains);
+`pnpm test:rls` 45/45 (37 baseline + 8 new: household-read/outsider-blocked and
+child-read/owner-write-only for the four standard-pattern tables as one combined block, the same
+pair for `moments`, owner/adult-only read-and-write for `gift_reciprocity_entries`, and
+`pipeline_stage`'s check-constraint + independent-updatability on a real existing
+`gift_suggestions` row); `pnpm build` succeeds. Migration was applied piece-by-piece directly
+against production Supabase (`moblcysnsaxohnslubym`) via `execute_sql` and confirmed live via
+`information_schema.tables` before this commit, so production and the committed migration file are
+already in sync. With `relationship_gift_engine_v2` OFF by default (no flag rows exist for any
+household), no existing route calls any new code path, so this merges straight to `main` — no
+existing behavior changes.
+
+**Deferred (not blocking):** No person-detail-page UI surfaces these six tables yet (profile
+details, wishlist, relationships, conversation log, moments, reciprocity ledger all have working
+backends + RLS + tests but nothing renders them). Given the brief's "never idle" mandate and that
+backend-first-with-flag-OFF is fully compliant with the additive contract, moving directly to
+Module 2 rather than pausing to build Module 1 UI now — logged as QUEUE-### (see QUESTIONS.md) and
+left as a follow-up noted in BUILD-REPORT.md.
+
+**Next:** Module 2 (Leisure Planner) per `inventory-module2.md`, gated by `leisure_planner_v2`.

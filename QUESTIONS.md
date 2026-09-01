@@ -24,6 +24,22 @@ for Richard and must not be lost. New entries from this engagement use `QUEUE-##
 **Reversal cost:** Low
 **Blocking:** No
 
+### QUEUE-002
+**Module:** Module 1 / Relationship & Gift Engine
+**File(s):** `app/(app)/people/[id]/`, `lib/db/repositories/relationship-gift-engine.ts`
+**Question:** Module 1's backend (6 new tables + gift pipeline stages, all flagged off) is done,
+tested, and merged, but no person-detail-page UI surfaces any of it yet (profile details,
+wishlist, relationships, conversation log, moments, reciprocity ledger). Build the UI now before
+moving to Module 2, or keep going module-by-module on backends first and build UI for everything
+in a later pass?
+**Assumption made:** Keep moving — build Module 2's backend next per the brief's "never idle"
+mandate, since backend-first with the flag OFF is fully compliant with the additive contract
+(zero effect on the live app either way). UI for Module 1 (and any other module built
+backend-first) is tracked as a follow-up in BUILD-REPORT.md rather than blocking progress through
+the remaining modules.
+**Reversal cost:** Low
+**Blocking:** No
+
 ---
 
 ## HIGH

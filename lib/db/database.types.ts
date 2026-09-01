@@ -36,6 +36,16 @@ export type PriceTier = "low" | "mid" | "high";
 
 export type SuggestionStatus = "suggested" | "saved" | "ordered" | "dismissed" | "converted_to_gift";
 
+// Module 1 (relationship_gift_engine_v2) additive enrichment of gift_suggestions -- see GiftSuggestionRow.pipeline_stage.
+export type GiftPipelineStage =
+  | "idea"
+  | "shortlisted"
+  | "decided"
+  | "ordered"
+  | "shipped"
+  | "arrived"
+  | "given";
+
 export type ContactType = "call" | "text" | "in_person" | "activity" | "other";
 
 export type CalendarEventType =
@@ -441,10 +451,18 @@ export interface GiftSuggestionRow {
   status: SuggestionStatus;
   generated_at: string;
   model_version: string;
+  /**
+   * Module 1 (D-117, relationship_gift_engine_v2 flag): the brief's finer
+   * idea->shortlisted->decided->ordered->shipped->arrived->given pipeline.
+   * Purely additive alongside `status`, which stays the single source of
+   * truth for existing behavior — see migration
+   * 20260901000002_module1_relationship_gift_engine.sql.
+   */
+  pipeline_stage: GiftPipelineStage | null;
 }
 export type GiftSuggestionInsert = Insert<
   GiftSuggestionRow,
-  "id" | "category" | "product_url" | "retailer" | "status" | "generated_at"
+  "id" | "category" | "product_url" | "retailer" | "status" | "generated_at" | "pipeline_stage"
 >;
 export type GiftSuggestionUpdate = Update<GiftSuggestionRow>;
 
@@ -926,3 +944,123 @@ export interface FeatureFlagRow {
 }
 export type FeatureFlagInsert = Insert<FeatureFlagRow, "id" | "enabled" | "created_at" | "updated_at">;
 export type FeatureFlagUpdate = Update<FeatureFlagRow>;
+
+// Module 1: Relationship & Gift Engine (D-117, relationship_gift_engine_v2 flag)
+// -- see supabase/migrations/20260901000002_module1_relationship_gift_engine.sql
+
+export type WishlistItemSource = "manual" | "conversation_log";
+export type ConversationLogSource = "manual" | "overheard" | "inferred";
+export type ReciprocityDirection = "given_to_them" | "received_from_them";
+
+// person_profile_details ---------------------------------------------------
+
+export interface PersonProfileDetailsRow {
+  id: string;
+  person_id: string;
+  food_preferences: string | null;
+  clothing_size: string | null;
+  shoe_size: string | null;
+  ring_size: string | null;
+  preferred_brands: string | null;
+  how_we_met: string | null;
+  created_at: string;
+  updated_at: string;
+}
+export type PersonProfileDetailsInsert = Insert<PersonProfileDetailsRow, "id" | "created_at" | "updated_at">;
+export type PersonProfileDetailsUpdate = Update<PersonProfileDetailsRow>;
+
+// person_wishlist_items -----------------------------------------------------
+
+export interface PersonWishlistItemRow {
+  id: string;
+  person_id: string;
+  item: string;
+  source: WishlistItemSource;
+  noted_at: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+export type PersonWishlistItemInsert = Insert<
+  PersonWishlistItemRow,
+  "id" | "source" | "noted_at" | "is_active" | "created_at" | "updated_at"
+>;
+export type PersonWishlistItemUpdate = Update<PersonWishlistItemRow>;
+
+// person_relationships -------------------------------------------------------
+
+export interface PersonRelationshipRow {
+  id: string;
+  person_id: string;
+  related_person_id: string | null;
+  related_name: string;
+  relation_label: string;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+export type PersonRelationshipInsert = Insert<
+  PersonRelationshipRow,
+  "id" | "related_person_id" | "notes" | "created_at" | "updated_at"
+>;
+export type PersonRelationshipUpdate = Update<PersonRelationshipRow>;
+
+// conversation_log_entries ---------------------------------------------------
+
+export interface ConversationLogEntryRow {
+  id: string;
+  person_id: string;
+  entry_date: string;
+  content: string;
+  source: ConversationLogSource;
+  logged_by_person_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+export type ConversationLogEntryInsert = Insert<
+  ConversationLogEntryRow,
+  "id" | "entry_date" | "source" | "logged_by_person_id" | "created_at" | "updated_at"
+>;
+export type ConversationLogEntryUpdate = Update<ConversationLogEntryRow>;
+
+// moments ---------------------------------------------------------------------
+
+export interface MomentRow {
+  id: string;
+  household_id: string;
+  title: string;
+  occurred_on: string;
+  place: string | null;
+  notes: string | null;
+  participant_person_ids: string[];
+  created_by_person_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+export type MomentInsert = Insert<
+  MomentRow,
+  "id" | "place" | "notes" | "participant_person_ids" | "created_by_person_id" | "created_at" | "updated_at"
+>;
+export type MomentUpdate = Update<MomentRow>;
+
+// gift_reciprocity_entries -----------------------------------------------------
+
+export interface GiftReciprocityEntryRow {
+  id: string;
+  household_id: string;
+  person_id: string;
+  direction: ReciprocityDirection;
+  description: string;
+  occasion_type: OccasionType | null;
+  occurred_on: string | null;
+  is_promise: boolean;
+  promise_due_date: string | null;
+  fulfilled_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+export type GiftReciprocityEntryInsert = Insert<
+  GiftReciprocityEntryRow,
+  "id" | "occasion_type" | "occurred_on" | "is_promise" | "promise_due_date" | "fulfilled_at" | "created_at" | "updated_at"
+>;
+export type GiftReciprocityEntryUpdate = Update<GiftReciprocityEntryRow>;
