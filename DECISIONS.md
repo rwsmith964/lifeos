@@ -2271,3 +2271,81 @@ UI deferral.
 **Next:** Module 5 (Ambient Display Mode) per the brief's own module order — a new read-only,
 zero-write web route for a wall-mounted tablet display; highest perceived-value-to-effort ratio in
 the entire brief per the brief's own framing.
+
+## D-121 | 2026-09-01 | Module 5: Ambient Display Mode (read-only wall-display route, zero writes)
+
+**Context:** Fifth module under the Build Brief's additive contract, and per the brief's own framing
+the "highest ratio of perceived value to effort in the entire brief." Scope: a read-only,
+responsive route for a wall-mounted tablet — today and the next few days, the brief's headline
+items, upcoming occasions, outstanding items, current conditions. Large type, high contrast, no
+interactive controls beyond a refresh. Auto-refresh on an interval. Must handle being left open for
+weeks with no memory leaks or session-expiry blowups, and must respect tenancy/permissions like
+every other route.
+
+**Decision:** No schema change of any kind — zero new tables, zero new columns. This module is
+purely a new read-only presentation layer over data every other module already writes:
+
+- `lib/ambient/build-ambient-view.ts` — `buildAmbientView(client, householdId, householdName,
+  selfPersonId, now?)` aggregates a household's ambient-display data via `Promise.all` over four
+  existing repository reads: `getBriefForPersonAndDate` (today's brief, if generated), 
+  `listEventsInRange` (next `AMBIENT_UPCOMING_DAYS = 3` days), `listPeopleForHousehold` (for
+  occasion name lookups), and `listOpenOpportunitiesWithSubjectForHousehold` (piped through the
+  existing `getPresentedOpportunities` presentation layer from D-070 — the same dedupe/tiering the
+  Opportunities page and Brief card already use, so the ambient view never re-derives its own
+  scoring logic). Upcoming occasions come from the existing `scanUpcomingOccasions` (gift engine),
+  filtered to exclude the always-present per-person Christmas candidate (QUEUE-019c) — redundant
+  noise on a glanceable wall display, kept for the gift engine's own shopping-reminder use case.
+  Outstanding items and occasions are each capped at `MAX_LIST_ITEMS = 5` with an overflow count.
+  Deliberately never calls `generateDailyBrief` (QUEUE-019b): if no brief row exists yet for today,
+  returns `briefAvailable: false` and the caller shows a plain fallback state instead of
+  headline/today/heads-up content, rather than generating on-demand the way the main Brief page
+  does. This is a hard requirement, not a style choice — the ambient view can be "open" with nobody
+  actively there, so it must never trigger a write just by being rendered.
+- `app/ambient/page.tsx` — new top-level route, deliberately placed as a sibling of `app/login`/
+  `app/signup` rather than inside the `app/(app)` route group (QUEUE-019a), so it inherits only the
+  bare root layout (fonts/theme/toast) and none of the sidebar/bottom-nav chrome every authenticated
+  route otherwise gets. Server component: calls `requireHouseholdContext()` (same tenancy/session
+  guard as every other protected route — confirmed pure-read, only `.auth.getUser()` and selects,
+  redirects to `/login`/`/onboarding` on failure), then checks `isFeatureEnabled(supabase,
+  household.id, "ambient_display")` and calls `notFound()` when off — the same flag-gated-404
+  pattern used by `app/(app)/people/[id]/edit/page.tsx` and others. When enabled, renders large-type
+  high-contrast sections (headline/today/heads-up or a "brief not generated yet" fallback, upcoming
+  events, upcoming occasions, outstanding items, weather) built entirely from `buildAmbientView`'s
+  output — no additional data fetching in the page itself.
+- `app/ambient/ambient-refresh.tsx` — the one interactive element allowed by the brief. A client
+  component that calls `window.location.reload()` on a `setInterval` (5 minutes, QUEUE-020) plus a
+  manual "Refresh" button doing the same. A full reload rather than a soft client-side re-fetch was
+  chosen specifically because it unconditionally resets the JS heap/DOM every cycle — nothing can
+  leak across a navigation — and because every reload re-runs `proxy.ts`, which refreshes the
+  Supabase session cookie on every request, so an expired session on reload just redirects to
+  `/login` like any other protected route (a normal state, not a "blowup").
+
+**Single flag:** `ambient_display`, default OFF (already registered in `lib/flags.ts` prior to this
+module) — with the flag off for every household, `/ambient` 404s via `notFound()`, identical in
+spirit to every other module's flag-gated-404 pattern (Module 3's `/api/intake`, Module 4's
+`/api/calendar/conflicts`). No existing route, page, or component was touched by this module.
+
+**Acceptance criterion — zero writes, verified by test:** `lib/ambient/build-ambient-view.test.ts`
+builds a fake Supabase client via `createFakeSupabaseClient` (every `.from(table).{select,insert,
+update,upsert,delete}()` call recorded to a `calls[]` array with an `op` field), runs
+`buildAmbientView` against it, and asserts `calls.every(c => c.op === "select")` — the literal test
+the brief asked for ("a test that asserts no mutation functions are invoked during a render"). Four
+further tests pin down data shape: brief-available vs. not (and that the not-available path never
+attempts generation), occasions filtered to exclude Christmas, and outstanding-items capping/
+overflow math.
+
+**Verification:** `tsc --noEmit` clean, lint 0 errors (pre-existing warnings only, all in
+`android/app/build/**` generated assets, unrelated to this change), full unit suite 601/601 passing
+(596 prior + 5 new in `build-ambient-view.test.ts`), RLS suite unaffected at 62/62 (no schema
+change, nothing to test there), `pnpm build` succeeds with `/ambient` registered as a dynamic
+(server-rendered) route alongside every other authenticated page.
+
+**Deferred/not done:** no in-app Settings UI toggle for `ambient_display` yet (same backend-first-
+with-flag-OFF posture as every prior module) — enabling it for a real household today needs a direct
+`feature_flags` upsert, same as every other module's flag prior to a Settings UI shipping; no
+kiosk/PWA "app mode" wrapper (e.g. hiding the browser chrome itself on the tablet) — out of scope,
+the brief asked for a route, not a device-provisioning story.
+
+**Next:** Module 6 (Execution, draft-only in v1) per the brief's own module order — a scoped,
+category-allowlisted draft-generation scaffold for RSVPs/reschedules/confirmations/gift orders, with
+a hard exclusion on anything client-facing, per the brief's compliance-industry constraint.
