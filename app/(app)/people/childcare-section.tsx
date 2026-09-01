@@ -4,6 +4,8 @@ import type { ChildcareRequestRow, PersonRow } from "@/lib/db/database.types";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { formatCareDate } from "@/lib/childcare/format";
+import { formatHandoverTime } from "@/lib/custody/schedule";
 import { CancelChildcareRequestButton } from "./cancel-childcare-request-button";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -70,7 +72,8 @@ export function ChildcareSection({
                 <CardContent className="flex items-start justify-between gap-2">
                   <div>
                     <p className="text-sm font-medium">
-                      {providerName} — {request.care_date}, {request.care_start_time}–{request.care_end_time}
+                      {providerName} — {formatCareDate(request.care_date)}, {formatHandoverTime(request.care_start_time)}–
+                      {formatHandoverTime(request.care_end_time)}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {childNames.length > 0 ? `For ${childNames.join(", ")}` : "No children selected"}

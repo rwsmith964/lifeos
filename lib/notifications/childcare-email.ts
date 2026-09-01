@@ -8,6 +8,8 @@
 // account at all), not something channels/email.ts's `send()` (which
 // looks up a person's email by person_id) is built to target.
 import { Resend } from "resend";
+import { formatCareDate } from "@/lib/childcare/format";
+import { formatHandoverTime } from "@/lib/custody/schedule";
 
 const FROM_EMAIL = process.env.RESEND_FROM_EMAIL ?? "lifeos@example.com";
 
@@ -62,12 +64,18 @@ export async function sendChildcareRequestEmail(params: {
   } = params;
 
   const childList = childNames.length > 0 ? childNames.join(" and ") : "the kids";
-  const subject = `${requesterName} is asking if you can watch ${childList} on ${careDate}`;
+  // D-114: never show the raw ISO date / 24-hour time columns straight from
+  // Postgres to a person outside the app (this provider may have no LifeOS
+  // account at all).
+  const careDateLabel = formatCareDate(careDate);
+  const careStartLabel = formatHandoverTime(careStartTime);
+  const careEndLabel = formatHandoverTime(careEndTime);
+  const subject = `${requesterName} is asking if you can watch ${childList} on ${careDateLabel}`;
 
   const lines = [
     `Hi ${providerName},`,
     "",
-    `${requesterName} (${householdName} on LifeOS) is asking if you can provide childcare for ${childList} on ${careDate}, from ${careStartTime} to ${careEndTime}.`,
+    `${requesterName} (${householdName} on LifeOS) is asking if you can provide childcare for ${childList} on ${careDateLabel}, from ${careStartLabel} to ${careEndLabel}.`,
   ];
   if (eventTitle) lines.push(`Reason: ${eventTitle}`);
   if (customNote) lines.push(`Note from ${requesterName}: "${customNote}"`);

@@ -1,5 +1,7 @@
 import { createSupabaseServerClient } from "@/lib/db/client-server";
 import { getChildcareRequestPreview } from "@/lib/db/repositories/childcare";
+import { formatCareDate } from "@/lib/childcare/format";
+import { formatHandoverTime } from "@/lib/custody/schedule";
 import { RespondButtons } from "./respond-buttons";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { APP_NAME } from "@/lib/constants";
@@ -55,8 +57,8 @@ export default async function ChildcareRequestPage({ params }: { params: Promise
               <CardDescription>
                 {preview.requester_name} ({preview.household_name}) is asking if you can watch{" "}
                 {preview.child_names.length > 0 ? preview.child_names.join(" and ") : "the kids"} on{" "}
-                <strong>{preview.care_date}</strong>, from {preview.care_start_time} to{" "}
-                {preview.care_end_time}.
+                <strong>{formatCareDate(preview.care_date)}</strong>, from {formatHandoverTime(preview.care_start_time)} to{" "}
+                {formatHandoverTime(preview.care_end_time)}.
               </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
