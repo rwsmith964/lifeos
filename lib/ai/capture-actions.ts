@@ -7,6 +7,7 @@
 // lives in one place rather than being duplicated or drifting between the
 // two routes.
 import { format } from "date-fns";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { requireHouseholdContext } from "@/lib/auth/session";
 import type { CaptureAction } from "@/lib/ai/prompts/capture";
 import { peopleRepo, personGiftBudgetsRepo, personInterestsRepo } from "@/lib/db/repositories/people";
@@ -16,18 +17,32 @@ import { calendarEventsRepo, eventAttendeesRepo } from "@/lib/db/repositories/ca
 import { timeOffEntriesRepo } from "@/lib/db/repositories/work-schedule";
 import type { PersonRow } from "@/lib/db/database.types";
 
+/**
+ * Lightweight write descriptor Module 3 (D-119, universal_intake_v2)
+ * needs for verified completion and the action log -- "what table, what
+ * id". Additive on top of the void return every existing call site
+ * (app/api/capture/route.ts, app/api/brain-dump/execute/route.ts) already
+ * ignores with a bare `await`, so this changes nothing for either of
+ * them; see the characterization tests in capture-actions.test.ts written
+ * before this change per the additive contract's characterization-tests
+ * rule. Every case below returns the row it just wrote; `null` is only a
+ * type-level allowance for a future case with nothing single-record
+ * enough to name.
+ */
+export type ExecuteActionResult = { table: string; id: string } | null;
+
 export async function executeAction(
   supabase: Awaited<ReturnType<typeof requireHouseholdContext>>["supabase"],
   household: Awaited<ReturnType<typeof requireHouseholdContext>>["household"],
   selfPerson: PersonRow,
   action: CaptureAction
-): Promise<void> {
+): Promise<ExecuteActionResult> {
   const today = format(new Date(), "yyyy-MM-dd");
 
   switch (action.type) {
     case "add_interest": {
       if (!action.personId || !action.interest) throw new Error("Missing person or interest");
-      await personInterestsRepo.upsert(
+      const row = await personInterestsRepo.upsert(
         supabase,
         {
           person_id: action.personId,
@@ -37,23 +52,23 @@ export async function executeAction(
         },
         "person_id,interest"
       );
-      return;
+      return { table: "person_interests", id: row.id };
     }
     case "log_interaction": {
       if (!action.personId) throw new Error("Missing person");
       const interactionType = action.interactionType ?? "other";
-      await interactionsRepo.create(supabase, {
+      const row = await interactionsRepo.create(supabase, {
         person_id: action.personId,
         interaction_type: interactionType,
         occurred_on: today,
         notes: action.interactionNotes ?? null,
       });
       await recordContactForCadence(supabase, action.personId, today, interactionType);
-      return;
+      return { table: "interactions", id: row.id };
     }
     case "record_gift": {
       if (!action.personId || !action.giftDescription) throw new Error("Missing person or gift description");
-      await giftsRepo.create(supabase, {
+      const row = await giftsRepo.create(supabase, {
         person_id: action.personId,
         occasion_type: action.giftOccasionType ?? "just_because",
         occasion_date: action.giftOccasionDate ?? today,
@@ -61,7 +76,7 @@ export async function executeAction(
         cost_cents: action.giftCostDollars != null ? Math.round(action.giftCostDollars * 100) : null,
         status: "idea",
       });
-      return;
+      return { table: "gifts", id: row.id };
     }
     case "add_gift_budget": {
       if (!action.personId) throw new Error("Missing person");
@@ -82,21 +97,21 @@ export async function executeAction(
         action.budgetMaxDollars != null
           ? Math.round(action.budgetMaxDollars * 100)
           : household.default_gift_budget_max_cents ?? 0;
-      await personGiftBudgetsRepo.create(supabase, {
+      const row = await personGiftBudgetsRepo.create(supabase, {
         person_id: action.personId,
         occasion_type: action.budgetOccasionType ?? "default",
         min_cents: minCents,
         max_cents: maxCents,
       });
-      return;
+      return { table: "person_gift_budgets", id: row.id };
     }
     case "append_person_note": {
       if (!action.personId || !action.noteText) throw new Error("Missing person or note text");
       const person = await peopleRepo.getById(supabase, action.personId);
       if (!person) throw new Error("Person not found");
       const nextNotes = person.notes ? `${person.notes}\n${action.noteText}` : action.noteText;
-      await peopleRepo.update(supabase, action.personId, { notes: nextNotes });
-      return;
+      const updated = await peopleRepo.update(supabase, action.personId, { notes: nextNotes });
+      return { table: "people", id: updated.id };
     }
     case "create_calendar_event": {
       if (!action.eventTitle || !action.eventStartsAtISO) throw new Error("Missing event title or start time");
@@ -132,7 +147,7 @@ export async function executeAction(
           person_id: action.personId,
         });
       }
-      return;
+      return { table: "calendar_events", id: event.id };
     }
     case "add_time_off": {
       if (!action.timeOffStartDate) throw new Error("Missing time off start date");
@@ -147,14 +162,14 @@ export async function executeAction(
       const startDate = action.timeOffStartDate;
       const endDate = action.timeOffEndDate ?? startDate;
       if (endDate < startDate) throw new Error("Time off end date is before the start date");
-      await timeOffEntriesRepo.create(supabase, {
+      const row = await timeOffEntriesRepo.create(supabase, {
         person_id: personId,
         start_date: startDate,
         end_date: endDate,
         reason: action.timeOffReason ?? "",
         source: "quick_capture",
       });
-      return;
+      return { table: "time_off_entries", id: row.id };
     }
   }
 }
@@ -166,4 +181,36 @@ export async function executeAction(
 export function isKnownPersonId(people: PersonRow[], personId: string | null): boolean {
   if (!personId) return true;
   return people.some((p) => p.id === personId);
+}
+
+/**
+ * Module 3 (D-119, universal_intake_v2 flag): the verified-completion
+ * check for executeAction's result -- re-reads the actual row by id
+ * instead of trusting that a successful `await` means the record is
+ * really there. Used by app/api/capture/route.ts, gated behind the flag
+ * so with it off the route's confirmation message is byte-identical to
+ * before this change. Returns true when there is nothing to verify
+ * (action types that return null) so callers don't have to special-case
+ * that.
+ */
+export async function verifyExecuted(supabase: SupabaseClient, result: ExecuteActionResult): Promise<boolean> {
+  if (!result) return true;
+  switch (result.table) {
+    case "person_interests":
+      return (await personInterestsRepo.getById(supabase, result.id)) !== null;
+    case "interactions":
+      return (await interactionsRepo.getById(supabase, result.id)) !== null;
+    case "gifts":
+      return (await giftsRepo.getById(supabase, result.id)) !== null;
+    case "person_gift_budgets":
+      return (await personGiftBudgetsRepo.getById(supabase, result.id)) !== null;
+    case "people":
+      return (await peopleRepo.getById(supabase, result.id)) !== null;
+    case "calendar_events":
+      return (await calendarEventsRepo.getById(supabase, result.id)) !== null;
+    case "time_off_entries":
+      return (await timeOffEntriesRepo.getById(supabase, result.id)) !== null;
+    default:
+      return false;
+  }
 }
