@@ -1677,3 +1677,17 @@ Left `httpOnly` at the library's own default (`false`): that's an intentional, d
 - `pnpm exec tsc --noEmit`, `pnpm lint` (0 errors, same 34 pre-existing warnings), `pnpm test -- --run` (432/432), `pnpm build` all clean.
 - Committed `d3cb884`, pushed, Vercel auto-deployed to production.
 - Live-verified via a real browser session against production with a CDP cookie inspection before and after: before the fix, `secure: false`; after deploying, signed in again and confirmed `secure: true` on the same cookie, with `sign-in` still landing correctly on Brief with real household data (Smith Household, People/Calendar/Gifts nav all present).
+
+## D-114 | 2026-08-31 | Format childcare request dates/times instead of raw ISO/24h values
+
+**Context:** `childcare_requests.care_date` is a Postgres `date` column and `care_start_time`/`care_end_time` are `time` columns; Supabase returns these as raw strings (`"2026-09-01"`, `"14:00:00"`). Found three surfaces displaying them verbatim to users — a direct violation of the project's own ground rule ("Don't show raw enum values, ISO dates, or Markdown syntax to the user anywhere"), already enforced elsewhere in the codebase (see `formatHandoverTime`'s own comment in `lib/custody/schedule.ts`) but missed here:
+- `app/(app)/people/childcare-section.tsx` — the household's own pending-requests list on the People page
+- `app/childcare-requests/[token]/page.tsx` — the public, no-auth accept/decline page a childcare provider (who may have no LifeOS account at all) opens from an emailed link
+- `lib/notifications/childcare-email.ts` — the email itself, both subject line and body
+
+**Decision:** Added `lib/childcare/format.ts` (`formatCareDate`, using the existing `date-fns` `parseISO`/`format` pattern already used throughout the codebase) as the single source of truth for the date, and reused the existing `formatHandoverTime` from `lib/custody/schedule.ts` for both time fields rather than writing a second time formatter — same `"yyyy-MM-dd"`/`"HH:mm[:ss]"` input shapes, so no reason to duplicate it. Left the native `<input type="date">`/`type="time">` pickers on the create-request form untouched — those are browser-rendered in the user's own locale and were never a problem.
+
+**Verification:**
+- `pnpm exec tsc --noEmit`, `pnpm lint` (0 errors, same 34 pre-existing warnings), `pnpm test -- --run` (432/432), `pnpm build` all clean.
+- Committed `a0aa130`, pushed, Vercel auto-deployed to production.
+- Live end-to-end verification in production as the real user: created a real childcare request (Jackie Smith, Sat Sep 5 2026, 2:00 PM–6:30 PM) against the real Smith Household, confirmed the underlying DB row stored raw `care_date: "2026-09-05"` / `care_start_time: "14:00:00"` / `care_end_time: "18:30:00"` as expected, then confirmed the People page rendered "Jackie Smith — Sat, Sep 5, 2 PM–6:30 PM" (no raw ISO/24h anywhere) and the public token link rendered "Sat, Sep 5, from 2 PM to 6:30 PM" with no login. Also confirmed the fix retroactively cleaned up two older pre-existing test requests that were previously showing this bug. Cancelled the test request afterward (with its own confirm dialog and "Deleted." toast) to leave production data clean.
