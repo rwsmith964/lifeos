@@ -13,7 +13,7 @@ export const FEATURE_FLAGS = {
   relationship_gift_engine_v2: "Module 1: extended person fields, conversation log, moments, gift pipeline v2, reciprocity",
   leisure_planner_v2: "Module 2: declared activity viability inputs, wired condition scoring, visible score breakdown, gear checklists, post-outing capture",
   universal_intake_v2: "Module 3: per-field confidence scoring, review queue, verified completion, action log + undo",
-  scheduling_intelligence: "Module 4: travel-time-aware conflict warnings, preference memory",
+  scheduling_v2: "Module 4: travel-time-aware conflict warnings, preference memory",
   ambient_display: "Module 5: read-only wall-display route",
   execution_draft_only: "Module 6: inbound assistant address, tiered autonomy scaffold, draft-only actions",
   household_layer: "Module 7: meal planning, grocery list, chores",
