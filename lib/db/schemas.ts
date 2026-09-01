@@ -713,3 +713,58 @@ export const giftReciprocityEntryInsertSchema = z
     message: "A due date only makes sense for an outstanding promise.",
     path: ["promise_due_date"],
   });
+
+// Module 2 (leisure_planner_v2, D-118) ----------------------------------------
+
+/** Normalizes a free-text activity_type label into the key used to join it
+ * to a viability config or a type-level gear checklist default -- lower/trim
+ * only, no other transformation, so "Golf" and "golf" collapse to one key
+ * but distinct types never accidentally collide. */
+export function activityTypeKey(activityType: string): string {
+  return activityType.trim().toLowerCase();
+}
+
+export const activityTypeViabilityConfigInsertSchema = z.object({
+  household_id: uuid,
+  activity_type_key: z
+    .string()
+    .trim()
+    .min(1, "Enter the activity type this applies to.")
+    .max(100, "Keep this under 100 characters.")
+    .transform((v) => v.toLowerCase()),
+  relevant_inputs: z.array(z.string().trim().min(1).max(60)).max(20).optional(),
+  notes: z.string().trim().max(2000).nullable().optional(),
+});
+
+export const gearChecklistItemInsertSchema = z
+  .object({
+    household_id: uuid,
+    user_activity_id: uuid.nullable().optional(),
+    activity_type_key: z
+      .string()
+      .trim()
+      .min(1)
+      .max(100)
+      .transform((v) => v.toLowerCase())
+      .nullable()
+      .optional(),
+    item_label: z.string().trim().min(1, "Describe the gear item.").max(200, "Keep this under 200 characters."),
+    sort_order: z.number().int().optional(),
+  })
+  .refine((v) => Boolean(v.user_activity_id) !== Boolean(v.activity_type_key), {
+    message: "Pick either a specific activity or an activity type, not both or neither.",
+    path: ["user_activity_id"],
+  });
+
+export const leisureOutingLogInsertSchema = z.object({
+  household_id: uuid,
+  user_activity_id: uuid,
+  occurred_on: isoDate,
+  conditions_notes: z.string().trim().max(2000).nullable().optional(),
+  companions_person_ids: z.array(uuid).optional(),
+  rating: z.number().int().min(1, "Rating must be between 1 and 5.").max(5, "Rating must be between 1 and 5.").nullable().optional(),
+  notes: z.string().trim().max(4000).nullable().optional(),
+  gear_items_packed: z.array(uuid).optional(),
+  moment_id: uuid.nullable().optional(),
+  created_by_person_id: uuid.nullable().optional(),
+});

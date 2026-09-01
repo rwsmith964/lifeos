@@ -1873,3 +1873,96 @@ Module 2 rather than pausing to build Module 1 UI now — logged as QUEUE-### (s
 left as a follow-up noted in BUILD-REPORT.md.
 
 **Next:** Module 2 (Leisure Planner) per `inventory-module2.md`, gated by `leisure_planner_v2`.
+
+## D-118 | 2026-08-31 | Module 2: Leisure Planner (declarative viability configs, gear checklists, post-outing logs, visible score breakdown)
+
+**Context:** Second full feature module under the Build Brief's additive contract. Per
+`inventory-module2.md` (Phase 0), the gaps were: no way for a household to declare which
+condition inputs actually matter for a given activity type (weather/river flow/tide/solunar/
+travel), no gear-checklist surface at all, only a bare `last_done_at` date stamp for post-outing
+capture (no conditions/companions/rating/notes), and the 5-component condition score already
+computed by `lib/planner/scoring.ts` was discarded rather than shown to the user — flagged in the
+inventory as a "hard trust requirement" gap (a score with no visible reasoning behind it).
+
+**Decision:** New migration `20260901000003_module2_leisure_planner.sql` adds three new tables and
+one new nullable column — no renames, no altered types, no dropped columns:
+
+- `activity_type_viability_configs` — household_id FK, `activity_type_key` (normalized text
+  mirror of `user_activities.activity_type`, deliberately not a FK since the type is free text
+  shared across possibly many activity rows), `relevant_inputs text[]` (user-declared tags like
+  `weather`/`river_flow`/`solunar`, deliberately not a Postgres enum — same "don't guess a closed
+  vocabulary" principle behind D-020's nullable conditionDataScore), notes. Unique on
+  `(household_id, activity_type_key)`. Declarative only in v1 — the existing
+  `isFishingRelevantLocation` gate in `lib/planner/generate.ts` is left completely untouched (see
+  QUEUE-006); this table is an independent surface, not yet wired into scoring.
+- `gear_checklist_items` — household_id FK, exactly one of `user_activity_id` (specific instance)
+  or `activity_type_key` (shared type default) via a check constraint, same "exactly one of two
+  nullable targets" shape as `opportunities.opportunities_one_target`. `item_label`, `sort_order`.
+- `leisure_outing_logs` — household_id FK, `user_activity_id` FK (not-null — every log is tied to
+  a specific activity instance), `occurred_on`, `conditions_notes`, `companions_person_ids uuid[]`,
+  `rating smallint` (1-5 check constraint), `notes`, `gear_items_packed uuid[]`, nullable
+  `moment_id` FK to Module 1's `moments` (`on delete set null`) — populated by writing through the
+  existing `momentsRepo.create`, never a raw insert, and nullable `created_by_person_id`.
+- `opportunities.score_breakdown` — new nullable `jsonb` column holding the already-computed
+  `ActivityScoreResult.breakdown` (weatherSuitability/conditionData/travelFeasibility/
+  enjoymentFit/recencyPenalty) so it can finally be shown to the user. Existing rows: NULL.
+  Nothing reads this column unless `leisure_planner_v2` is on.
+
+**RLS pattern:** all three new tables use the standard household-scoped pattern mirrored from
+`moments`/`weekend_plans` — `is_household_member()` for SELECT, `household_role() in ('owner',
+'adult')` for INSERT/UPDATE/DELETE (child-role members can read but not write). `opportunities`
+keeps its existing D-061 policies unchanged: SELECT is household-member, but there remains no
+regular-user INSERT policy at all — the detection cron always runs on the service-role client, so
+the new `score_breakdown` column is only ever populated by that same service-role insert path,
+never by a user-facing write. This is why the D-118 RLS test inserts via `asServiceRole`, not
+`asUser`, matching the actual production write path exactly rather than the more common
+`asUser(RICHARD_USER, ...)` pattern used for the other three tables.
+
+**Score breakdown kept pure and gate-deferred:** `lib/planner/score-breakdown-display.ts` holds
+`SCORE_COMPONENT_LABELS` (friendly labels — "Weather", "Conditions", "Travel", "Enjoyment fit",
+"Recency" — never a raw camelCase key surfaced to a user, consistent with the standing
+"never show raw enum values" rule), `formatScoreBreakdownForDisplay()`, and
+`resolveOpportunityScoreBreakdown(breakdown, flagEnabled)` — a small pure function that decides
+whether to persist the real breakdown or `null` based on the flag, unit-tested directly rather
+than characterization-testing the orchestrating `detect.ts` (see QUEUE-004). `lib/opportunities/detect.ts`
+reads `leisure_planner_v2` once per run and passes the flag result into that function at both
+`opportunities.create()` call sites; the `trip_idea_window` branch always passes `null` since no
+composite score exists there yet.
+
+**Gear checklist merge logic:** `lib/planner/gear-checklist.ts`'s `resolveGearChecklist()` merges
+activity-specific items with type-default items, de-duplicating by normalized label so a user who
+set both a personal "sunscreen" item and a type-level default "sunscreen" only sees it once.
+
+**Tenant scoping:** every new writer Server Action in `app/(app)/activities/leisure-planner-actions.ts`
+checks `requirePlannerEnabled()` (wraps `isFeatureEnabled(client, householdId, "leisure_planner_v2")`)
+first, then `assertActivityInHousehold()` verifies the target activity's `household_id` matches the
+caller's household before writing — same shape as Module 1's `requireEngineEnabled`/
+`assertPersonInHousehold`. `logOutingAction` writes the outing log, writes through to
+`userActivitiesRepo.update` for `last_done_at`, and optionally writes through to
+`momentsRepo.create` (never a raw `moments` insert) when the caller sets `logAsMoment`.
+
+**Verification:** Full pipeline green — `pnpm exec tsc --noEmit` clean; `pnpm lint` unchanged at 0
+errors; `pnpm test -- --run` 490/490 (470 baseline + 12 `leisure-planner.test.ts` repository
+characterization tests + 5 `score-breakdown-display.test.ts` + 5 `gear-checklist.test.ts` — one
+initially-written assertion in `score-breakdown-display.test.ts` was itself too strict, checking a
+label had zero uppercase letters at all rather than checking it wasn't the raw camelCase key;
+fixed to assert `label !== key` and no lowercase-to-uppercase hump, since "Weather" legitimately
+starts with a capital letter); `pnpm test:rls` 55/55 (45 baseline + 10 new: household-read/
+outsider-blocked and child-read/owner-write-only for all three new tables, the unique-type and
+one-target and rating-range check constraints, and `score_breakdown`'s null-default +
+independent-updatability on a service-role-inserted `opportunities` row); `pnpm build` succeeds.
+Migration was applied piece-by-piece directly against production Supabase (`moblcysnsaxohnslubym`)
+in a prior segment and confirmed live via `information_schema` before this commit, so production
+and the committed migration file are already in sync. With `leisure_planner_v2` OFF by default (no
+flag rows exist for any household), no existing route calls any new code path — merges straight to
+`main`, no existing behavior changes.
+
+**Deferred (not blocking):** No UI yet for the viability config manager, gear checklist manager,
+outing log form, or opportunities breakdown display — all four have working backends + RLS + tests
+but nothing renders them (QUEUE-003, same backend-first-with-flag-OFF compliance as Module 1).
+`lib/planner/generate.ts` (weekend_plans narrative) was not touched this pass — breakdown display
+there is deferred as higher-risk AI-prompt-surface work (QUEUE-005).
+`activity_type_viability_configs` is not yet wired into the existing `isFishingRelevantLocation`
+gate — v1 is declarative-only, existing gate stays untouched (QUEUE-006).
+
+**Next:** Module 3 (Universal Intake + Trust Layer) per `inventory-module3.md`.

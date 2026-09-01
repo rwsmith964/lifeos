@@ -34,6 +34,8 @@ import { getNwsForecast } from "../external/nws";
 import { computeDaylightWindow, hasSufficientDaylight, isActivityInSeason } from "../planner/seasonality";
 import { parseWindMph, scoreWeatherSuitability } from "../planner/weather-score";
 import { dispatchNotification } from "../notifications/dispatch";
+import { isFeatureEnabled } from "../flags";
+import { resolveOpportunityScoreBreakdown } from "../planner/score-breakdown-display";
 
 // NWS's forecast endpoint only returns ~7 days of periods (day+night) --
 // scanning further than that would mean scoring days with no real forecast
@@ -67,6 +69,12 @@ export async function detectOpportunitiesForHousehold(
   // fallback forecast for trip ideas -- same precondition generateWeekendPlan
   // requires before it will produce candidates.
   if (!home) return { opportunitiesDetected: 0, notificationSent: false };
+
+  // Module 2 (leisure_planner_v2, D-118): read once up front, not per
+  // candidate -- see resolveOpportunityScoreBreakdown for the actual
+  // flag-gated decision, unit-tested in isolation from this otherwise
+  // uncovered orchestration function (QUESTIONS.md QUEUE-004).
+  const leisurePlannerEnabled = await isFeatureEnabled(client, householdId, "leisure_planner_v2");
 
   const [activities, tripIdeas] = await Promise.all([
     listActivitiesWithLocations(client, householdId),
@@ -162,6 +170,7 @@ export async function detectOpportunitiesForHousehold(
         headline,
         reasoning,
         expires_at: expiresAt,
+        score_breakdown: resolveOpportunityScoreBreakdown(score.breakdown, leisurePlannerEnabled),
       });
       newHeadlines.push(headline);
     }
@@ -201,6 +210,9 @@ export async function detectOpportunitiesForHousehold(
         headline,
         reasoning,
         expires_at: expiresAt,
+        // No composite score object for trip ideas (weather score only) --
+        // nothing to attach here even with the flag on.
+        score_breakdown: null,
       });
       newHeadlines.push(headline);
     }
