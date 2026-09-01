@@ -636,3 +636,80 @@ export const timeOffEntryInsertSchema = z.object({
   message: "End date can't be before the start date.",
   path: ["end_date"],
 });
+
+// Module 1: Relationship & Gift Engine (D-117, relationship_gift_engine_v2 flag) ---
+
+export const wishlistItemSourceSchema = z.enum(["manual", "conversation_log"]);
+export const conversationLogSourceSchema = z.enum(["manual", "overheard", "inferred"]);
+export const reciprocityDirectionSchema = z.enum(["given_to_them", "received_from_them"]);
+export const giftPipelineStageSchema = z.enum([
+  "idea",
+  "shortlisted",
+  "decided",
+  "ordered",
+  "shipped",
+  "arrived",
+  "given",
+]);
+
+export const personProfileDetailsInsertSchema = z.object({
+  person_id: uuid,
+  food_preferences: z.string().trim().max(2000).nullable(),
+  clothing_size: z.string().trim().max(200).nullable(),
+  shoe_size: z.string().trim().max(200).nullable(),
+  ring_size: z.string().trim().max(200).nullable(),
+  preferred_brands: z.string().trim().max(2000).nullable(),
+  how_we_met: z.string().trim().max(2000).nullable(),
+});
+
+export const personWishlistItemInsertSchema = z.object({
+  person_id: uuid,
+  // .trim() before .min(1) for the same reason as personInterestInsertSchema above.
+  item: z.string().trim().min(1, "Describe what they want.").max(300, "Keep this under 300 characters."),
+  source: wishlistItemSourceSchema.optional(),
+  noted_at: isoDate.optional(),
+  is_active: z.boolean().optional(),
+});
+
+export const personRelationshipInsertSchema = z.object({
+  person_id: uuid,
+  related_person_id: uuid.nullable().optional(),
+  related_name: z.string().trim().min(1, "Enter a name.").max(120, "Keep the name under 120 characters."),
+  relation_label: z.string().trim().min(1, "Describe how they're related (e.g. \"wife\", \"son\").").max(60, "Keep this under 60 characters."),
+  notes: z.string().trim().max(2000).nullable().optional(),
+});
+
+export const conversationLogEntryInsertSchema = z.object({
+  person_id: uuid,
+  entry_date: isoDate.optional(),
+  content: z.string().trim().min(1, "Enter what was said.").max(4000, "Keep this under 4000 characters."),
+  source: conversationLogSourceSchema.optional(),
+  logged_by_person_id: uuid.nullable().optional(),
+});
+
+export const momentInsertSchema = z.object({
+  household_id: uuid,
+  title: z.string().trim().min(1, "Give this moment a title.").max(200, "Keep the title under 200 characters."),
+  occurred_on: isoDate,
+  place: z.string().trim().max(200).nullable().optional(),
+  notes: z.string().trim().max(4000).nullable().optional(),
+  participant_person_ids: z.array(uuid).optional(),
+  created_by_person_id: uuid.nullable().optional(),
+});
+
+export const giftReciprocityEntryInsertSchema = z
+  .object({
+    household_id: uuid,
+    person_id: uuid,
+    direction: reciprocityDirectionSchema,
+    description: z.string().trim().min(1, "Describe the gift.").max(300, "Keep this under 300 characters."),
+    occasion_type: occasionTypeSchema.nullable().optional(),
+    occurred_on: isoDate.nullable().optional(),
+    is_promise: z.boolean().optional(),
+    promise_due_date: isoDate.nullable().optional(),
+    fulfilled_at: isoDate.nullable().optional(),
+  })
+  .refine((v) => !v.promise_due_date || v.is_promise, {
+    message: "A due date only makes sense for an outstanding promise.",
+    path: ["promise_due_date"],
+  });

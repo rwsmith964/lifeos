@@ -19,6 +19,7 @@ function makeSuggestion(overrides: Partial<GiftSuggestionRow> = {}): GiftSuggest
     status: "ordered",
     generated_at: "2026-11-01T00:00:00.000Z",
     model_version: "test-model",
+    pipeline_stage: null,
     ...overrides,
   };
 }
