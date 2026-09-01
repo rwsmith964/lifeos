@@ -591,4 +591,68 @@ describe("RLS end-to-end (PGlite, real migrations + real seed data)", () => {
       expect((stillOwner.rows[0] as { n: number }).n, "owner row must survive — app code blocks this too").toBe(1);
     });
   });
+
+  describe("feature_flags (D-115, Build Brief Additive Contract §3.2 -- mirrors calendar_feeds RLS exactly)", () => {
+    it("a household member can read a flag row inserted by an owner; the outsider sees none", async () => {
+      await asUser(db, RICHARD_USER, () =>
+        db.exec(
+          `insert into feature_flags (household_id, flag_key, enabled) values ('${SEEDED_HOUSEHOLD}', 'relationship_gift_engine_v2', true);`
+        )
+      );
+
+      const childRead = await asUser(db, CHILD_USER, () =>
+        db.query(
+          `select enabled from feature_flags where household_id = '${SEEDED_HOUSEHOLD}' and flag_key = 'relationship_gift_engine_v2';`
+        )
+      );
+      expect((childRead.rows[0] as { enabled: boolean }).enabled).toBe(true);
+
+      const outsiderRead = await asUser(db, OUTSIDER_USER, () =>
+        db.query(
+          `select count(*)::int as n from feature_flags where household_id = '${SEEDED_HOUSEHOLD}' and flag_key = 'relationship_gift_engine_v2';`
+        )
+      );
+      expect((outsiderRead.rows[0] as { n: number }).n).toBe(0);
+    });
+
+    it("a child-role member can read flags but cannot insert or update one (owner/adult only, same gate as calendar_feeds)", async () => {
+      await expect(
+        asUser(db, CHILD_USER, () =>
+          db.exec(
+            `insert into feature_flags (household_id, flag_key, enabled) values ('${SEEDED_HOUSEHOLD}', 'leisure_planner_v2', true);`
+          )
+        )
+      ).rejects.toThrow();
+
+      await asUser(db, RICHARD_USER, () =>
+        db.exec(
+          `insert into feature_flags (household_id, flag_key, enabled) values ('${SEEDED_HOUSEHOLD}', 'leisure_planner_v2', false);`
+        )
+      );
+
+      // Postgres RLS's UPDATE `using` clause silently filters rows rather than
+      // throwing when none match (unlike INSERT's `with check`, which does
+      // throw) -- so the correct assertion here is that the child's update is
+      // a no-op, not that it errors.
+      await asUser(db, CHILD_USER, () =>
+        db.exec(
+          `update feature_flags set enabled = true where household_id = '${SEEDED_HOUSEHOLD}' and flag_key = 'leisure_planner_v2';`
+        )
+      );
+
+      const stillDisabled = await asServiceRole(db, () =>
+        db.query(
+          `select enabled from feature_flags where household_id = '${SEEDED_HOUSEHOLD}' and flag_key = 'leisure_planner_v2';`
+        )
+      );
+      expect((stillDisabled.rows[0] as { enabled: boolean }).enabled).toBe(false);
+    });
+
+    it("a fresh household with zero feature_flags rows has no visible flags for anyone (default-off baseline)", async () => {
+      const rows = await asServiceRole(db, () =>
+        db.query(`select count(*)::int as n from feature_flags where household_id = '${FRESH_HOUSEHOLD}';`)
+      );
+      expect((rows.rows[0] as { n: number }).n).toBe(0);
+    });
+  });
 });

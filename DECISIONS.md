@@ -1732,3 +1732,50 @@ Module 1 code, since every subsequent module depends on it existing.
 **Verification:** `FEATURES.md` and this entry are documentation-only; no application code
 changed, so no typecheck/lint/test/build cycle was needed for this commit. Existing test suite
 (432/432 as of D-114) is untouched.
+
+## D-116 | 2026-08-31 | Additive feature-flag infrastructure (`feature_flags` table + `lib/flags.ts`)
+
+**Context:** Every Module 1-8 in the Build Brief must ship "behind a feature flag, default OFF"
+(§3.2) with the app behaving identically to today when every flag is off. Phase 0 (D-115) confirmed
+no feature-flag mechanism existed anywhere in the repo, so this had to be built first — every
+module from here on sits on top of it.
+
+**Decision:** Added a new, fully additive `feature_flags` table (migration
+`20260901000001_feature_flags.sql`) rather than a config file or env var, so flags are
+per-household (not global), toggleable at runtime without a redeploy, and inherit the same RLS
+tenant-isolation guarantee as every other table — copied the `calendar_feeds` migration pattern
+exactly (household_id FK cascade, `set_updated_at()` trigger, household_id index, RLS with
+`is_household_member()` for read and `household_role() in ('owner','adult')` for write). Absence of
+a row for a given (household_id, flag_key) means "not enabled" — no per-household seed rows are
+required for the default-off contract to hold; `isFeatureEnabled()` just falls back to `false` when
+no row is found. New types (`FeatureFlagRow`/`Insert`/`Update`) follow the existing hand-authored
+pattern in `database.types.ts`; new repository `lib/db/repositories/feature-flags.ts` uses the
+existing `createRepository` factory plus a helper for the per-flag lookup shape. New `lib/flags.ts`
+holds the single `FEATURE_FLAGS` registry (one entry per module: `relationship_gift_engine_v2`,
+`leisure_planner_v2`, `universal_intake_v2`, `scheduling_intelligence`, `ambient_display`,
+`execution_draft_only`, `household_layer`, `brief_registration_v2`) plus `isFeatureEnabled`,
+`listFeatureFlagStates`, and `setFeatureFlag` — every subsequent module's gated code calls
+`isFeatureEnabled(client, householdId, "...")` rather than re-implementing lookup logic.
+
+Applied the migration directly to the production Supabase project (`moblcysnsaxohnslubym`) via the
+Supabase MCP `execute_sql` tool (no local Docker/`db:reset` available in this sandbox, matching the
+constraint already noted for `pnpm test:rls`), and verified the resulting table's columns via
+`information_schema.columns`.
+
+**Verification:** Added `lib/flags.test.ts` (5 tests, fake-client style matching
+`lib/db/repositories/contact.test.ts`) covering default-off-when-no-row, enabled/disabled row
+lookup, `listFeatureFlagStates` completeness, and `setFeatureFlag`'s upsert shape. Added a new
+`describe("feature_flags (D-115...)")` block to the real-migration pglite RLS suite
+(`supabase/tests/pglite/rls.test.ts`, +3 tests): household-member read / outsider-blocked,
+child-role read-but-not-write (confirmed the UPDATE policy's `using` clause silently filters
+rather than throwing, unlike INSERT's `with check` — asserted a no-op instead of a thrown error),
+and a fresh household with zero rows sees zero flags. Full pipeline green:
+`pnpm exec tsc --noEmit` clean, `pnpm lint` unchanged at 0 errors / 34 pre-existing warnings,
+`pnpm test -- --run` 440/440 (432 baseline + 5 new unit + 3 new RLS), `pnpm test:rls` 37/37,
+`pnpm build` succeeds. With zero flags rows present anywhere (the state of every household today),
+every `isFeatureEnabled` call returns `false` and no existing code path calls it yet, so this
+commit changes nothing observable in the running app — satisfies "all flags off ⇒ identical
+behavior" by construction, not just by testing.
+
+**Next:** Module 1 (Relationship & Gift Engine) on branch `feat/module-1-relationship-gift`, gated
+by `relationship_gift_engine_v2`.

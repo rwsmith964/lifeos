@@ -912,3 +912,17 @@ export interface GiftShippingWindowRow {
   shipping_window_days: number;
   description: string;
 }
+
+// feature_flags -----------------------------------------------------------
+// Build Brief Additive Contract §3.2 -- see supabase/migrations/20260901000001_feature_flags.sql
+
+export interface FeatureFlagRow {
+  id: string;
+  household_id: string;
+  flag_key: string;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+export type FeatureFlagInsert = Insert<FeatureFlagRow, "id" | "enabled" | "created_at" | "updated_at">;
+export type FeatureFlagUpdate = Update<FeatureFlagRow>;
