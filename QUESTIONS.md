@@ -4,6 +4,28 @@ Questions that genuinely cannot be decided without Richard's input, per Section 
 
 ---
 
+## Build Brief Queue (QUEUE-###)
+
+Entries below use the format mandated by the "Build Brief — Competitive Parity + Moat Extension"
+(§7): sequential `QUEUE-###` numbering, never reused, logged instead of stopping to ask. The
+pre-existing `Q-XXX` sections below (from the prior autonomous engagement) are untouched — this is
+a new section, not a reformat of the old one. `Blocking: Yes` entries get a matching
+`TODO(QUEUE-###)` marker in code.
+
+### QUEUE-001
+**Module:** Phase 0 / process
+**File(s):** `QUESTIONS.md`, `FEATURES.md`
+**Question:** The repo already has a `QUESTIONS.md` using a `Q-XXX` format (Q-001–Q-006, three
+still open) from a prior autonomous engagement. The new build brief mandates a different
+`QUEUE-###` format. Overwrite the old file, or reconcile?
+**Assumption made:** Append a new `## Build Brief Queue (QUEUE-###)` section to the existing file
+rather than overwriting it — the old Q-XXX entries are still live, unresolved product questions
+for Richard and must not be lost. New entries from this engagement use `QUEUE-###` exclusively.
+**Reversal cost:** Low
+**Blocking:** No
+
+---
+
 ## HIGH
 
 (none open)

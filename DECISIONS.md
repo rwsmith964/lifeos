@@ -1691,3 +1691,44 @@ Left `httpOnly` at the library's own default (`false`): that's an intentional, d
 - `pnpm exec tsc --noEmit`, `pnpm lint` (0 errors, same 34 pre-existing warnings), `pnpm test -- --run` (432/432), `pnpm build` all clean.
 - Committed `a0aa130`, pushed, Vercel auto-deployed to production.
 - Live end-to-end verification in production as the real user: created a real childcare request (Jackie Smith, Sat Sep 5 2026, 2:00 PM–6:30 PM) against the real Smith Household, confirmed the underlying DB row stored raw `care_date: "2026-09-05"` / `care_start_time: "14:00:00"` / `care_end_time: "18:30:00"` as expected, then confirmed the People page rendered "Jackie Smith — Sat, Sep 5, 2 PM–6:30 PM" (no raw ISO/24h anywhere) and the public token link rendered "Sat, Sep 5, from 2 PM to 6:30 PM" with no login. Also confirmed the fix retroactively cleaned up two older pre-existing test requests that were previously showing this bug. Cancelled the test request afterward (with its own confirm dialog and "Deleted." toast) to leave production data clean.
+
+## D-115 | 2026-08-31 | Build Brief kickoff — Phase 0 inventory (FEATURES.md) + additive-contract groundwork
+
+**Context:** New governing brief attached ("Build Brief — Competitive Parity + Moat Extension"),
+scoping 8 additive modules (Relationship & Gift Engine, Leisure Planner, Universal Intake + Trust
+Layer, Scheduling Intelligence, Ambient Display, Execution draft-only, Household Layer, Brief
+Integration) under a strict Additive Contract: new tables/nullable columns only, every module
+behind a feature flag defaulting off, write-through-existing-functions, drafts not direct writes,
+characterization tests before touching existing behavior, one module per branch, mandatory tenant
+scoping. Directive: never stop to ask, log to `QUESTIONS.md` (new `QUEUE-###` format) and keep
+moving instead.
+
+**Decision:** Before any feature code, ran Phase 0 exactly as specified — four parallel read-only
+inventory passes (Relationship/Gift domain, Leisure Planner domain, Intake/Scheduling domain,
+Brief/Notifications/Stack) covering every existing route, table, service function, and test file
+touching the brief's ~30 target capabilities, then wrote `FEATURES.md` at repo root with a full
+capability inventory and a 36-row Capability Matrix (HAVE/PARTIAL/MISSING + file citations for
+each). Headline finding: this is not a greenfield build. The app already has substantial, working
+implementations of several brief-requested capabilities (deadline backdating, occasion detection,
+live external condition providers for the planner, a pluggable notification-channel dispatcher,
+one-way ICS calendar sync, token-based childcare requests) — the brief's real gaps are narrower and
+more specific than "build X from scratch": e.g. the planner's weighted score already exists but
+`conditionDataScore` is deliberately hardcoded null (D-020) so live data has zero numeric effect;
+the gift lifecycle has a real 4-state machine on `gift_suggestions.status`, just not the brief's
+7-state one; calendar sync is real but strictly one-way; the daily brief has a fixed 5-field schema
+with no registration interface, which will make Module 8 a genuine refactor rather than a bolt-on.
+Also confirmed Modules 5 (ambient display), 6 (execution/autonomy), and 7 (meal/grocery/chores) are
+entirely greenfield — zero repo hits for any of their core terms.
+
+Also resolved a process conflict logged as QUEUE-001: the existing `QUESTIONS.md` uses a `Q-XXX`
+format from the prior engagement (Q-004/005/006 still open) while the new brief mandates
+`QUEUE-###`. Appended a new section rather than overwriting — old open questions for Richard stay
+intact, new entries use `QUEUE-###` exclusively going forward.
+
+**Not yet built:** the additive `feature_flags` table/helper the brief's Additive Contract requires
+every module to sit behind — that lands as its own commit immediately after this one, before any
+Module 1 code, since every subsequent module depends on it existing.
+
+**Verification:** `FEATURES.md` and this entry are documentation-only; no application code
+changed, so no typecheck/lint/test/build cycle was needed for this commit. Existing test suite
+(432/432 as of D-114) is untouched.
