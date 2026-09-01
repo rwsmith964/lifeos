@@ -961,6 +961,114 @@ describe("RLS end-to-end (PGlite, real migrations + real seed data)", () => {
     });
   });
 
+  describe("intake_drafts (Module 3, D-119, household-readable/writable like brain_dump_batches)", () => {
+    it("household members can read a draft the owner creates; the outsider sees none", async () => {
+      await asUser(db, RICHARD_USER, () =>
+        db.exec(
+          `insert into intake_drafts (household_id, created_by_person_id, source_type, detected_record_type, extracted_fields, overall_confidence, source_excerpt, status) values ('${SEEDED_HOUSEHOLD}', '${RICHARD_PERSON}', 'text', 'calendar_event', '{"title":{"value":"Dentist","confidence":0.9}}'::jsonb, 0.9, 'dentist appt', 'ready');`
+        )
+      );
+
+      const childRead = await asUser(db, CHILD_USER, () =>
+        db.query(`select count(*)::int as n from intake_drafts where household_id = '${SEEDED_HOUSEHOLD}';`)
+      );
+      expect((childRead.rows[0] as { n: number }).n).toBeGreaterThan(0);
+
+      const outsiderRead = await asUser(db, OUTSIDER_USER, () =>
+        db.query(`select count(*)::int as n from intake_drafts where household_id = '${SEEDED_HOUSEHOLD}';`)
+      );
+      expect((outsiderRead.rows[0] as { n: number }).n).toBe(0);
+    });
+
+    it("a child-role member can insert and update a draft (no owner/adult gate on intake, per the brief's shared-inbox framing)", async () => {
+      const { rows } = await asUser(db, CHILD_USER, () =>
+        db.query(
+          `insert into intake_drafts (household_id, source_type, detected_record_type, extracted_fields, overall_confidence, source_excerpt, status) values ('${SEEDED_HOUSEHOLD}', 'text', 'ambiguous', '{}'::jsonb, 0, 'unclear note', 'needs_review') returning id;`
+        )
+      );
+      const { id } = rows[0] as { id: string };
+
+      await asUser(db, CHILD_USER, () => db.exec(`update intake_drafts set status = 'rejected' where id = '${id}';`));
+      const reread = await asUser(db, CHILD_USER, () => db.query(`select status from intake_drafts where id = '${id}';`));
+      expect((reread.rows[0] as { status: string }).status).toBe("rejected");
+    });
+
+    it("the outsider cannot insert a draft into a household they don't belong to", async () => {
+      await expect(
+        asUser(db, OUTSIDER_USER, () =>
+          db.exec(
+            `insert into intake_drafts (household_id, source_type, detected_record_type, extracted_fields, overall_confidence, source_excerpt, status) values ('${SEEDED_HOUSEHOLD}', 'text', 'ambiguous', '{}'::jsonb, 0, 'should fail', 'needs_review');`
+          )
+        )
+      ).rejects.toThrow();
+    });
+
+    it("the converted_table/converted_record_id pair constraint rejects one set without the other", async () => {
+      await expect(
+        asUser(db, RICHARD_USER, () =>
+          db.exec(
+            `insert into intake_drafts (household_id, source_type, detected_record_type, extracted_fields, overall_confidence, source_excerpt, status, converted_table) values ('${SEEDED_HOUSEHOLD}', 'text', 'moment', '{}'::jsonb, 0.9, 'partial', 'converted', 'moments');`
+          )
+        )
+      ).rejects.toThrow();
+    });
+  });
+
+  describe("action_log (Module 3, D-119, household-readable, owner/adult-only undo)", () => {
+    it("household members can read a log entry the owner's session inserts; the outsider sees none", async () => {
+      await asUser(db, RICHARD_USER, () =>
+        db.exec(
+          `insert into action_log (household_id, feature, action_summary, table_name, record_id) values ('${SEEDED_HOUSEHOLD}', 'quick_capture', 'Created calendar event Dentist for Dave', 'calendar_events', '${DAVE_PERSON}');`
+        )
+      );
+
+      const childRead = await asUser(db, CHILD_USER, () =>
+        db.query(`select count(*)::int as n from action_log where household_id = '${SEEDED_HOUSEHOLD}';`)
+      );
+      expect((childRead.rows[0] as { n: number }).n).toBeGreaterThan(0);
+
+      const outsiderRead = await asUser(db, OUTSIDER_USER, () =>
+        db.query(`select count(*)::int as n from action_log where household_id = '${SEEDED_HOUSEHOLD}';`)
+      );
+      expect((outsiderRead.rows[0] as { n: number }).n).toBe(0);
+    });
+
+    it("any household member (including a child-role member) can insert a log entry for their own household", async () => {
+      await asUser(db, CHILD_USER, () =>
+        db.exec(
+          `insert into action_log (household_id, feature, action_summary, table_name) values ('${SEEDED_HOUSEHOLD}', 'intake_convert', 'Added gift idea for Dave', 'gifts');`
+        )
+      );
+      const read = await asUser(db, RICHARD_USER, () =>
+        db.query(`select count(*)::int as n from action_log where household_id = '${SEEDED_HOUSEHOLD}' and feature = 'intake_convert';`)
+      );
+      expect((read.rows[0] as { n: number }).n).toBeGreaterThan(0);
+    });
+
+    it("a child-role member's undo update matches zero rows (owner/adult-only USING clause), but the owner's succeeds", async () => {
+      const { rows } = await asUser(db, RICHARD_USER, () =>
+        db.query(
+          `insert into action_log (household_id, feature, action_summary, table_name, undoable) values ('${SEEDED_HOUSEHOLD}', 'quick_capture', 'Logged a call with Dave', 'interactions', true) returning id;`
+        )
+      );
+      const { id } = rows[0] as { id: string };
+
+      // No with-check clause on this policy -- the role gate is enforced
+      // via USING, which silently filters the target row to zero matches
+      // for a non-owner/adult caller rather than throwing. Assert the row
+      // is untouched, then confirm the owner's identical update actually
+      // takes effect.
+      const childAttempt = await asUser(db, CHILD_USER, () => db.exec(`update action_log set undone_at = now() where id = '${id}';`));
+      expect((childAttempt[0] as { rowCount: number }).rowCount).toBe(0);
+      const afterChildAttempt = await asUser(db, RICHARD_USER, () => db.query(`select undone_at from action_log where id = '${id}';`));
+      expect((afterChildAttempt.rows[0] as { undone_at: string | null }).undone_at).toBeNull();
+
+      await asUser(db, RICHARD_USER, () => db.exec(`update action_log set undone_at = now() where id = '${id}';`));
+      const reread = await asUser(db, RICHARD_USER, () => db.query(`select undone_at from action_log where id = '${id}';`));
+      expect((reread.rows[0] as { undone_at: string | null }).undone_at).not.toBeNull();
+    });
+  });
+
   describe("opportunities.score_breakdown (Module 2, D-118, purely additive column)", () => {
     it("defaults to null and is independently updatable by a household member (insert is service-role only, per the existing detection-engine policy)", async () => {
       const { rows: inserted } = await asServiceRole(db, () =>

@@ -1966,3 +1966,162 @@ there is deferred as higher-risk AI-prompt-surface work (QUEUE-005).
 gate — v1 is declarative-only, existing gate stays untouched (QUEUE-006).
 
 **Next:** Module 3 (Universal Intake + Trust Layer) per `inventory-module3.md`.
+
+## D-119 | 2026-08-31 | Module 3: Universal Intake + Trust Layer (drafts table, per-field confidence, review queue, action log + undo, verified completion, weekly digest)
+
+**Context:** Third full feature module under the Build Brief's additive contract, shipped as a
+single unit per the brief's own framing ("these ship together. Intake without confidence scoring
+imports the exact failure mode damaging Ohai's reviews"). Per `inventory-module3.md` (Phase 0),
+the gaps were: no ingestion path at all beyond Quick Capture's single free-text box; no confidence
+scoring anywhere; the existing `app/api/capture/route.ts` asserted success purely from the AI's
+own pre-write summary text, never re-reading what was actually persisted (the most-reported class
+of failure the brief calls out); and no audit trail of any autonomous write.
+
+**Decision:** New migration `20260901000004_module3_intake_trust_layer.sql` adds two new tables,
+no renames, no altered types, no dropped columns:
+
+- `intake_drafts` — household_id FK, `source_type` (`text`/`voice`/`email`/`ics`/`image`/
+  `screenshot`/`pdf`), `source_excerpt` (short text excerpt, see QUEUE-012 — no raw image/PDF
+  bytes or thumbnail storage bucket in v1), `detected_type` (`event`/`task`/`person`/`gift_idea`/
+  `moment`/`ambiguous`), `extracted_fields jsonb` (per-field `{value, confidence}` shape),
+  `overall_confidence numeric`, `status` (`needs_review`/`approved`/`rejected`/`converted`),
+  `converted_table`/`converted_record_id` (nullable pair, check-constrained to be both-null or
+  both-set), `review_note`, `parsed_at`. RLS mirrors Module 1's `brain_dump_batches` pattern:
+  household-readable/writable by any member including child role — no owner/adult gate, since the
+  brief frames intake as a shared household inbox, not a privileged action (see QUEUE-014's note
+  that person-matching stays manual either way).
+- `action_log` — household_id FK, `actor` (`ai`/`system`), `feature` (free text, e.g.
+  `quick_capture`/`intake_convert`), `action_summary` (human-readable, already-done-tense, never a
+  raw enum/JSON blob per the standing "no raw enum values to the user" rule), `read_summary jsonb`,
+  `decision_summary`, `table_name`, `record_id`, `before_snapshot`/`after_snapshot jsonb`,
+  `undoable boolean`, `undone_at`. RLS: household-readable by any member; only owner/adult role can
+  UPDATE (the undo action) via a `USING`-only policy with no `WITH CHECK` — confirmed by test that
+  a child-role member's undo attempt silently affects zero rows rather than throwing (see RLS
+  testing gotcha note below); any household member including child can INSERT, since the log is
+  written by the wrapper on behalf of whichever member triggered the AI action, not by the actor
+  being logged.
+
+**Single flag, not two:** the brief's acceptance criteria name `intake` and `trust_log` as if
+separate, but both ship behind one flag, `universal_intake_v2` — see QUEUE-007 for the reasoning
+(splitting them would let intake run with the trust/undo layer off, which the brief's own opening
+line argues against).
+
+**Intake pipeline:** `lib/intake/parse.ts` (built prior segment) dispatches by `sourceType` to
+named parsers — `parseTextSource`/`parseEmailSource`/`parseIcsSource`/`parseAttachmentSource` (the
+last covers image/screenshot/PDF via the AI vision path, including the two competitor-benchmark
+formats the brief calls out by name: sports/activity schedules and school-flyer formats).
+`lib/intake/confidence.ts` computes `overall_confidence` as the **minimum** per-field confidence,
+not an average — a single low-confidence field (e.g. an ambiguous date) should not be masked by
+several high-confidence ones, matching the brief's "conservative default" instruction.
+`meetsReviewThreshold`/`getReviewThreshold` gate `needs_review` vs. surfaced-as-ready; a
+`detected_type` of `task` or `ambiguous` always routes to `needs_review` regardless of confidence
+(`NON_CONVERTIBLE_TYPES` in `lib/intake/convert.ts`) since there is no tasks table to convert into
+and no auto-routing was invented for ambiguous type (QUEUE-009). `app/api/intake/route.ts` (new
+this segment) is the single ingestion endpoint the brief asks for; it 404s outright when
+`universal_intake_v2` is off (closest available proxy for "no ingestion routes exist" in a
+deployed Next.js app — the route file itself always exists once built; see QUEUE-008) and performs
+zero parsing/AI calls/writes on that path. On the enabled path it validates against
+`intakeRequestSchema`, parses, computes confidence, and inserts via `intakeDraftsRepo.create()` —
+**never** touching any existing table directly, satisfying "intake writes only into a new drafts
+table."
+
+**Review queue (`lib/intake/review-queue.ts`, new this segment):** `approveDraft()` calls
+`convertDraftToRecord()` (existing, prior segment) — the only path from a draft into an existing
+event/task/person/gift/moment table, and it itself writes through the same create functions
+already in use (`calendarEventsRepo.create`, `peopleRepo.create`, etc.), never a raw insert — then
+updates the draft's own `status`/`converted_table`/`converted_record_id`. `rejectDraft()` marks
+`status: "rejected"` with an optional note, no other table touched. `correctDraftFields()` merges
+human corrections into `extracted_fields` at confidence `1.0` (a human correction is definitionally
+certain) and recomputes `overall_confidence`, letting a human fix a low-confidence field without
+re-running extraction. All three re-check `isFeatureEnabled` and household ownership directly
+(`IntakeFeatureDisabledError` exported) rather than relying on a separate owner/adult-gate helper —
+intake_drafts RLS already permits any household member per the shared-inbox framing above.
+
+**Trust layer:** `lib/trust/action-log.ts`'s `withActionLog()` wraps a mutation call: it always
+runs `mutationFn()` first, and only when `universal_intake_v2` is enabled does it additionally
+write one `action_log` row from the mutation's own result — the flag check happens exactly once,
+outside the wrapped callback, so the wrapped business-logic function itself is never touched or
+branched inside. This is the literal "no-op, not a conditional branch inside business logic"
+acceptance criterion, and is now pinned by `lib/trust/action-log.test.ts` (3 new unit tests using
+the shared `createFakeSupabaseClient` fake, asserting zero `action_log` calls when the flag is off,
+exactly one well-formed row when on, and that a `mutationFn` error propagates without ever writing
+a log row).
+
+`lib/trust/verified-completion.ts`'s `verifyRecordPersisted()` re-reads a record through the same
+`getById` the repository already exposes and diffs it against the caller's expected field values —
+the "state check against the actual record" the brief requires instead of trusting a pre-write
+claim; `buildVerifiedConfirmationMessage()` renders the user-facing sentence from that verified
+read, falling back to a hedged "couldn't verify" message on any mismatch or missing record. Both
+functions are now pinned by `lib/trust/verified-completion.test.ts` (6 new unit tests: full match,
+partial mismatch, `undefined`-skips-the-field, record-not-found, and both message-rendering
+branches).
+
+**`app/api/capture/route.ts` (D-119 trust-layer fix, modified this segment):** `executeAction()`'s
+return type was extended (in `lib/ai/capture-actions.ts`, additive) from implicit-void to
+`Promise<ExecuteActionResult>` — the written table/record, or `null` when nothing was written —
+characterized first via `lib/ai/capture-actions.test.ts` (prior segment) to pin exact existing
+call shapes before this change. The new `verifyExecuted()` re-reads whatever row `executeAction`
+wrote via a switch on `result.table` (covers `person_interests`/`interactions`/`gifts`/
+`person_gift_budgets`/`people`/`calendar_events`/`time_off_entries`) and returns `true` trivially
+when `result` is `null`. The route now branches only on the flag: `universal_intake_v2` off returns
+the exact prior `"Saved — ..."` message byte-for-byte (confirmed unchanged in the 534-test suite);
+on, it calls `verifyExecuted()` and only claims success if the re-read confirms it, otherwise
+returns "That may not have saved correctly — please check and try again." This directly fixes the
+inventory's flagged Quick Capture gap (unverified self-asserted completion) without changing
+off-flag behavior at all.
+
+**Weekly digest (`lib/trust/weekly-digest.ts`, new this segment):** `buildWeeklyDigest()` is a pure
+formatter — groups `action_log` rows by `feature`, sorted by count descending then feature name
+ascending for determinism on ties, renders each row's own stored `action_summary` verbatim (never
+re-derived, so the digest can never say something different than what the action log itself
+recorded), returns a friendly no-actions message when the log is empty for the period. 4 new unit
+tests in `lib/trust/weekly-digest.test.ts` cover the empty case, grouping/sorting, the tie-break,
+and singular-vs-plural phrasing. `generateAndSendWeeklyDigest()` reads via the existing
+`listActionLogSince` repo function and calls the **existing** `dispatchNotification()` — no new
+notification-sending code was written; real outbound delivery for this (like all other
+notifications) remains blocked by the pre-existing unverified-Resend-domain issue tracked in the
+project knowledge page on transactional email, which is a pre-existing constraint this module does
+not attempt to fix.
+
+**RLS testing gotcha discovered this segment (reusable pattern):** a Postgres RLS UPDATE policy
+defined with only a `USING` clause and no `WITH CHECK` does **not** raise an error for a caller
+outside the role gate — it silently filters the affected-row count to zero. The `action_log` undo
+test initially asserted `.rejects.toThrow()` for a child-role member's undo attempt; this was wrong
+and was corrected to assert `rowCount === 0` on the exec result instead. INSERT/SELECT policies
+with `WITH CHECK` still throw as expected — only bare-`USING` UPDATE/DELETE policies exhibit this
+silent-filter behavior. Worth remembering for any future owner/adult-gated UPDATE-only policy.
+
+**Tenant scoping:** every new route/function (`app/api/intake/route.ts`, all three
+`review-queue.ts` functions, `withActionLog`, `verifyExecuted`) takes `householdId` explicitly and
+either relies on RLS (drafts, action_log both scope to `household_id` under the standard
+`is_household_member()` pattern) or passes it straight through to the flag check — no new table or
+route in this module bypasses household scoping.
+
+**Verification:** Full pipeline green — `pnpm exec tsc --noEmit` clean; `pnpm lint` 0 errors (34
+pre-existing warnings, all in generated Android build assets under `android/app/build/`, unrelated
+to this module — confirmed by path); `pnpm test -- --run` **534/534** passing across 55 test files
+(513 baseline-for-this-module + 8 `confidence.test.ts` + 6 `verified-completion.test.ts` + 3
+`action-log.test.ts` + 4 `weekly-digest.test.ts` — these 21 new unit tests were the gap flagged at
+the top of this segment and are now closed); `pnpm test:rls` **62/62** passing (55 baseline + 7 new
+this segment: 4 for `intake_drafts` household-visibility/child-write/outsider-block/pair-constraint,
+3 for `action_log` household-visibility/any-member-insert/owner-only-undo); `pnpm build` succeeds,
+`/api/intake` registered alongside every existing route with no changes to any other route's
+output. Migration `20260901000004_module3_intake_trust_layer.sql` was applied directly against
+production Supabase (`moblcysnsaxohnslubym`) in a prior segment and confirmed live via
+`information_schema` before this commit. With `universal_intake_v2` OFF by default (no flag rows
+exist for any household), `/api/intake` 404s, `app/api/capture/route.ts` produces byte-identical
+output to pre-Module-3, and no other route or component reads any new table — merges straight to
+`main`, no existing behavior changes.
+
+**Deferred (not blocking, logged QUEUE-008 through QUEUE-014):** no UI for the review queue, action
+log/undo, or weekly digest (QUEUE-011, same backend-first-with-flag-OFF compliance as Modules 1-2);
+no per-household configurable confidence-threshold storage or Settings toggle yet (QUEUE-010); no
+Storage-bucket-backed thumbnail for image/PDF sources, excerpt-only in v1 (QUEUE-012); no inbound
+email webhook/DNS wiring, `sourceType: "email"` accepts already-extracted text only (QUEUE-013); no
+fuzzy person-name matching in `approveDraft()`, deferred to the review-queue UI (QUEUE-014); no
+`tasks` table exists anywhere in the schema, so `task`-detected drafts always land in the review
+queue rather than auto-converting (QUEUE-009).
+
+**Next:** Module 4 (Scheduling Intelligence) per `inventory-module3.md`'s gap notes — travel-time
+conflict warnings (warnings only, no auto-rescheduling), one-way-only calendar sync today (no
+OAuth/write-back), and repo-wide absence of preference memory.

@@ -768,3 +768,91 @@ export const leisureOutingLogInsertSchema = z.object({
   moment_id: uuid.nullable().optional(),
   created_by_person_id: uuid.nullable().optional(),
 });
+
+// Module 3 (universal_intake_v2, D-119) --------------------------------
+
+export const intakeSourceTypeSchema = z.enum(["text", "voice", "ics", "image", "screenshot", "pdf", "email"]);
+export const intakeParserSchema = z.enum(["generic", "activity_schedule", "school_flyer", "ics"]);
+export const intakeRecordTypeSchema = z.enum([
+  "calendar_event",
+  "gift_idea",
+  "person",
+  "moment",
+  "person_note",
+  "task",
+  "ambiguous",
+]);
+export const intakeDraftStatusSchema = z.enum(["pending", "needs_review", "ready", "converted", "rejected"]);
+
+// One entry per extracted field -- {"value": ..., "confidence": 0-1}.
+// `value` is deliberately `z.unknown()` since a field's shape depends on
+// detected_record_type (a date string for an event, a dollar number for a
+// gift budget, etc.) -- lib/intake/convert.ts is what actually narrows
+// each field against the target record type before writing anything.
+export const intakeFieldSchema = z.object({
+  value: z.unknown(),
+  confidence: z.number().min(0).max(1),
+});
+
+export const intakeDraftInsertSchema = z.object({
+  household_id: uuid,
+  created_by_person_id: uuid.nullable().optional(),
+  source_type: intakeSourceTypeSchema,
+  parser_used: intakeParserSchema.optional(),
+  detected_record_type: intakeRecordTypeSchema.nullable().optional(),
+  extracted_fields: z.record(z.string(), intakeFieldSchema).optional(),
+  overall_confidence: z.number().min(0).max(1).nullable().optional(),
+  source_excerpt: z.string().trim().max(4000).nullable().optional(),
+  status: intakeDraftStatusSchema.optional(),
+  review_note: z.string().trim().max(2000).nullable().optional(),
+  converted_table: z.string().nullable().optional(),
+  converted_record_id: uuid.nullable().optional(),
+  parsed_at: isoDateTime.optional(),
+});
+
+export const intakeDraftUpdateSchema = z.object({
+  detected_record_type: intakeRecordTypeSchema.nullable().optional(),
+  extracted_fields: z.record(z.string(), intakeFieldSchema).optional(),
+  overall_confidence: z.number().min(0).max(1).nullable().optional(),
+  status: intakeDraftStatusSchema.optional(),
+  review_note: z.string().trim().max(2000).nullable().optional(),
+  converted_table: z.string().nullable().optional(),
+  converted_record_id: uuid.nullable().optional(),
+});
+
+// Request body for the single intake endpoint (app/api/intake/route.ts).
+// Discriminated by sourceType; every variant carries the raw content for
+// its format. Image/screenshot/pdf carry base64 -- this endpoint never
+// accepts a bare URL for those (no fetch-on-our-behalf of an arbitrary
+// attacker-supplied URL, same posture as isSafeFeedUrl for calendar
+// feeds).
+export const intakeRequestSchema = z.discriminatedUnion("sourceType", [
+  z.object({ sourceType: z.literal("text"), text: z.string().trim().min(1).max(20000) }),
+  z.object({ sourceType: z.literal("voice"), text: z.string().trim().min(1).max(20000) }),
+  z.object({ sourceType: z.literal("ics"), icsText: z.string().trim().min(1).max(2_000_000) }),
+  z.object({
+    sourceType: z.literal("email"),
+    subject: z.string().trim().max(500).nullable().optional(),
+    bodyText: z.string().trim().min(1).max(50000),
+  }),
+  z.object({
+    sourceType: z.enum(["image", "screenshot", "pdf"]),
+    base64Data: z.string().min(1),
+    mediaType: z.enum(["image/png", "image/jpeg", "image/webp", "application/pdf"]),
+  }),
+]);
+export type IntakeRequest = z.infer<typeof intakeRequestSchema>;
+
+export const actionLogInsertSchema = z.object({
+  household_id: uuid,
+  actor: z.enum(["ai", "system"]).optional(),
+  feature: z.string().trim().min(1).max(100),
+  action_summary: z.string().trim().min(1).max(500),
+  read_summary: z.record(z.string(), z.unknown()).optional(),
+  decision_summary: z.string().trim().max(2000).nullable().optional(),
+  table_name: z.string().trim().min(1).max(100),
+  record_id: uuid.nullable().optional(),
+  before_snapshot: z.record(z.string(), z.unknown()).nullable().optional(),
+  after_snapshot: z.record(z.string(), z.unknown()).nullable().optional(),
+  undoable: z.boolean().optional(),
+});

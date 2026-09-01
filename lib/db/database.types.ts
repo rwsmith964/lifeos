@@ -1137,3 +1137,72 @@ export type LeisureOutingLogInsert = Insert<
   | "updated_at"
 >;
 export type LeisureOutingLogUpdate = Update<LeisureOutingLogRow>;
+
+// Module 3 (universal_intake_v2, D-119) --------------------------------
+
+export interface IntakeDraftRow {
+  id: string;
+  household_id: string;
+  created_by_person_id: string | null;
+  source_type: "text" | "voice" | "ics" | "image" | "screenshot" | "pdf" | "email";
+  parser_used: "generic" | "activity_schedule" | "school_flyer" | "ics";
+  detected_record_type:
+    | "calendar_event"
+    | "gift_idea"
+    | "person"
+    | "moment"
+    | "person_note"
+    | "task"
+    | "ambiguous"
+    | null;
+  extracted_fields: Record<string, { value: unknown; confidence: number }>;
+  overall_confidence: number | null;
+  source_excerpt: string | null;
+  status: "pending" | "needs_review" | "ready" | "converted" | "rejected";
+  review_note: string | null;
+  converted_table: string | null;
+  converted_record_id: string | null;
+  parsed_at: string;
+  created_at: string;
+  updated_at: string;
+}
+export type IntakeDraftInsert = Insert<
+  IntakeDraftRow,
+  | "id"
+  | "created_by_person_id"
+  | "parser_used"
+  | "detected_record_type"
+  | "extracted_fields"
+  | "overall_confidence"
+  | "source_excerpt"
+  | "status"
+  | "review_note"
+  | "converted_table"
+  | "converted_record_id"
+  | "parsed_at"
+  | "created_at"
+  | "updated_at"
+>;
+export type IntakeDraftUpdate = Update<IntakeDraftRow>;
+
+export interface ActionLogRow {
+  id: string;
+  household_id: string;
+  actor: "ai" | "system";
+  feature: string;
+  action_summary: string;
+  read_summary: Record<string, unknown>;
+  decision_summary: string | null;
+  table_name: string;
+  record_id: string | null;
+  before_snapshot: Record<string, unknown> | null;
+  after_snapshot: Record<string, unknown> | null;
+  undoable: boolean;
+  undone_at: string | null;
+  created_at: string;
+}
+export type ActionLogInsert = Insert<
+  ActionLogRow,
+  "id" | "actor" | "read_summary" | "decision_summary" | "record_id" | "before_snapshot" | "after_snapshot" | "undoable" | "undone_at" | "created_at"
+>;
+export type ActionLogUpdate = Update<ActionLogRow>;

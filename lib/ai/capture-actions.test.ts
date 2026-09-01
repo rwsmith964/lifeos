@@ -1,0 +1,179 @@
+// Characterization tests for executeAction (Additive Contract rule 4:
+// "capture current behavior before writing new modules touching it") --
+// written before Module 3 (D-119) extends this function's return type so
+// lib/intake/convert.ts and the Quick Capture verified-completion wiring
+// can know what was written. Every pre-existing call site
+// (app/api/capture/route.ts, app/api/brain-dump/execute/route.ts) does
+// `await executeAction(...)` and never reads a return value, so these
+// tests pin down the WRITES each action type performs -- the part that
+// must never change -- while the return-value assertions below document
+// the new (additive) descriptor Module 3 adds on top.
+import { describe, expect, it } from "vitest";
+import { executeAction, isKnownPersonId } from "./capture-actions";
+import { createFakeSupabaseClient } from "../test-support/fake-supabase";
+import type { HouseholdRow, PersonRow } from "../db/database.types";
+
+const household: HouseholdRow = {
+  id: "household-1",
+  name: "Test Household",
+  default_gift_budget_min_cents: 2000,
+  default_gift_budget_max_cents: 5000,
+} as HouseholdRow;
+
+const selfPerson: PersonRow = { id: "person-self" } as PersonRow;
+
+describe("executeAction", () => {
+  it("create_calendar_event writes a calendar_events row and returns its descriptor", async () => {
+    const { client, calls } = createFakeSupabaseClient({
+      calendar_events: { onInsert: (v) => ({ id: "event-1", ...v }) },
+    });
+
+    const result = await executeAction(client as never, household, selfPerson, {
+      type: "create_calendar_event",
+      personId: null,
+      interest: null,
+      interestStrength: null,
+      interactionType: null,
+      interactionNotes: null,
+      giftDescription: null,
+      giftOccasionType: null,
+      giftOccasionDate: null,
+      giftCostDollars: null,
+      eventTitle: "Dentist",
+      eventStartsAtISO: "2026-09-05T15:00:00.000Z",
+      eventEndsAtISO: "2026-09-05T16:00:00.000Z",
+      eventAllDay: false,
+      eventType: "personal",
+      noteText: null,
+      budgetOccasionType: null,
+      budgetMinDollars: null,
+      budgetMaxDollars: null,
+      timeOffStartDate: null,
+      timeOffEndDate: null,
+      timeOffReason: null,
+    });
+
+    const insertCall = calls.find((c) => c.table === "calendar_events" && c.op === "insert");
+    expect(insertCall).toBeDefined();
+    expect((insertCall!.values as Record<string, unknown>).title).toBe("Dentist");
+    // Additive: the descriptor Module 3 adds. Pre-existing callers ignore
+    // this return value entirely, so adding it changes nothing for them.
+    expect(result).toEqual({ table: "calendar_events", id: "event-1" });
+  });
+
+  it("record_gift writes a gifts row with status 'idea'", async () => {
+    const { client, calls } = createFakeSupabaseClient({
+      gifts: { onInsert: (v) => ({ id: "gift-1", ...v }) },
+    });
+
+    const result = await executeAction(client as never, household, selfPerson, {
+      type: "record_gift",
+      personId: "person-2",
+      interest: null,
+      interestStrength: null,
+      interactionType: null,
+      interactionNotes: null,
+      giftDescription: "Lego set",
+      giftOccasionType: "birthday",
+      giftOccasionDate: "2026-10-01",
+      giftCostDollars: 40,
+      eventTitle: null,
+      eventStartsAtISO: null,
+      eventEndsAtISO: null,
+      eventAllDay: null,
+      eventType: null,
+      noteText: null,
+      budgetOccasionType: null,
+      budgetMinDollars: null,
+      budgetMaxDollars: null,
+      timeOffStartDate: null,
+      timeOffEndDate: null,
+      timeOffReason: null,
+    });
+
+    const insertCall = calls.find((c) => c.table === "gifts" && c.op === "insert");
+    expect((insertCall!.values as Record<string, unknown>).status).toBe("idea");
+    expect((insertCall!.values as Record<string, unknown>).cost_cents).toBe(4000);
+    expect(result).toEqual({ table: "gifts", id: "gift-1" });
+  });
+
+  it("append_person_note reads the person then updates its notes field", async () => {
+    const { client, calls } = createFakeSupabaseClient({
+      people: {
+        rows: [{ id: "person-2", notes: "Existing note" }],
+        onUpdate: (v) => ({ id: "person-2", ...v }),
+      },
+    });
+
+    const result = await executeAction(client as never, household, selfPerson, {
+      type: "append_person_note",
+      personId: "person-2",
+      interest: null,
+      interestStrength: null,
+      interactionType: null,
+      interactionNotes: null,
+      giftDescription: null,
+      giftOccasionType: null,
+      giftOccasionDate: null,
+      giftCostDollars: null,
+      eventTitle: null,
+      eventStartsAtISO: null,
+      eventEndsAtISO: null,
+      eventAllDay: null,
+      eventType: null,
+      noteText: "Shoe size is 10",
+      budgetOccasionType: null,
+      budgetMinDollars: null,
+      budgetMaxDollars: null,
+      timeOffStartDate: null,
+      timeOffEndDate: null,
+      timeOffReason: null,
+    });
+
+    const updateCall = calls.find((c) => c.table === "people" && c.op === "update");
+    expect((updateCall!.values as Record<string, unknown>).notes).toBe("Existing note\nShoe size is 10");
+    expect(result).toEqual({ table: "people", id: "person-2" });
+  });
+
+  it("throws on a required-field action missing its data, exactly as before", async () => {
+    const { client } = createFakeSupabaseClient();
+    await expect(
+      executeAction(client as never, household, selfPerson, {
+        type: "record_gift",
+        personId: null,
+        interest: null,
+        interestStrength: null,
+        interactionType: null,
+        interactionNotes: null,
+        giftDescription: null,
+        giftOccasionType: null,
+        giftOccasionDate: null,
+        giftCostDollars: null,
+        eventTitle: null,
+        eventStartsAtISO: null,
+        eventEndsAtISO: null,
+        eventAllDay: null,
+        eventType: null,
+        noteText: null,
+        budgetOccasionType: null,
+        budgetMinDollars: null,
+        budgetMaxDollars: null,
+        timeOffStartDate: null,
+        timeOffEndDate: null,
+        timeOffReason: null,
+      })
+    ).rejects.toThrow("Missing person or gift description");
+  });
+});
+
+describe("isKnownPersonId", () => {
+  it("unchanged: null personId is always accepted", () => {
+    expect(isKnownPersonId([], null)).toBe(true);
+  });
+
+  it("unchanged: a personId must match one of the given people", () => {
+    const people = [{ id: "a" }] as PersonRow[];
+    expect(isKnownPersonId(people, "a")).toBe(true);
+    expect(isKnownPersonId(people, "b")).toBe(false);
+  });
+});
