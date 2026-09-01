@@ -29,9 +29,10 @@ import {
   type BrainDumpItem,
 } from "@/lib/ai/prompts/brain-dump";
 import type { CaptureTurn } from "@/lib/ai/prompts/capture";
-import { executeAction, isKnownPersonId } from "@/lib/ai/capture-actions";
+import { executeAction, isKnownPersonId, verifyExecuted } from "@/lib/ai/capture-actions";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
 import { friendlyMutationError } from "@/lib/db/errors";
+import { isFeatureEnabled } from "@/lib/flags";
 
 interface CaptureRequestBody {
   turns: CaptureTurn[];
@@ -190,8 +191,9 @@ export async function POST(request: Request) {
 
   const action = { ...item, personId };
 
+  let executeResult;
   try {
-    await executeAction(supabase, household, selfPerson, action);
+    executeResult = await executeAction(supabase, household, selfPerson, action);
   } catch (error) {
     return NextResponse.json({
       status: "error",
@@ -202,5 +204,20 @@ export async function POST(request: Request) {
   // item.summary is phrased as an instruction ("Add 'fly fishing' to
   // Dave's interests") for Brain Dump's review list; reused here as a
   // plain-language confirmation of what was just saved.
-  return NextResponse.json({ status: "ready", confirmationMessage: `Saved — ${restore(item.summary) ?? "done"}.` });
+  //
+  // Module 3 (D-119, universal_intake_v2 flag) trust layer: this used to
+  // assert "Saved" purely from item.summary, the AI's own pre-write claim,
+  // never re-checked against what actually landed in the database — the
+  // exact "assistant asserts completion on its own say-so" failure mode
+  // the brief calls out. Flag OFF keeps the prior byte-identical
+  // statement; flag ON adds one real state check against the row
+  // executeAction just wrote before making the same claim.
+  const intakeTrustEnabled = await isFeatureEnabled(supabase, household.id, "universal_intake_v2");
+  const savedMessage = `Saved — ${restore(item.summary) ?? "done"}.`;
+  if (!intakeTrustEnabled) {
+    return NextResponse.json({ status: "ready", confirmationMessage: savedMessage });
+  }
+  const verified = await verifyExecuted(supabase, executeResult);
+  const confirmationMessage = verified ? savedMessage : "That may not have saved correctly — please check and try again.";
+  return NextResponse.json({ status: "ready", confirmationMessage });
 }
