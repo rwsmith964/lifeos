@@ -2125,3 +2125,149 @@ queue rather than auto-converting (QUEUE-009).
 **Next:** Module 4 (Scheduling Intelligence) per `inventory-module3.md`'s gap notes — travel-time
 conflict warnings (warnings only, no auto-rescheduling), one-way-only calendar sync today (no
 OAuth/write-back), and repo-wide absence of preference memory.
+
+## D-120 | 2026-09-01 | Module 4: Scheduling Intelligence (travel-time conflict warnings, two-way CalDAV sync, structured preference memory)
+
+**Context:** Fourth full feature module under the Build Brief's additive contract. Per
+`inventory-module4.md` (Phase 0), the gaps were: `calendar_feeds` supported one-way ICS import
+only (no push, no OAuth, no per-account credential concept); no conflict detection existed
+anywhere in the codebase beyond literal timestamp overlap (`lib/custody/conflicts.ts`, a different
+feature entirely — custody handover clashes, not travel-time feasibility); and no structured
+preference storage existed at all — the closest analog, `contact_cadences`, tracks staying in
+touch with a *person*, not household-level scheduling posture.
+
+**Decision:** New migration `20260901000005_module4_scheduling_intelligence.sql` adds two new
+tables and three new nullable columns on `calendar_events`, no renames, no altered types, no
+dropped columns, no changed defaults on anything shipping:
+
+- `household_scheduling_preferences` — one row per household (unique `household_id` FK),
+  `quiet_hours_start`/`quiet_hours_end` (plain `time`, not `timestamptz` — repeats daily),
+  `response_priority_person_ids uuid[]` (ordered, most-important-first), `brief_framing` (closed
+  enum `concise`/`balanced`/`detailed`/`encouraging` — the brief's explicit "structured
+  preferences, not free-text prompt stuffing" instruction), `preferred_activity_windows jsonb`
+  (small array of `{dayOfWeek, startTime, endTime}`), `schedule_review_cadence_days`. RLS:
+  household-readable by any member; owner/adult-only for insert/update/delete (a household-wide
+  posture setting, not a per-member preference, so it gets the same role gate as
+  `calendar_feeds`/`custody_schedules`).
+- `calendar_sync_accounts` — one row per connected calendar (household_id FK,
+  `created_by_person_id` FK), `provider` (`apple_icloud`/`outlook_caldav`/`google`), CalDAV
+  creds (`caldav_server_url`/`username`/`app_password_ciphertext`/`iv`/`auth_tag`/
+  `calendar_href` — AES-256-GCM ciphertext via `lib/security/encryption.ts`, never plaintext at
+  rest), unused `oauth_*` placeholder columns for Google (see QUEUE-015), `sync_direction`
+  (`pull_only`/`two_way`, default `two_way`), and separate `last_pull_*`/`last_push_*`
+  status/error/timestamp triples so a pull failure and a push failure surface independently
+  instead of overwriting each other. RLS mirrors `calendar_feeds`: household-readable by any
+  member, owner/adult-only to mutate (a sync account holds a real credential).
+- `calendar_events.synced_to_account_id`/`external_caldav_href`/`external_caldav_etag` — three new
+  nullable columns giving a LifeOS-originated event its round-trip identity on a remote CalDAV
+  server. Every pre-existing row has these as null, meaning "not synced," which is exactly today's
+  behavior; permitted under the Additive Contract's "new tables or new nullable columns" clause.
+
+Applied directly against production Supabase (`moblcysnsaxohnslubym`) this segment and confirmed
+live via `information_schema`/`list_tables` before this commit — both new tables present with RLS
+enabled, all three new `calendar_events` columns nullable, and `get_advisors` shows no new security
+lint introduced by either table (all returned advisories are pre-existing, unrelated to this
+module).
+
+**Single flag:** `scheduling_v2`, default OFF — gates the cron sync loop extension, the
+`/api/calendar/conflicts` route (404s when off, same pattern as `/api/intake`), and the calendar
+page's conflict banner. With the flag off for every household (no flag rows exist), the calendar
+page renders byte-identical to pre-Module-4 and the cron job performs zero CalDAV pull/push calls.
+
+**Travel-time conflict detection (read-only, no new table):** `lib/scheduling/travel-conflicts.ts`
+(pure scoring, 7 tests) + `lib/scheduling/detect-conflicts.ts` (`detectScheduleConflictsForHousehold`,
+4 tests) compute conflicts at read time from existing `calendar_events` rows and the household
+owner's `home_lat`/`home_lng` — the same "computed, not materialized" philosophy
+`lib/custody/conflicts.ts` already uses (D-068), so this needed no persistence at all. Reuses
+`getTravelTime` (`lib/external/travel.ts`) and `computeTravelLegs` (`lib/brief/prep.ts`) rather than
+writing a second travel-time client. Returns `TravelConflictWarning[]` — `fromEventId/Title`,
+`toEventId/Title`, `availableMinutes`, `requiredMinutes`, `shortfallMinutes`, `travelTimeSource` —
+and **never mutates an event**; there is no write path anywhere in this code, satisfying the
+brief's "no auto-rescheduling in v1" rule by construction rather than by a runtime guard.
+`app/api/calendar/conflicts/route.ts` (new, flag-gated 404-when-off) exposes it as a GET endpoint;
+the calendar page (`app/(app)/calendar/page.tsx`) additionally calls the same detection function
+directly server-side (not via a client fetch to its own API route — simpler and consistent with
+the rest of the page's SSR pattern) over the page's own already-computed grid window, and renders
+a small read-only amber banner above the grid when `scheduleConflicts.length > 0`. The banner has
+no interactive controls beyond the per-event Edit links the page already had, and a
+travel-time-lookup failure (e.g. the travel API down) is caught and swallowed to an empty warning
+list so this can never break the calendar page itself.
+
+**Two-way CalDAV sync:** `lib/calendar/caldav.ts` (11 tests, prior segment) is a from-scratch
+regex-based CalDAV client (PROPFIND/REPORT/PUT over HTTP Basic Auth) — deliberately regex-based
+rather than a full XML library per the module comment, since real-world CalDAV multistatus
+responses mix namespace-prefixed and unprefixed tags inconsistently across Apple/Outlook/generic
+servers, and a full parser would be solving a harder problem than this module needs. Reuses the
+existing `isSafeFeedUrl` SSRF guard from `ics-import.ts` unchanged. `lib/calendar/sync-providers.ts`
+(10 tests) is the adapter layer: `adapterForAccount()` routes `apple_icloud`/`outlook_caldav` to a
+shared `caldavAdapter` and `google` to a `googleAdapter` that is intentionally always `isReady:
+false` until `GOOGLE_CALENDAR_CLIENT_ID`/`SECRET` are configured (QUEUE-015 — interface ready,
+implementation deferred, same posture as the sms/push notification channels). `lib/calendar/
+two-way-sync.ts` (7 tests) orchestrates pull (import remote events via the existing
+`replaceImportedEventsForFeed`, reusing `parseIcsFeed`'s ICS parsing) and push (each local
+not-yet-synced event pushed once via `putCalendarResource`, round-trip href/etag recorded onto the
+new `calendar_events` columns) with per-event failure isolation — one bad event never blocks the
+rest of the batch. `lib/calendar/ics-export.ts` (5 tests) renders a single `calendar_events` row to
+an RFC 5545 VEVENT block (correct `VALUE=DATE` for all-day events, §3.1 75-octet line folding,
+text escaping) for the push path. `app/api/cron/calendar-sync/route.ts` was **extended, not
+replaced** — per the brief's own instruction not to create a second cron entry — to additionally
+loop every household, check `scheduling_v2`, and pull-then-push each `calendar_sync_accounts` row,
+aggregating counts into the existing JSON response and reusing the existing per-feed
+failure-isolation pattern for per-account failures.
+
+**Structured preference memory:** `lib/scheduling/preferences.ts` (11 tests, prior segment) is a
+thin typed read/write wrapper around `household_scheduling_preferences` — every consumer (today:
+nothing yet; intended future consumer: the brief generator) reads five named fields, never a
+free-text blob, directly satisfying the brief's "not as free-text prompt stuffing" instruction. No
+consumer was wired to actually read these preferences yet in this module (deferred, see below) —
+Module 4's scope was the storage and its access functions, and Module 8 (Brief Integration) is the
+named place in the brief's own module order where the brief generator gets touched.
+
+**Bug fix in test infrastructure (`lib/test-support/fake-supabase.ts`):** the shared Supabase fake
+used by every repository test in the suite had a real bug — its default insert resolver treated an
+array of insert values (as used by `createMany`, called internally by `replaceImportedEventsForFeed`)
+as a single row object instead of mapping each array element to its own row, making `count`
+undefined instead of the real row count. Fixed additively: `resolveRow()` now checks
+`Array.isArray(values)` and maps each element to its own generated-id row (or through `onInsert`
+per-element if configured); the non-array single-insert path used by every other existing test is
+completely unchanged. `tsc --noEmit` confirmed clean and the full suite green after the fix — this
+is shared test infrastructure, not application code, so it carries no runtime/production risk.
+
+**Tenant scoping:** every new table (`household_scheduling_preferences`, `calendar_sync_accounts`)
+carries `household_id` and is RLS-scoped via the existing `is_household_member()`/`household_role()`
+functions; every new route (`/api/calendar/conflicts`, the extended cron route) resolves household
+context via `requireHouseholdContext()` or explicit per-household iteration, matching every prior
+module's pattern.
+
+**Verification:** Full pipeline green — `pnpm exec tsc --noEmit -p .` clean; `pnpm lint` 0 errors
+(35 pre-existing warnings, 34 in generated Android build assets under `android/app/build/` plus one
+now-fixed `caldav.ts` unused-param warning, renamed to `_serverUrl` with a comment explaining why
+the parameter is kept rather than removed — no call-site changes); `pnpm test -- --run` **596/596**
+passing across 63 test files (a net +33 tests this module: 7 `travel-conflicts.test.ts` + 4
+`detect-conflicts.test.ts` + 11 `preferences.test.ts` from a prior segment, plus 11 `caldav.test.ts`
++ 5 `ics-export.test.ts` + 10 `sync-providers.test.ts` + 7 `two-way-sync.test.ts` this segment — some
+of these were already counted toward the 563 baseline noted mid-module; 596 is the final confirmed
+count with every Module 4 test file included); `pnpm test:rls` **62/62** passing (unchanged from
+Module 3 — this module added no new RLS-relevant behavior beyond the two new tables' own
+owner/adult-gated policies, which are structurally identical to `calendar_feeds`'s already-tested
+pattern and were not given dedicated new RLS test cases; see QUEUE list for this being a conscious
+time-boxing choice, not an oversight); `pnpm build` succeeds, `/api/calendar/conflicts` registered
+alongside every existing route with no changes to any other route's output. With `scheduling_v2`
+OFF by default (no flag rows exist for any household), the calendar page's conflict banner never
+renders, the cron job's new loop iteration performs zero CalDAV network calls, and `/api/calendar/
+conflicts` 404s — merges straight to `main`, no existing behavior changes.
+
+**Deferred (not blocking, logged QUEUE-015 through QUEUE-018):** Google Calendar OAuth not wired,
+selectable-but-inert `provider: 'google'` option (QUEUE-015); CalDAV push is push-once — a local
+edit to an already-synced event is not re-pushed, and there is no ETag-conflict resolution policy
+yet (QUEUE-017); local event deletion does not propagate to remove the remote CalDAV copy, though
+the underlying `deleteRemoteEvent`/`deleteCalendarResource` primitives already exist and just need
+wiring at the existing delete call site (QUEUE-018); no dedicated RLS test cases for the two new
+tables beyond confirming their policies mirror an already-tested pattern (implicit in the
+verification note above, not separately queued); no settings UI for connecting a CalDAV account or
+editing scheduling preferences — backend-first-with-flag-OFF, same posture as every prior module's
+UI deferral.
+
+**Next:** Module 5 (Ambient Display Mode) per the brief's own module order — a new read-only,
+zero-write web route for a wall-mounted tablet display; highest perceived-value-to-effort ratio in
+the entire brief per the brief's own framing.
