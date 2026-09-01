@@ -609,10 +609,16 @@ export interface OpportunityRow {
   expires_at: string;
   created_at: string;
   updated_at: string;
+  // Module 2 (leisure_planner_v2, D-118): the 5-component weighted score
+  // breakdown from lib/planner/scoring.ts's ActivityScoreResult, persisted
+  // only when the flag is on -- see resolveOpportunityScoreBreakdown().
+  // Null on every pre-existing row and on every row written with the flag
+  // off, by construction.
+  score_breakdown: Record<string, number> | null;
 }
 export type OpportunityInsert = Insert<
   OpportunityRow,
-  "id" | "activity_id" | "trip_idea_id" | "status" | "detected_at" | "created_at" | "updated_at"
+  "id" | "activity_id" | "trip_idea_id" | "status" | "detected_at" | "created_at" | "updated_at" | "score_breakdown"
 >;
 export type OpportunityUpdate = Update<OpportunityRow>;
 
@@ -1064,3 +1070,70 @@ export type GiftReciprocityEntryInsert = Insert<
   "id" | "occasion_type" | "occurred_on" | "is_promise" | "promise_due_date" | "fulfilled_at" | "created_at" | "updated_at"
 >;
 export type GiftReciprocityEntryUpdate = Update<GiftReciprocityEntryRow>;
+
+// activity_type_viability_configs (Module 2, leisure_planner_v2, D-118) --------
+
+export interface ActivityTypeViabilityConfigRow {
+  id: string;
+  household_id: string;
+  activity_type_key: string;
+  relevant_inputs: string[];
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+export type ActivityTypeViabilityConfigInsert = Insert<
+  ActivityTypeViabilityConfigRow,
+  "id" | "relevant_inputs" | "notes" | "created_at" | "updated_at"
+>;
+export type ActivityTypeViabilityConfigUpdate = Update<ActivityTypeViabilityConfigRow>;
+
+// gear_checklist_items (Module 2, leisure_planner_v2, D-118) ------------------
+
+export interface GearChecklistItemRow {
+  id: string;
+  household_id: string;
+  user_activity_id: string | null;
+  activity_type_key: string | null;
+  item_label: string;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+export type GearChecklistItemInsert = Insert<
+  GearChecklistItemRow,
+  "id" | "user_activity_id" | "activity_type_key" | "sort_order" | "created_at" | "updated_at"
+>;
+export type GearChecklistItemUpdate = Update<GearChecklistItemRow>;
+
+// leisure_outing_logs (Module 2, leisure_planner_v2, D-118) -------------------
+
+export interface LeisureOutingLogRow {
+  id: string;
+  household_id: string;
+  user_activity_id: string;
+  occurred_on: string;
+  conditions_notes: string | null;
+  companions_person_ids: string[];
+  rating: number | null;
+  notes: string | null;
+  gear_items_packed: string[];
+  moment_id: string | null;
+  created_by_person_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+export type LeisureOutingLogInsert = Insert<
+  LeisureOutingLogRow,
+  | "id"
+  | "conditions_notes"
+  | "companions_person_ids"
+  | "rating"
+  | "notes"
+  | "gear_items_packed"
+  | "moment_id"
+  | "created_by_person_id"
+  | "created_at"
+  | "updated_at"
+>;
+export type LeisureOutingLogUpdate = Update<LeisureOutingLogRow>;

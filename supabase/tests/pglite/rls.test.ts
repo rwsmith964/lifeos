@@ -828,4 +828,159 @@ describe("RLS end-to-end (PGlite, real migrations + real seed data)", () => {
       ).rejects.toThrow();
     });
   });
+
+  describe("activity_type_viability_configs (Module 2, D-118, household-scoped like user_activities)", () => {
+    it("household members can read a config the owner declares; the outsider sees none", async () => {
+      await asUser(db, RICHARD_USER, () =>
+        db.exec(
+          `insert into activity_type_viability_configs (household_id, activity_type_key, relevant_inputs) values ('${SEEDED_HOUSEHOLD}', 'fishing', array['river_flow','solunar']::text[]);`
+        )
+      );
+
+      const childRead = await asUser(db, CHILD_USER, () =>
+        db.query(`select count(*)::int as n from activity_type_viability_configs where household_id = '${SEEDED_HOUSEHOLD}';`)
+      );
+      expect((childRead.rows[0] as { n: number }).n).toBeGreaterThan(0);
+
+      const outsiderRead = await asUser(db, OUTSIDER_USER, () =>
+        db.query(`select count(*)::int as n from activity_type_viability_configs where household_id = '${SEEDED_HOUSEHOLD}';`)
+      );
+      expect((outsiderRead.rows[0] as { n: number }).n).toBe(0);
+    });
+
+    it("a child-role member can read configs but cannot insert one (owner/adult only)", async () => {
+      await expect(
+        asUser(db, CHILD_USER, () =>
+          db.exec(
+            `insert into activity_type_viability_configs (household_id, activity_type_key) values ('${SEEDED_HOUSEHOLD}', 'golf');`
+          )
+        )
+      ).rejects.toThrow();
+    });
+
+    it("rejects a second config for the same (household, activity_type_key) pair", async () => {
+      await expect(
+        asUser(db, RICHARD_USER, () =>
+          db.exec(
+            `insert into activity_type_viability_configs (household_id, activity_type_key) values ('${SEEDED_HOUSEHOLD}', 'fishing');`
+          )
+        )
+      ).rejects.toThrow();
+    });
+  });
+
+  describe("gear_checklist_items (Module 2, D-118, household-scoped like user_activities)", () => {
+    const GOLF_ACTIVITY = "60000000-0000-0000-0000-000000000001";
+
+    it("household members can read a gear item the owner adds; the outsider sees none", async () => {
+      await asUser(db, RICHARD_USER, () =>
+        db.exec(
+          `insert into gear_checklist_items (household_id, user_activity_id, item_label, sort_order) values ('${SEEDED_HOUSEHOLD}', '${GOLF_ACTIVITY}', 'Golf clubs', 0);`
+        )
+      );
+
+      const childRead = await asUser(db, CHILD_USER, () =>
+        db.query(`select count(*)::int as n from gear_checklist_items where household_id = '${SEEDED_HOUSEHOLD}';`)
+      );
+      expect((childRead.rows[0] as { n: number }).n).toBeGreaterThan(0);
+
+      const outsiderRead = await asUser(db, OUTSIDER_USER, () =>
+        db.query(`select count(*)::int as n from gear_checklist_items where household_id = '${SEEDED_HOUSEHOLD}';`)
+      );
+      expect((outsiderRead.rows[0] as { n: number }).n).toBe(0);
+    });
+
+    it("a child-role member can read gear items but cannot insert one (owner/adult only)", async () => {
+      await expect(
+        asUser(db, CHILD_USER, () =>
+          db.exec(
+            `insert into gear_checklist_items (household_id, user_activity_id, item_label) values ('${SEEDED_HOUSEHOLD}', '${GOLF_ACTIVITY}', 'Should fail');`
+          )
+        )
+      ).rejects.toThrow();
+    });
+
+    it("the one-target check constraint rejects both a user_activity_id and an activity_type_key together, and rejects neither", async () => {
+      await expect(
+        asUser(db, RICHARD_USER, () =>
+          db.exec(
+            `insert into gear_checklist_items (household_id, user_activity_id, activity_type_key, item_label) values ('${SEEDED_HOUSEHOLD}', '${GOLF_ACTIVITY}', 'golf', 'Both set');`
+          )
+        )
+      ).rejects.toThrow();
+
+      await expect(
+        asUser(db, RICHARD_USER, () =>
+          db.exec(
+            `insert into gear_checklist_items (household_id, item_label) values ('${SEEDED_HOUSEHOLD}', 'Neither set');`
+          )
+        )
+      ).rejects.toThrow();
+    });
+  });
+
+  describe("leisure_outing_logs (Module 2, D-118, household-scoped like user_activities)", () => {
+    const FISHING_ACTIVITY = "60000000-0000-0000-0000-000000000002";
+
+    it("household members can read an outing log the owner adds; the outsider sees none", async () => {
+      await asUser(db, RICHARD_USER, () =>
+        db.exec(
+          `insert into leisure_outing_logs (household_id, user_activity_id, occurred_on, rating, companions_person_ids) values ('${SEEDED_HOUSEHOLD}', '${FISHING_ACTIVITY}', '2026-07-04', 4, array['${DAVE_PERSON}']::uuid[]);`
+        )
+      );
+
+      const childRead = await asUser(db, CHILD_USER, () =>
+        db.query(`select count(*)::int as n from leisure_outing_logs where household_id = '${SEEDED_HOUSEHOLD}';`)
+      );
+      expect((childRead.rows[0] as { n: number }).n).toBeGreaterThan(0);
+
+      const outsiderRead = await asUser(db, OUTSIDER_USER, () =>
+        db.query(`select count(*)::int as n from leisure_outing_logs where household_id = '${SEEDED_HOUSEHOLD}';`)
+      );
+      expect((outsiderRead.rows[0] as { n: number }).n).toBe(0);
+    });
+
+    it("a child-role member can read outing logs but cannot insert one (owner/adult only)", async () => {
+      await expect(
+        asUser(db, CHILD_USER, () =>
+          db.exec(
+            `insert into leisure_outing_logs (household_id, user_activity_id, occurred_on) values ('${SEEDED_HOUSEHOLD}', '${FISHING_ACTIVITY}', '2026-07-05');`
+          )
+        )
+      ).rejects.toThrow();
+    });
+
+    it("rejects a rating outside the 1-5 range", async () => {
+      await expect(
+        asUser(db, RICHARD_USER, () =>
+          db.exec(
+            `insert into leisure_outing_logs (household_id, user_activity_id, occurred_on, rating) values ('${SEEDED_HOUSEHOLD}', '${FISHING_ACTIVITY}', '2026-07-06', 6);`
+          )
+        )
+      ).rejects.toThrow();
+    });
+  });
+
+  describe("opportunities.score_breakdown (Module 2, D-118, purely additive column)", () => {
+    it("defaults to null and is independently updatable by a household member (insert is service-role only, per the existing detection-engine policy)", async () => {
+      const { rows: inserted } = await asServiceRole(db, () =>
+        db.query(
+          `insert into opportunities (household_id, activity_id, opportunity_type, for_date, score, headline, reasoning, expires_at) values ('${SEEDED_HOUSEHOLD}', '60000000-0000-0000-0000-000000000001', 'activity_window', '2026-07-10', 90, 'Test headline', 'Test reasoning', '2026-07-11') returning id, score_breakdown;`
+        )
+      );
+      expect(inserted.length).toBeGreaterThan(0);
+      expect((inserted[0] as { score_breakdown: unknown }).score_breakdown).toBeNull();
+
+      const { id } = inserted[0] as { id: string };
+      await asUser(db, RICHARD_USER, () =>
+        db.exec(`update opportunities set score_breakdown = '{"weatherSuitability": 27}'::jsonb where id = '${id}';`)
+      );
+      const updated = await asUser(db, RICHARD_USER, () =>
+        db.query(`select score_breakdown from opportunities where id = '${id}';`)
+      );
+      expect((updated.rows[0] as { score_breakdown: { weatherSuitability: number } }).score_breakdown).toEqual({
+        weatherSuitability: 27,
+      });
+    });
+  });
 });
