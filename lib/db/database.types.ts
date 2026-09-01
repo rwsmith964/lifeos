@@ -673,6 +673,10 @@ export interface CalendarEventRow {
   external_id: string | null;
   /** The user_activity this event is an instance of, if any (Section 8.5 prep-event generation). */
   related_activity_id: string | null;
+  /** Module 4 two-way sync round-trip identity (nullable additive columns, D-120). Null for every pre-existing/unsynced event. */
+  synced_to_account_id: string | null;
+  external_caldav_href: string | null;
+  external_caldav_etag: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -691,6 +695,9 @@ export type CalendarEventInsert = Insert<
   | "external_source"
   | "external_id"
   | "related_activity_id"
+  | "synced_to_account_id"
+  | "external_caldav_href"
+  | "external_caldav_etag"
   | "created_at"
   | "updated_at"
 >;
@@ -1206,3 +1213,92 @@ export type ActionLogInsert = Insert<
   "id" | "actor" | "read_summary" | "decision_summary" | "record_id" | "before_snapshot" | "after_snapshot" | "undoable" | "undone_at" | "created_at"
 >;
 export type ActionLogUpdate = Update<ActionLogRow>;
+
+// household_scheduling_preferences (Module 4, D-120) --------------------
+
+export interface PreferredActivityWindow {
+  dayOfWeek: number; // 0=Sunday .. 6=Saturday
+  startTime: string; // "HH:MM"
+  endTime: string; // "HH:MM"
+}
+
+export interface HouseholdSchedulingPreferencesRow {
+  id: string;
+  household_id: string;
+  quiet_hours_start: string | null;
+  quiet_hours_end: string | null;
+  response_priority_person_ids: string[];
+  brief_framing: "concise" | "balanced" | "detailed" | "encouraging";
+  preferred_activity_windows: PreferredActivityWindow[];
+  schedule_review_cadence_days: number | null;
+  created_at: string;
+  updated_at: string;
+}
+export type HouseholdSchedulingPreferencesInsert = Insert<
+  HouseholdSchedulingPreferencesRow,
+  | "id"
+  | "quiet_hours_start"
+  | "quiet_hours_end"
+  | "response_priority_person_ids"
+  | "brief_framing"
+  | "preferred_activity_windows"
+  | "schedule_review_cadence_days"
+  | "created_at"
+  | "updated_at"
+>;
+export type HouseholdSchedulingPreferencesUpdate = Update<HouseholdSchedulingPreferencesRow>;
+
+// calendar_sync_accounts (Module 4, D-120) -------------------------------
+
+export type CalendarSyncProvider = "apple_icloud" | "outlook_caldav" | "google";
+export type CalendarSyncDirection = "pull_only" | "two_way";
+export type CalendarSyncStatus = "never" | "ok" | "error";
+
+export interface CalendarSyncAccountRow {
+  id: string;
+  household_id: string;
+  created_by_person_id: string;
+  provider: CalendarSyncProvider;
+  label: string;
+  caldav_server_url: string | null;
+  caldav_username: string | null;
+  caldav_app_password_ciphertext: string | null;
+  caldav_app_password_iv: string | null;
+  caldav_app_password_auth_tag: string | null;
+  caldav_calendar_href: string | null;
+  oauth_access_token_ciphertext: string | null;
+  oauth_refresh_token_ciphertext: string | null;
+  oauth_token_expires_at: string | null;
+  sync_direction: CalendarSyncDirection;
+  last_pull_at: string | null;
+  last_pull_status: CalendarSyncStatus;
+  last_pull_error: string | null;
+  last_push_at: string | null;
+  last_push_status: CalendarSyncStatus;
+  last_push_error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+export type CalendarSyncAccountInsert = Insert<
+  CalendarSyncAccountRow,
+  | "id"
+  | "caldav_server_url"
+  | "caldav_username"
+  | "caldav_app_password_ciphertext"
+  | "caldav_app_password_iv"
+  | "caldav_app_password_auth_tag"
+  | "caldav_calendar_href"
+  | "oauth_access_token_ciphertext"
+  | "oauth_refresh_token_ciphertext"
+  | "oauth_token_expires_at"
+  | "sync_direction"
+  | "last_pull_at"
+  | "last_pull_status"
+  | "last_pull_error"
+  | "last_push_at"
+  | "last_push_status"
+  | "last_push_error"
+  | "created_at"
+  | "updated_at"
+>;
+export type CalendarSyncAccountUpdate = Update<CalendarSyncAccountRow>;

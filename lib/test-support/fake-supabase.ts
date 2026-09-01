@@ -45,6 +45,17 @@ export function createFakeSupabaseClient(tableConfigs: Record<string, FakeTableC
 
     function resolveRow(): { data: unknown; error: null } {
       if (op === "insert") {
+        // createMany() passes an array of insert values in one call (no
+        // per-row onInsert hook exists for that shape) -- default each
+        // element to its own generated id rather than treating the whole
+        // array as a single row, so createMany's `.length` on the result
+        // reflects how many rows were actually inserted.
+        if (Array.isArray(values)) {
+          const rows = config.onInsert
+            ? values.map((v) => config.onInsert!(v as Record<string, unknown>))
+            : values.map((v) => ({ id: `fake-${table}-${++fakeIdCounter}`, ...(v as Record<string, unknown>) }));
+          return { data: rows, error: null };
+        }
         const row = config.onInsert
           ? config.onInsert(values ?? {})
           : { id: `fake-${table}-${++fakeIdCounter}`, ...(values ?? {}) };
@@ -77,6 +88,30 @@ export function createFakeSupabaseClient(tableConfigs: Record<string, FakeTableC
       },
       gte: (...args: unknown[]) => {
         filters.push({ method: "gte", args });
+        return builder;
+      },
+      lt: (...args: unknown[]) => {
+        filters.push({ method: "lt", args });
+        return builder;
+      },
+      lte: (...args: unknown[]) => {
+        filters.push({ method: "lte", args });
+        return builder;
+      },
+      gt: (...args: unknown[]) => {
+        filters.push({ method: "gt", args });
+        return builder;
+      },
+      neq: (...args: unknown[]) => {
+        filters.push({ method: "neq", args });
+        return builder;
+      },
+      in: (...args: unknown[]) => {
+        filters.push({ method: "in", args });
+        return builder;
+      },
+      is: (...args: unknown[]) => {
+        filters.push({ method: "is", args });
         return builder;
       },
       select: () => builder,

@@ -856,3 +856,48 @@ export const actionLogInsertSchema = z.object({
   after_snapshot: z.record(z.string(), z.unknown()).nullable().optional(),
   undoable: z.boolean().optional(),
 });
+
+// Module 4 (scheduling_v2, D-120) — preference memory + calendar sync accounts.
+// Reuses the existing `timeOfDay` schema declared above (care/work-schedule
+// time-of-day fields) rather than redeclaring an equivalent regex.
+
+export const briefFramingSchema = z.enum(["concise", "balanced", "detailed", "encouraging"]);
+
+export const preferredActivityWindowSchema = z.object({
+  dayOfWeek: z.number().int().min(0).max(6),
+  startTime: timeOfDay,
+  endTime: timeOfDay,
+});
+
+export const householdSchedulingPreferencesUpdateSchema = z.object({
+  quiet_hours_start: timeOfDay.nullable().optional(),
+  quiet_hours_end: timeOfDay.nullable().optional(),
+  response_priority_person_ids: z.array(uuid).optional(),
+  brief_framing: briefFramingSchema.optional(),
+  preferred_activity_windows: z.array(preferredActivityWindowSchema).optional(),
+  schedule_review_cadence_days: z.number().int().positive().nullable().optional(),
+});
+
+export const calendarSyncProviderSchema = z.enum(["apple_icloud", "outlook_caldav", "google"]);
+export const calendarSyncDirectionSchema = z.enum(["pull_only", "two_way"]);
+
+// What a person actually fills in on the "connect a calendar" form. The
+// app_password never gets stored as-is — the route encrypts it
+// (lib/security/encryption.ts) before the repo insert, so this schema
+// validates the plaintext exactly once, at the API boundary.
+export const calendarSyncAccountConnectSchema = z.object({
+  household_id: uuid,
+  created_by_person_id: uuid,
+  provider: calendarSyncProviderSchema,
+  label: z.string().trim().min(1, "Give this connection a name.").max(80),
+  caldav_server_url: z
+    .string()
+    .trim()
+    .url("Enter a valid CalDAV server URL.")
+    .refine((v) => v.startsWith("https://"), { message: "The CalDAV server URL must use https://." })
+    .optional(),
+  caldav_username: z.string().trim().min(1).max(200).optional(),
+  caldav_app_password: z.string().trim().min(1).max(500).optional(),
+  caldav_calendar_href: z.string().trim().max(2000).optional(),
+  sync_direction: calendarSyncDirectionSchema.optional(),
+});

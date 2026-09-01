@@ -136,6 +136,38 @@ the remaining modules.
 **Reversal cost:** Low
 **Blocking:** No
 
+### QUEUE-015
+**Module:** Module 4 / Scheduling Intelligence
+**File(s):** `lib/calendar/caldav.ts`, `supabase/migrations/*_module4_scheduling_intelligence.sql`
+**Question:** The brief asks for two-way sync with Google, Apple, and Outlook "to match Ohai's current bar." Genuine OAuth-based write-back to Google Calendar (and full Outlook/Microsoft Graph OAuth) requires registering an OAuth application in Google Cloud Console / Azure AD under Richard's own developer account, configuring a consent screen, and — for Google specifically — passing Google's app-verification review before it can write to any calendar outside a small test-user allowlist. None of that can be done from inside this sandbox; it requires Richard's own cloud console access and, for Google, a review process that takes real-world days to weeks and is outside anyone's direct control.
+**Assumption made:** Built genuine two-way sync using the CalDAV protocol instead, which needs no OAuth app: Apple iCloud and Outlook.com/Office 365 both expose standards-compliant CalDAV endpoints that work with a per-account app-specific password (exactly the same "paste in your own credential" pattern the existing one-way ICS import already uses for the feed URL). This gets real two-way sync working for two of the three named providers today. Google Calendar retired public CalDAV for consumer accounts, so Google is wired as a selectable-but-disabled provider option in the schema and UI (same "interface ready, implementation deferred" pattern already used for the `push`/`sms` notification channels) — it activates the moment `GOOGLE_CALENDAR_CLIENT_ID`/`GOOGLE_CALENDAR_CLIENT_SECRET` are configured, with no further schema changes.
+**Reversal cost:** Low — adding real Google OAuth later is additive (new adapter behind the same `CalendarSyncAdapter` interface, new env vars); nothing about the CalDAV path needs to change.
+**Blocking:** Yes — flagged with `TODO(QUEUE-015)` at the Google provider branch in `lib/calendar/sync-providers.ts`. Full three-provider parity needs Richard to register the Google OAuth app himself.
+
+### QUEUE-016
+**Module:** Module 4 / Scheduling Intelligence
+**File(s):** `lib/security/encryption.ts`, `supabase/migrations/*_module4_scheduling_intelligence.sql`
+**Question:** CalDAV app-specific passwords are real, reusable credentials to a person's personal calendar account — meaningfully more sensitive than the existing plaintext `calendar_feeds.feed_url` (a random unguessable secret URL, but not a password tied to their Apple/Microsoft account login). The brief's standing directive asks for "good cybersecurity implementations."
+**Assumption made:** Added application-level AES-256-GCM encryption (`lib/security/encryption.ts`) for the app-password column specifically, keyed by a new `CALDAV_ENCRYPTION_KEY` env var — the password is never stored in plaintext, only ciphertext + nonce + auth tag. If the env var isn't configured, CalDAV account creation is refused with a clear error (same "no key configured, no unsafe fallback" posture as requiring `RESEND_API_KEY` for real email) rather than silently storing the secret unencrypted. `.env.example` documents the new var. This does not touch the existing `calendar_feeds.feed_url` column/pattern, since changing that is outside Module 4's scope and would be a refactor of shipped code the brief prohibits.
+**Reversal cost:** Low — purely additive; rotating to a KMS-backed key or Supabase Vault later doesn't change the call sites, just the key source.
+**Blocking:** No
+
+### QUEUE-017
+**Module:** Module 4 / Scheduling Intelligence
+**File(s):** `lib/calendar/two-way-sync.ts`
+**Question:** For the push (LifeOS -> CalDAV) direction of two-way sync, should an already-pushed local event be re-pushed every time it's edited after the initial sync, to keep the remote copy current?
+**Assumption made:** v1 pushes each local event to its CalDAV account exactly once, on the first sync after it becomes eligible (`synced_to_account_id IS NULL`). Once `pushToSyncAccount` records a `synced_to_account_id`/`external_caldav_href`/`external_caldav_etag` on the row, later edits to that event are NOT re-pushed — the remote copy reflects the event's state as of first sync only. This keeps v1 conflict-free (no need to reconcile a local edit against a possibly-also-edited remote ETag) at the cost of remote copies going stale after a local edit. Chosen because the brief explicitly calls out auto-reconciliation/auto-rescheduling as the fastest way to lose trust, and a correct edit-reconciliation policy (last-write-wins? merge? surface a conflict?) is exactly that kind of judgment call the brief says not to make silently.
+**Reversal cost:** Medium — re-enabling continuous push-on-edit means clearing `synced_to_account_id` (or adding a `synced_at`/content-hash column) whenever a pushed event is edited, plus a real ETag-conflict policy for the case where the remote copy also changed; additive (new nullable column or two), but touches `pushToSyncAccount`'s selection query and needs product input on the conflict policy.
+**Blocking:** No
+
+### QUEUE-018
+**Module:** Module 4 / Scheduling Intelligence
+**File(s):** `lib/calendar/two-way-sync.ts`
+**Question:** When a LifeOS-native event that was previously pushed to a CalDAV account is later deleted locally, should the remote copy be deleted too?
+**Assumption made:** v1 does not propagate local deletes to the remote calendar — deleting a `calendar_events` row leaves its previously-pushed CalDAV resource in place, orphaned. `caldav.ts` already exports `deleteCalendarResource` and `sync-providers.ts`'s adapter interface already exposes `deleteRemoteEvent`, so the primitive exists; wiring it into the local delete path was deferred rather than skipped for capability reasons. Reasoning: the existing calendar event delete flow (pre-Module-4, shipped code) has no hook point for "also do this side effect on delete" today, and the brief prohibits refactoring shipped code beyond what a fix strictly needs — adding that hook is exactly the kind of scope creep §9 warns against for a first pass. An orphaned remote copy is also a strictly safer failure mode than an incorrectly-deleted one if the wiring has a bug.
+**Reversal cost:** Low — additive: add a call to `deleteRemoteEvent` (via `adapterForAccount`) at the existing delete call site, gated on the row having a non-null `synced_to_account_id`/`external_caldav_href`. No schema change needed, since those columns already exist from D-120.
+**Blocking:** No
+
 ---
 
 ## HIGH

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronDown, ChevronLeft, ChevronRight, MapPin, Plus } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, MapPin, Plus, TriangleAlert } from "lucide-react";
 import {
   addDays,
   addMonths,
@@ -26,7 +26,11 @@ import {
   listCustodyBlocksForHouseholdInRange,
   listEventsInRange,
 } from "@/lib/db/repositories/calendar";
-import { listPeopleForHousehold } from "@/lib/db/repositories/people";
+import { listPeopleForHousehold, peopleRepo } from "@/lib/db/repositories/people";
+import { usersRepo } from "@/lib/db/repositories/households";
+import { isFeatureEnabled } from "@/lib/flags";
+import { detectScheduleConflictsForHousehold } from "@/lib/scheduling/detect-conflicts";
+import type { TravelConflictWarning } from "@/lib/scheduling/travel-conflicts";
 import { listWorkSchedulesForPeople, listTimeOffForPeopleInRange } from "@/lib/db/repositories/work-schedule";
 import { getWeekendPlanForDate } from "@/lib/db/repositories/system";
 import { listOpenOpportunitiesWithSubjectForHouseholdInDateRange } from "@/lib/db/repositories/opportunities";
@@ -191,6 +195,37 @@ export default async function CalendarPage({
     supabase,
     events.map((e) => e.id)
   );
+
+  // Module 4 (scheduling_v2, D-120): read-only travel-time conflict
+  // warnings over the same grid window already computed above. Mirrors
+  // findHouseholdOwnerUser's existing three copies (lib/brief/generate.ts,
+  // lib/planner/generate.ts, lib/opportunities/detect.ts) rather than
+  // extracting a shared helper -- consistent with the brief's "extend,
+  // don't refactor" rule for code that already works. Never mutates
+  // anything; a failure here (e.g. travel API down) is swallowed to an
+  // empty warning list so it can never break the calendar page itself.
+  let scheduleConflicts: TravelConflictWarning[] = [];
+  if (await isFeatureEnabled(supabase, household.id, "scheduling_v2")) {
+    try {
+      const selfPeople = await peopleRepo.list(supabase, (q) =>
+        q.eq("household_id", household.id).eq("relationship_type", "self").limit(1)
+      );
+      const ownerUserId = selfPeople[0]?.user_id;
+      const owner = ownerUserId ? await usersRepo.getById(supabase, ownerUserId) : null;
+      if (owner?.home_lat != null && owner?.home_lng != null) {
+        scheduleConflicts = await detectScheduleConflictsForHousehold(
+          supabase,
+          household.id,
+          gridStart.toISOString(),
+          gridEnd.toISOString(),
+          { lat: owner.home_lat, lng: owner.home_lng },
+          { googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY, mapboxAccessToken: process.env.MAPBOX_ACCESS_TOKEN }
+        );
+      }
+    } catch (error) {
+      console.error("Calendar page: conflict detection failed (non-fatal):", error);
+    }
+  }
 
   const peopleById = new Map(people.map((p) => [p.id, p.nickname || p.full_name]));
   const childColors = buildChildColorMap(people.filter((p) => p.relationship_type === "child").map((p) => p.id));
@@ -440,6 +475,29 @@ export default async function CalendarPage({
           <Link href="/calendar/custody" className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground">
             Manage schedules
           </Link>
+        </div>
+      )}
+
+      {/* Module 4 (scheduling_v2, D-120): read-only conflict banner --
+          purely informational, no interactive controls beyond the existing
+          per-event Edit links below. Never mutates an event; see the
+          conflict-detection functions this reads from for the
+          no-auto-rescheduling guarantee. */}
+      {scheduleConflicts.length > 0 && (
+        <div className="flex flex-col gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <TriangleAlert className="size-4" />
+            {scheduleConflicts.length === 1 ? "Possible scheduling conflict" : `${scheduleConflicts.length} possible scheduling conflicts`}
+          </div>
+          <ul className="flex flex-col gap-1 text-xs">
+            {scheduleConflicts.map((w) => (
+              <li key={`${w.fromEventId}-${w.toEventId}`}>
+                Not enough travel time between <span className="font-medium">{w.fromEventTitle}</span> and{" "}
+                <span className="font-medium">{w.toEventTitle}</span> — about {w.requiredMinutes} min needed, only{" "}
+                {Math.max(w.availableMinutes, 0)} min available.
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
