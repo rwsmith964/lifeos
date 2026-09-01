@@ -168,6 +168,22 @@ the remaining modules.
 **Reversal cost:** Low — additive: add a call to `deleteRemoteEvent` (via `adapterForAccount`) at the existing delete call site, gated on the row having a non-null `synced_to_account_id`/`external_caldav_href`. No schema change needed, since those columns already exist from D-120.
 **Blocking:** No
 
+### QUEUE-019
+**Module:** Module 5 / Ambient Display Mode
+**File(s):** `app/ambient/page.tsx`, `lib/ambient/build-ambient-view.ts`
+**Question:** Three sub-decisions in one, all needed to build the ambient route without stopping: (a) where should the route live so it gets zero navigation chrome? (b) should the ambient view generate today's brief on the fly if none exists yet, the way the main Brief page does? (c) `scanUpcomingOccasions` always includes a per-person Christmas candidate — should that show on the wall display too?
+**Assumption made:** (a) Placed at top-level `app/ambient/page.tsx`, a sibling of `app/login`/`app/signup`, deliberately outside the `app/(app)` route group so it inherits only the bare root layout (fonts/theme/toast), not the sidebar/bottom-nav chrome every other authenticated route gets — a wall-mounted display should show nothing but the display. (b) No — `buildAmbientView` never calls `generateDailyBrief`; if no brief row exists yet for today it returns `briefAvailable: false` and the route renders a plain "not generated yet" state instead of headline/today/heads-up content. This is a hard requirement of the module's own acceptance test (zero writes of any kind), not just a style choice — the main Brief page is allowed to generate on-demand because a person is actively there tapping through it, but a wall display can be "viewed" by nobody in particular at any moment, so it must never trigger a write just by rendering. (c) Filtered out — `scanUpcomingOccasions`'s Christmas candidate is correct context for the gift engine (per-person shopping reminder) but repeating "Christmas" once per household member on a glanceable wall display is redundant noise, so the ambient view keeps birthdays/anniversaries only.
+**Reversal cost:** Low for (a) and (c) — route location and the occasion-type filter are both one-line-scale changes with no data implications. Medium for (b) — turning on auto-generation later would need explicit reconciliation with the "no mutation functions invoked during a render" acceptance test (e.g. gating it behind a distinct, separately-flagged code path rather than changing `buildAmbientView` itself), not just flipping a boolean.
+**Blocking:** No
+
+### QUEUE-020
+**Module:** Module 5 / Ambient Display Mode
+**File(s):** `app/ambient/ambient-refresh.tsx`
+**Question:** The brief asks for "auto-refresh on an interval" and for the route to handle "being left open for weeks — no memory leaks, no session expiry blowups," without specifying the interval or the refresh mechanism (soft client re-fetch vs. full page reload).
+**Assumption made:** Implemented as a full `window.location.reload()` every 5 minutes via `setInterval`, plus one manual "Refresh" button (`window.location.reload()`) as the only interactive control on the page. A full reload — not a soft re-fetch or `router.refresh()` — was chosen specifically because it unconditionally resets the JS heap/DOM on every cycle (nothing can "leak" across a navigation), and because every reload is a fresh request through `proxy.ts`, which refreshes the Supabase session cookie on every request — so an expired session on reload just redirects to `/login` like any other protected route (a normal state, not a crash), directly addressing "no session expiry blowups."
+**Reversal cost:** Low — the interval is a single named constant (`AUTO_REFRESH_INTERVAL_MS`) in `ambient-refresh.tsx`; changing the cadence or swapping to a soft-refresh strategy touches only that one client component, nothing server-side.
+**Blocking:** No
+
 ---
 
 ## HIGH
