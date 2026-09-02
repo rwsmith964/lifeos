@@ -18,9 +18,11 @@ import { peopleRepo } from "../db/repositories/people";
 import { giftsRepo } from "../db/repositories/gifts";
 import { calendarEventsRepo } from "../db/repositories/calendar";
 import { momentsRepo } from "../db/repositories/relationship-gift-engine";
+import { recipesRepo } from "../db/repositories/household";
 import type { HouseholdRow, IntakeDraftRow, PersonRow } from "../db/database.types";
 import { withActionLog } from "../trust/action-log";
 import { verifyRecordPersisted, buildVerifiedConfirmationMessage } from "../trust/verified-completion";
+import { isFeatureEnabled } from "../flags";
 import type { ExtractedField } from "./confidence";
 
 export interface ConvertContext {
@@ -227,6 +229,54 @@ export async function convertDraftToRecord(ctx: ConvertContext, draft: IntakeDra
         table: "moments",
         recordId: moment.id,
         confirmationMessage: buildVerifiedConfirmationMessage(verification, (row) => `logged the moment "${row.title}"`),
+      };
+    }
+
+    case "recipe": {
+      // Module 3 always offers "recipe" as a classification option (see
+      // lib/intake/prompts.ts), but the destination table belongs to
+      // Module 7 -- converting while household_layer is off would create
+      // a household surface (a saved recipe) with the flag off, which the
+      // Additive Contract forbids. Gate here, not in the prompt, so the
+      // draft itself still classifies correctly and stays visible/
+      // reviewable in the queue even with the flag off; only the
+      // auto-convert step is blocked.
+      const recipesEnabled = await isFeatureEnabled(supabase, household.id, "household_layer");
+      if (!recipesEnabled) {
+        throw new Error("Recipe drafts can't be converted until the household layer is enabled for this household");
+      }
+
+      const title = requireString(fields, "recipeTitle");
+      const ingredients = requireString(fields, "recipeIngredients");
+      const instructions = fieldValue(fields, "recipeInstructions");
+      const servingsRaw = fieldValue(fields, "recipeServings");
+      const sourceUrl = fieldValue(fields, "recipeSourceUrl");
+      const servings = typeof servingsRaw === "number" ? Math.round(servingsRaw) : null;
+
+      const recipe = await withActionLog(supabase, {
+        householdId: household.id,
+        feature: "intake_convert",
+        describe: (row: Awaited<ReturnType<typeof recipesRepo.create>>) => `Saved the recipe "${row.title}" from an intake draft`,
+        tableName: "recipes",
+        recordIdOf: (row) => row.id,
+        undoable: true,
+      }, () =>
+        recipesRepo.create(supabase, {
+          household_id: household.id,
+          created_by_person_id: selfPerson.id,
+          title,
+          ingredients,
+          instructions: typeof instructions === "string" ? instructions : null,
+          servings,
+          source_url: typeof sourceUrl === "string" ? sourceUrl : null,
+        })
+      );
+
+      const verification = await verifyRecordPersisted(supabase, recipesRepo.getById, recipe.id, { title });
+      return {
+        table: "recipes",
+        recordId: recipe.id,
+        confirmationMessage: buildVerifiedConfirmationMessage(verification, (row) => `saved the recipe "${row.title}"`),
       };
     }
 
