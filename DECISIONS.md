@@ -2349,3 +2349,96 @@ the brief asked for a route, not a device-provisioning story.
 **Next:** Module 6 (Execution, draft-only in v1) per the brief's own module order — a scoped,
 category-allowlisted draft-generation scaffold for RSVPs/reschedules/confirmations/gift orders, with
 a hard exclusion on anything client-facing, per the brief's compliance-industry constraint.
+
+## D-122 | 2026-09-01 | Module 6: Execution (draft-only) — assistant address, category allowlist, hard client-facing exclusion
+
+**Context:** Sixth module under the Build Brief's additive contract. Scope per the brief: the
+assistant gets an address it can be CC'd or forwarded to, and can prepare drafts on the household's
+behalf under tiered autonomy (`draft-only` → `send-with-approval` → `send-autonomously`), with
+`draft-only` the only enabled tier in v1. Narrow starting categories: RSVPs, reschedules,
+confirmations, gift orders. Hard exclusion, verified as an allowlist rather than a blocklist: nothing
+client-facing, given the household owner works in a compliance-bound industry.
+
+**Decision:** Four new additive tables, one new flag, zero writes to any established table:
+
+- `supabase/migrations/20260901000006_module6_execution_draft_only.sql` — `execution_categories`
+  (household-scoped on/off per category, unique on `(household_id, category)`), `assistant_email_config`
+  (one generated address per household, `smith-household-<slug>@assist.lifeos.app` pattern, no live
+  inbound wiring — see QUEUE-021), `contact_execution_settings` (per-person `is_business_contact`
+  exclusion flag; colleagues are hard-excluded in application code and can't be re-enabled from this
+  table), `execution_drafts` (category, contact, subject/body, status `pending`/`approved`/`discarded`,
+  reviewed-by/reviewed-at). All four carry `household_id` and are covered by new RLS policies.
+- `lib/execution/labels.ts` — canonical `EXECUTION_CATEGORIES`, `CATEGORY_LABELS`, and
+  `templateForCategory` (a deterministic, non-AI string template per category — see QUEUE-023);
+  `lib/execution/generate-draft.ts` re-exports `templateForCategory` from here rather than duplicating
+  it, and holds `proposeExecutionDraft`, the single write path into `execution_drafts` (Additive
+  Contract §3 — no other code writes to this table directly).
+- `lib/execution/assistant-address.ts` — `getOrCreateAssistantEmailConfig`, address generation only;
+  `ASSISTANT_EMAIL_DOMAIN = "assist.lifeos.app"` is a placeholder domain, not a live mailbox (see
+  QUEUE-021 — inbound requires a verified Resend sending domain, already blocked per
+  `concepts/transactional-email-delivery`).
+- `app/(app)/execution/page.tsx` — flag-gated-404 route (same `notFound()` pattern as `/ambient`),
+  deliberately excluded from `NAV_ITEMS` (direct URL only, QUEUE-024) and from Settings (no toggle UI
+  yet, QUEUE-025 — flag flipped the same direct-`feature_flags`-upsert way every prior module's flag
+  was verified). Renders the assistant address card, the category allowlist toggles, the contact
+  exclusion list (colleagues hard-excluded, everyone else toggleable), the new-draft form, and
+  `DraftReviewQueue` (approve/discard, formatted dates via `date-fns`, never raw ISO strings).
+- `autonomy_tier` is stored on drafts/settings per the brief's tiered-autonomy design but only
+  `draft-only` is reachable from any UI path in v1 — the column exists so `send-with-approval`/
+  `send-autonomously` are additive follow-ups, not schema changes (QUEUE-022).
+
+**Hard exclusion, allowlist not blocklist:** category enablement defaults every category OFF per
+household; there is no code path that drafts anything outside the four allowlisted categories, and
+colleague contacts are excluded in `lib/execution/generate-draft.ts` before any per-household
+`contact_execution_settings` override is even consulted, so a household member cannot accidentally
+re-enable drafting for a colleague. No outbound send exists anywhere in this module — every draft is
+inert text sitting in `execution_drafts` until a human approves or discards it; "approved" only flips
+a status column, it never dispatches anything (brief §9 — no outbound communication in v1).
+
+**Single flag:** `execution_draft_only`, default OFF, registered in `lib/flags.ts`. With the flag off,
+`/execution` 404s via `notFound()`, identical in spirit to every other module's flag-gated-404 pattern.
+No existing route, page, or component was touched by this module.
+
+**Bug found and fixed during live verification (QUEUE-027):** the New Draft form
+(`new-draft-form.tsx`) seeded `category`/`contactPersonId` once via a `useState` initializer reading
+`enabledCategories[0] ?? ""`. Because the form mounts before any category is turned on, that
+initializer froze at `""`; turning a category on afterward re-rendered the `<select>` with a
+browser-default highlighted first option that looked selected while the actual React state stayed
+`""`, silently keeping "Save for review" disabled via `!category` with no visible explanation. Fixed
+by deriving `effectiveCategory`/`effectiveContactPersonId` from current props on every render
+(computed values, not state synced via a `useEffect`) instead of seeding state once at mount — same
+fix pattern covers a selected contact later being excluded mid-session. Shipped as a same-module
+follow-up commit on `main` (`6987ded`) rather than reopening the feature branch, since the original
+Module 6 merge was already clean and this is a same-file bugfix, not new functionality. Full pipeline
+re-run and green after the fix: `tsc --noEmit`, lint (0 errors, only pre-existing `android/**`
+warnings), 626/626 unit tests, 77/77 RLS tests, `pnpm build`.
+
+**Verification:** live-verified end-to-end on production with the flag toggled on/off for Smith
+Household via direct `feature_flags` upsert/revert: (1) flag OFF → `/execution` 404s; (2) flag ON →
+created an assistant address, turned RSVPs on, excluded Callan Smith (confirmed removed from the
+contact dropdown), submitted a real draft for Emlyn Smith with no manual workaround needed post-fix,
+saw it land in "Waiting for review," approved it, confirmed it moved to "Recently reviewed" with a
+human-formatted timestamp (`Sep 1, 6:53 PM`, never a raw ISO string); (3) reverted the flag back to
+OFF and confirmed `/execution` 404s again, restoring the pre-module default for the household. Test
+data (the enabled RSVPs category, the Callan exclusion, the one approved draft) was left in place
+rather than purged, consistent with every prior module's live-verification precedent — it's inert and
+invisible with the flag off.
+
+**Deferred/not done:** no Settings UI toggle for the flag (QUEUE-025); no inbound email wiring —
+address generation only, blocked on the verified-sending-domain gap already tracked in
+`concepts/transactional-email-delivery` (QUEUE-021); `send-with-approval`/`send-autonomously` tiers
+are schema-ready but unreachable from any UI (QUEUE-022); no non-AI-to-AI upgrade path decided for
+`templateForCategory` (QUEUE-023) — deterministic templates only in v1, no LLM call in this module at
+all, which also means no new AI-cost surface to reason about for a compliance-bound household.
+
+**Next:** Module 7 (Household Layer) per the brief's own module order.
+
+### Updated capability matrix delta (brief §4, as of D-122)
+
+| Capability | Status |
+| --- | --- |
+| Assistant-addressable inbox (CC/forward) | Address generation only — flag `execution_draft_only` (OFF); inbound not live, blocked on verified sending domain (QUEUE-021) |
+| Tiered autonomy per contact/category | `draft-only` implemented and is the only reachable tier; `send-with-approval`/`send-autonomously` are schema-ready, no UI path (QUEUE-022) |
+| Category allowlist (RSVPs/reschedules/confirmations/gift orders) | Implemented, default all-OFF per household, toggle UI at `/execution` |
+| Hard client-facing/colleague exclusion | Implemented as a true allowlist — colleagues excluded in code before any per-household override; no outbound send exists at all in this module |
+| Draft review queue (approve/discard) | Implemented, `DraftReviewQueue`, human-formatted dates, status never shown as a raw enum |

@@ -232,6 +232,14 @@ the remaining modules.
 **Reversal cost:** Low — pure test additions, no production code depends on them.
 **Blocking:** No
 
+### QUEUE-027
+**Module:** Module 6 / Execution (draft-only)
+**File(s):** `app/(app)/execution/new-draft-form.tsx`
+**Question:** Not a design question — logging a real bug caught and fixed during live verification, per the "100+ entries expected, do not self-censor" instruction. `category`/`contactPersonId` were seeded once via `useState(enabledCategories[0] ?? "")`. Since the New Draft form mounts on first page load (before any category is turned on), that initializer froze at `""`. Turning RSVPs on afterward re-rendered the `<select>` with a new `enabledCategories` list, and the browser's default handling of a controlled value that no longer matches any option (`""`) is to visually highlight the first `<option>` — so the dropdown looked like "RSVPs" was selected, but `category` state was still `""`, and "Save for review" stayed silently disabled via `!category` with no visible reason. Same staleness risk existed for `contactPersonId` if a selected contact was excluded mid-session.
+**Assumption made:** Fixed by deriving `effectiveCategory`/`effectiveContactPersonId` from current props on every render (a plain computed value, not `useState` synced by a `useEffect`) instead of seeding state once at mount. Verified live: after the fix, turning on a category makes the New Draft form immediately submittable with no manual reselection needed. Re-ran full pipeline (`tsc`, lint, 626 unit tests, 77 RLS tests, build) — all green. Deployed as a follow-up commit on `main` (Module 6 was already merged) rather than reopening the feature branch, since it's a same-module bugfix with a fully green pipeline, not new functionality.
+**Reversal cost:** Low — isolated to one client component's local state derivation; no schema, API, or other component changed.
+**Blocking:** No
+
 ---
 
 ## HIGH
