@@ -1091,4 +1091,202 @@ describe("RLS end-to-end (PGlite, real migrations + real seed data)", () => {
       });
     });
   });
+
+  describe("execution_categories (Module 6, D-122, owner/adult-managed allowlist)", () => {
+    it("an owner can enable a category; household members (including the child) can read it; the outsider sees none", async () => {
+      await asUser(db, RICHARD_USER, () =>
+        db.exec(
+          `insert into execution_categories (household_id, category, enabled) values ('${SEEDED_HOUSEHOLD}', 'rsvp', true);`
+        )
+      );
+
+      const childRead = await asUser(db, CHILD_USER, () =>
+        db.query(`select enabled from execution_categories where household_id = '${SEEDED_HOUSEHOLD}' and category = 'rsvp';`)
+      );
+      expect((childRead.rows[0] as { enabled: boolean }).enabled).toBe(true);
+
+      const outsiderRead = await asUser(db, OUTSIDER_USER, () =>
+        db.query(`select count(*)::int as n from execution_categories where household_id = '${SEEDED_HOUSEHOLD}';`)
+      );
+      expect((outsiderRead.rows[0] as { n: number }).n).toBe(0);
+    });
+
+    it("a child-role member cannot insert a category row (owner/adult-only WITH CHECK)", async () => {
+      await expect(
+        asUser(db, CHILD_USER, () =>
+          db.exec(
+            `insert into execution_categories (household_id, category, enabled) values ('${SEEDED_HOUSEHOLD}', 'gift_order', true);`
+          )
+        )
+      ).rejects.toThrow();
+    });
+
+    it("the outsider cannot insert a category row into a household they don't belong to", async () => {
+      await expect(
+        asUser(db, OUTSIDER_USER, () =>
+          db.exec(
+            `insert into execution_categories (household_id, category, enabled) values ('${SEEDED_HOUSEHOLD}', 'confirmation', true);`
+          )
+        )
+      ).rejects.toThrow();
+    });
+
+    it("the same household can't have two rows for the same category (unique constraint)", async () => {
+      await asUser(db, RICHARD_USER, () =>
+        db.exec(
+          `insert into execution_categories (household_id, category, enabled) values ('${SEEDED_HOUSEHOLD}', 'reschedule', false);`
+        )
+      );
+      await expect(
+        asUser(db, RICHARD_USER, () =>
+          db.exec(
+            `insert into execution_categories (household_id, category, enabled) values ('${SEEDED_HOUSEHOLD}', 'reschedule', true);`
+          )
+        )
+      ).rejects.toThrow();
+    });
+  });
+
+  describe("contact_execution_settings (Module 6, D-122, owner/adult-managed exclusions)", () => {
+    it("an owner can flag a contact as business-facing; household members can read it; the outsider sees none", async () => {
+      await asUser(db, RICHARD_USER, () =>
+        db.exec(
+          `insert into contact_execution_settings (household_id, person_id, is_business_contact) values ('${SEEDED_HOUSEHOLD}', '${DAVE_PERSON}', true);`
+        )
+      );
+
+      const childRead = await asUser(db, CHILD_USER, () =>
+        db.query(
+          `select is_business_contact from contact_execution_settings where household_id = '${SEEDED_HOUSEHOLD}' and person_id = '${DAVE_PERSON}';`
+        )
+      );
+      expect((childRead.rows[0] as { is_business_contact: boolean }).is_business_contact).toBe(true);
+
+      const outsiderRead = await asUser(db, OUTSIDER_USER, () =>
+        db.query(`select count(*)::int as n from contact_execution_settings where household_id = '${SEEDED_HOUSEHOLD}';`)
+      );
+      expect((outsiderRead.rows[0] as { n: number }).n).toBe(0);
+    });
+
+    it("a child-role member cannot insert a contact_execution_settings row (owner/adult-only WITH CHECK)", async () => {
+      await expect(
+        asUser(db, CHILD_USER, () =>
+          db.exec(
+            `insert into contact_execution_settings (household_id, person_id, is_business_contact) values ('${SEEDED_HOUSEHOLD}', '${RICHARD_PERSON}', true);`
+          )
+        )
+      ).rejects.toThrow();
+    });
+
+    it("autonomy_tier rejects anything outside the three allowed values", async () => {
+      await expect(
+        asUser(db, RICHARD_USER, () =>
+          db.exec(
+            `insert into contact_execution_settings (household_id, person_id, autonomy_tier) values ('${SEEDED_HOUSEHOLD}', '${RICHARD_PERSON}', 'send_immediately');`
+          )
+        )
+      ).rejects.toThrow();
+    });
+  });
+
+  describe("execution_drafts (Module 6, D-122, household-readable/writable review queue)", () => {
+    it("household members (including the child) can read a draft the owner creates; the outsider sees none", async () => {
+      await asUser(db, RICHARD_USER, () =>
+        db.exec(
+          `insert into execution_drafts (household_id, category, contact_person_id, draft_body) values ('${SEEDED_HOUSEHOLD}', 'rsvp', '${DAVE_PERSON}', 'Thanks, we will be there!');`
+        )
+      );
+
+      const childRead = await asUser(db, CHILD_USER, () =>
+        db.query(`select count(*)::int as n from execution_drafts where household_id = '${SEEDED_HOUSEHOLD}';`)
+      );
+      expect((childRead.rows[0] as { n: number }).n).toBeGreaterThan(0);
+
+      const outsiderRead = await asUser(db, OUTSIDER_USER, () =>
+        db.query(`select count(*)::int as n from execution_drafts where household_id = '${SEEDED_HOUSEHOLD}';`)
+      );
+      expect((outsiderRead.rows[0] as { n: number }).n).toBe(0);
+    });
+
+    it("a child-role member can insert and review a draft (no owner/adult gate, matching intake_drafts' shared-inbox framing)", async () => {
+      const { rows } = await asUser(db, CHILD_USER, () =>
+        db.query(
+          `insert into execution_drafts (household_id, category, draft_body) values ('${SEEDED_HOUSEHOLD}', 'gift_order', 'Confirming the order.') returning id;`
+        )
+      );
+      const { id } = rows[0] as { id: string };
+
+      await asUser(db, CHILD_USER, () =>
+        db.exec(
+          `update execution_drafts set status = 'approved', reviewed_by_person_id = '${CHILD_PERSON}', reviewed_at = now() where id = '${id}';`
+        )
+      );
+      const reread = await asUser(db, CHILD_USER, () => db.query(`select status from execution_drafts where id = '${id}';`));
+      expect((reread.rows[0] as { status: string }).status).toBe("approved");
+    });
+
+    it("the outsider cannot insert a draft into a household they don't belong to", async () => {
+      await expect(
+        asUser(db, OUTSIDER_USER, () =>
+          db.exec(
+            `insert into execution_drafts (household_id, category, draft_body) values ('${SEEDED_HOUSEHOLD}', 'rsvp', 'should fail');`
+          )
+        )
+      ).rejects.toThrow();
+    });
+
+    it("the reviewed pair constraint rejects a status of approved with no reviewer set", async () => {
+      await expect(
+        asUser(db, RICHARD_USER, () =>
+          db.exec(
+            `insert into execution_drafts (household_id, category, draft_body, status) values ('${SEEDED_HOUSEHOLD}', 'confirmation', 'partial', 'approved');`
+          )
+        )
+      ).rejects.toThrow();
+    });
+
+    it("the reviewed pair constraint rejects a pending_review status with a reviewer already set", async () => {
+      await expect(
+        asUser(db, RICHARD_USER, () =>
+          db.exec(
+            `insert into execution_drafts (household_id, category, draft_body, status, reviewed_by_person_id, reviewed_at) values ('${SEEDED_HOUSEHOLD}', 'confirmation', 'partial', 'pending_review', '${RICHARD_PERSON}', now());`
+          )
+        )
+      ).rejects.toThrow();
+    });
+  });
+
+  describe("assistant_email_config (Module 6, D-122, owner/adult-managed, one row per household)", () => {
+    it("an owner can create the household's assistant alias; household members can read it; the outsider sees none", async () => {
+      await asUser(db, RICHARD_USER, () =>
+        db.exec(`insert into assistant_email_config (household_id, alias) values ('${SEEDED_HOUSEHOLD}', 'smith-abc123');`)
+      );
+
+      const childRead = await asUser(db, CHILD_USER, () =>
+        db.query(`select alias from assistant_email_config where household_id = '${SEEDED_HOUSEHOLD}';`)
+      );
+      expect((childRead.rows[0] as { alias: string }).alias).toBe("smith-abc123");
+
+      const outsiderRead = await asUser(db, OUTSIDER_USER, () =>
+        db.query(`select count(*)::int as n from assistant_email_config where household_id = '${SEEDED_HOUSEHOLD}';`)
+      );
+      expect((outsiderRead.rows[0] as { n: number }).n).toBe(0);
+    });
+
+    it("a child-role member cannot create the household's assistant alias (owner/adult-only WITH CHECK)", async () => {
+      await expect(
+        asUser(db, CHILD_USER, () =>
+          db.exec(`insert into assistant_email_config (household_id, alias) values ('${OUTSIDER_HOUSEHOLD}', 'child-attempt');`)
+        )
+      ).rejects.toThrow();
+    });
+
+    it("the outsider cannot create an assistant alias for a household they don't belong to", async () => {
+      await expect(
+        asUser(db, OUTSIDER_USER, () =>
+          db.exec(`insert into assistant_email_config (household_id, alias) values ('${SEEDED_HOUSEHOLD}', 'outsider-attempt');`)
+        )
+      ).rejects.toThrow();
+    });
+  });
 });
