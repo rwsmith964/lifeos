@@ -184,6 +184,54 @@ the remaining modules.
 **Reversal cost:** Low — the interval is a single named constant (`AUTO_REFRESH_INTERVAL_MS`) in `ambient-refresh.tsx`; changing the cadence or swapping to a soft-refresh strategy touches only that one client component, nothing server-side.
 **Blocking:** No
 
+### QUEUE-021
+**Module:** Module 6 / Execution (draft-only)
+**File(s):** `lib/execution/assistant-address.ts`, `supabase/migrations/20260901000006_module6_execution_draft_only.sql` (`assistant_email_config`)
+**Question:** The brief says "the assistant gets its own address so it can be CC'd, forwarded to, and can draft replies on my behalf." That requires a live, receiving inbox on a verified sending/receiving domain, plus an inbound-email webhook (Resend inbound routing or equivalent) that turns an incoming message into an `execution_drafts` row. The project's existing Resend account has no verified sending domain yet — see project knowledge `concepts/transactional-email-delivery.md`, which already blocks outbound verification emails for the same reason — so there is nowhere real to point an assistant address today.
+**Assumption made:** Built the full data model, allowlist/exclusion enforcement, and manual-entry review UI now, so the moment a verified domain exists the only remaining work is one inbound webhook route. `assistant_email_config` stores a placeholder alias under `ASSISTANT_EMAIL_DOMAIN = "assist.lifeos.app"` (not a live, receivable domain) via `getOrCreateAssistantEmailConfig`; the UI shows this address so it's visible for planning purposes but nothing sends mail to it or receives mail from it yet. `execution_drafts.source_type` already includes `"inbound_email"` as a value so the schema doesn't need to change when this is wired up — only a new webhook route and a new `proposeExecutionDraft` call site are needed.
+**Reversal cost:** Low — no code assumes the placeholder domain is real; swapping in a verified domain and adding the inbound webhook is additive, touches no existing row or column.
+**Blocking:** No
+
+### QUEUE-022
+**Module:** Module 6 / Execution (draft-only)
+**File(s):** `supabase/migrations/20260901000006_module6_execution_draft_only.sql` (`contact_execution_settings.autonomy_tier`)
+**Question:** The brief specifies three tiers (`draft-only` → `send-with-approval` → `send-autonomously`) but says "Default and only enabled value in v1 is draft-only," and Section 9 separately says "no outbound communication in v1." It doesn't say whether the other two tier values should even be selectable in the UI yet, or exist only in the schema for forward-compatibility.
+**Assumption made:** The column accepts all three values (CHECK constraint allows `draft_only`, `send_with_approval`, `send_autonomously`) so a future module doesn't need a schema migration to add them, but the v1 UI (`contact-exclusion-list.tsx`) never renders a control to set anything other than the default `draft_only` — there is no autonomy-tier picker anywhere in this module's UI. Nothing in the codebase reads or branches on `autonomy_tier` yet; it is pure schema scaffolding for a later module.
+**Reversal cost:** Low — adding a tier-picker control later is a pure UI addition; no data migration needed since the column and its values already exist.
+**Blocking:** No
+
+### QUEUE-023
+**Module:** Module 6 / Execution (draft-only)
+**File(s):** `lib/execution/labels.ts` (`templateForCategory`)
+**Question:** The brief doesn't say whether draft text should be AI-generated (matching the AI-drafted intake pattern from Module 3) or simple deterministic boilerplate the household edits by hand.
+**Assumption made:** v1 uses deterministic, non-AI starter templates per category (one fixed sentence per category, with the contact's name substituted in) rather than calling the AI provider. Rationale: Module 6 has no automated trigger yet (see QUEUE-021 — nothing creates a draft except a household member manually filling out the form), so there's no upstream context (the actual event/reschedule/order details) an AI call could usefully draft from; a canned starting sentence the person immediately edits is honest about that, whereas an AI call would either hallucinate specifics or need the same manual input restated as a prompt anyway.
+**Reversal cost:** Medium — swapping `templateForCategory` for an AI-generated draft would need real upstream context (e.g. the calendar event or intake item that triggered it) to be worth doing, which doesn't exist yet; the UI call site (`new-draft-form.tsx`'s "Use a starter template" button) would need to become an async action instead of a synchronous string lookup.
+**Blocking:** No
+
+### QUEUE-024
+**Module:** Module 6 / Execution (draft-only)
+**File(s):** `app/(app)/execution/page.tsx`, `app/(app)/layout.tsx` (`NAV_ITEMS`)
+**Question:** Should `/execution` get a nav link now, or stay direct-URL-only like `/ambient`?
+**Assumption made:** No nav link, following the exact Module 5 precedent — flag-gated via `notFound()`, reachable only by typing the URL. This keeps the feature invisible to a household until the flag is explicitly turned on for them, consistent with the additive contract's "all flags off ⇒ identical to today" requirement, and avoids a half-finished feature showing up in navigation before inbound email (QUEUE-021) exists.
+**Reversal cost:** Low — adding a `NAV_ITEMS` entry once the flag is enabled for a household is a one-line change.
+**Blocking:** No
+
+### QUEUE-025
+**Module:** Module 6 / Execution (draft-only)
+**File(s):** `app/(app)/execution/actions.ts`, `lib/flags.ts`
+**Question:** Should there be a Settings-page UI toggle for `execution_draft_only`, or is direct-Supabase-write (as used for every other module's flag so far) fine for v1?
+**Assumption made:** No Settings UI toggle added — followed the existing precedent (no module has wired a flag toggle into Settings yet). Flag is flipped the same way Modules 1-5 were verified: a direct `execute_sql` update to `feature_flags` for a specific household during live verification.
+**Reversal cost:** Low — a single Settings toggle component reading/writing `feature_flags` would work identically for all six flags at once; deferring it doesn't lock in anything module-specific.
+**Blocking:** No
+
+### QUEUE-026
+**Module:** Module 6 / Execution (draft-only)
+**File(s):** `supabase/tests/pglite/rls.test.ts`
+**Question:** The brief's additive contract requires tenant scoping on every new table/query/route but doesn't explicitly require new RLS pglite tests for every module (Modules 1-5 vary in how much RLS coverage they added).
+**Assumption made:** Added RLS tests for all four new Module 6 tables (`execution_categories`, `contact_execution_settings`, `execution_drafts`, `assistant_email_config`) covering household isolation, the owner/adult role gate, and the relevant CHECK constraints, following the `intake_drafts`/`action_log` precedent — Module 6 introduces an outbound-adjacent feature (drafts that a household member could copy/paste and send), so the bar for verifying tenant isolation felt higher than for a purely internal feature.
+**Reversal cost:** Low — pure test additions, no production code depends on them.
+**Blocking:** No
+
 ---
 
 ## HIGH
