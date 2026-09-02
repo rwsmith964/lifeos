@@ -103,8 +103,15 @@ const CHIP_KIND_STYLES: Record<string, string> = {
 // "where does this pixel go" work already happened there, this just draws
 // the hour ruler, positions each item's block, and drops a small travel
 // pill into any gap with a resolved drive-time estimate.
-function DayTimelineView({ timeline }: { timeline: import("@/lib/calendar/day-timeline").DayTimelineLayout }) {
+function DayTimelineView({
+  timeline,
+  day,
+}: {
+  timeline: import("@/lib/calendar/day-timeline").DayTimelineLayout;
+  day: Date;
+}) {
   const totalHours = timeline.endHour - timeline.startHour;
+  const dayStart = startOfDay(day);
   const pixelsPerHour = 56;
   const trackHeight = totalHours * pixelsPerHour;
 
@@ -154,7 +161,9 @@ function DayTimelineView({ timeline }: { timeline: import("@/lib/calendar/day-ti
                 style={{ top: `${item.topPercent}%`, height: `${item.heightPercent}%`, minHeight: "18px" }}
               >
                 <span className="font-medium">{item.title}</span>{" "}
-                <span className="text-[10px] opacity-80">{format(item.startsAt, "h:mm a")}</span>
+                <span className="text-[10px] opacity-80">
+                  {item.startsAt < dayStart ? "In progress" : format(item.startsAt, "h:mm a")}
+                </span>
               </div>
             ))}
           </div>
@@ -898,7 +907,7 @@ export default async function CalendarPage({
 
       <div id="selected-day" className="flex flex-col gap-2 scroll-mt-4">
         {range !== "day" && <p className="text-xs font-medium text-muted-foreground">{format(selectedDay, "EEEE, MMMM d")}</p>}
-        {dayTimeline && <DayTimelineView timeline={dayTimeline} />}
+        {dayTimeline && <DayTimelineView timeline={dayTimeline} day={selectedDay} />}
         {selectedDayItems.length === 0 ? (
           <Card>
             <CardContent className="text-sm text-muted-foreground">
