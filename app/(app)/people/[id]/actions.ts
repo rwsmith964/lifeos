@@ -10,6 +10,10 @@ import {
   personGiftSitesRepo,
 } from "@/lib/db/repositories/people";
 import { workSchedulesRepo, timeOffEntriesRepo } from "@/lib/db/repositories/work-schedule";
+import {
+  childActivitiesRepo,
+  setAttendanceForActivity,
+} from "@/lib/db/repositories/child-activities";
 import { giftsRepo } from "@/lib/db/repositories/gifts";
 import {
   contactCadencesRepo,
@@ -26,7 +30,10 @@ import {
   interactionInsertSchema,
   workScheduleInsertSchema,
   timeOffEntryInsertSchema,
+  childActivityInsertSchema,
+  attendanceStatusSchema,
 } from "@/lib/db/schemas";
+import { z } from "zod";
 import { friendlyMutationError } from "@/lib/db/errors";
 import { applyGiftFeedback } from "@/lib/gifts/feedback";
 import { generateGiftSuggestions } from "@/lib/gifts/suggest";
@@ -195,6 +202,90 @@ export async function deleteWorkScheduleAction(personId: string, scheduleId: str
   revalidatePath(`/people/${personId}`);
   revalidatePath("/settings");
   revalidatePath("/calendar");
+  return { error: null };
+}
+
+// child_activities + child_activity_attendance (D-129) ----------------------
+// Infrastructure only, per the user's explicit instruction -- these actions
+// let a household add/remove activity rows and set per-adult attendance,
+// but nothing here ever runs automatically or auto-creates calendar_events.
+
+export async function addChildActivityAction(
+  childPersonId: string,
+  _prevState: SimpleFormState,
+  formData: FormData
+): Promise<SimpleFormState> {
+  const { supabase, household } = await requireHouseholdContext();
+
+  const parsed = childActivityInsertSchema.safeParse({
+    household_id: household.id,
+    child_person_id: childPersonId,
+    name: String(formData.get("name") ?? ""),
+    activity_type: String(formData.get("activityType") ?? "").trim() || null,
+    day_of_week: Number(formData.get("dayOfWeek") ?? -1),
+    start_time: String(formData.get("startTime") ?? ""),
+    end_time: String(formData.get("endTime") ?? ""),
+    location_name: String(formData.get("locationName") ?? "").trim() || null,
+    location_address: String(formData.get("locationAddress") ?? "").trim() || null,
+    notes: String(formData.get("notes") ?? ""),
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
+
+  try {
+    await childActivitiesRepo.create(supabase, parsed.data);
+  } catch (error) {
+    return { error: friendlyMutationError(error, { fallback: "Couldn't save that activity — please try again." }) };
+  }
+  revalidatePath(`/people/${childPersonId}`);
+  return { error: null };
+}
+
+export async function deleteChildActivityAction(
+  childPersonId: string,
+  activityId: string
+): Promise<SimpleFormState> {
+  const { supabase } = await requireHouseholdContext();
+  try {
+    await childActivitiesRepo.remove(supabase, activityId);
+  } catch (error) {
+    return { error: friendlyMutationError(error, { fallback: "Couldn't remove that activity — please try again." }) };
+  }
+  revalidatePath(`/people/${childPersonId}`);
+  return { error: null };
+}
+
+const setAttendanceEntriesSchema = z.array(
+  z.object({ person_id: z.string().uuid(), attendance_status: attendanceStatusSchema })
+);
+
+/**
+ * Sets one adult's mandatory/optional/informational attendance for a
+ * child activity — "I have to go to games, not practices" is exactly the
+ * per-adult, per-activity granularity this reads/writes. Called once per
+ * select change from the activity's attendance row in the UI, so it
+ * always sends the full current entries for that activity (read from
+ * hidden form state) rather than a single delta, matching
+ * setAttendanceForActivity's replace-all semantics.
+ */
+export async function setChildActivityAttendanceAction(
+  childPersonId: string,
+  activityId: string,
+  entries: { person_id: string; attendance_status: string }[]
+): Promise<SimpleFormState> {
+  const { supabase } = await requireHouseholdContext();
+  const parsed = setAttendanceEntriesSchema.safeParse(entries);
+  if (!parsed.success) return { error: "Invalid attendance value." };
+
+  try {
+    await setAttendanceForActivity(
+      supabase,
+      activityId,
+      parsed.data.map((e) => ({ personId: e.person_id, attendanceStatus: e.attendance_status }))
+    );
+  } catch (error) {
+    return { error: friendlyMutationError(error, { fallback: "Couldn't save attendance — please try again." }) };
+  }
+  revalidatePath(`/people/${childPersonId}`);
   return { error: null };
 }
 

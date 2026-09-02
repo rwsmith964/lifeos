@@ -731,6 +731,33 @@ export const timeOffEntryInsertSchema = z.object({
   path: ["end_date"],
 });
 
+// child_activities + child_activity_attendance (D-129) ----------------------
+
+export const childActivityInsertSchema = z.object({
+  household_id: uuid,
+  child_person_id: uuid,
+  name: z.string().trim().min(1, "Give this activity a name.").max(80, "Keep the name under 80 characters."),
+  activity_type: z.string().trim().max(40).optional().nullable(),
+  day_of_week: z.number().int().min(0, "Pick a day of the week.").max(6, "Pick a day of the week."),
+  start_time: timeOfDay,
+  end_time: timeOfDay,
+  location_name: z.string().trim().max(120).optional().nullable(),
+  location_address: z.string().trim().max(200).optional().nullable(),
+  location_lat: z.number().min(-90).max(90).optional().nullable(),
+  location_lng: z.number().min(-180).max(180).optional().nullable(),
+  drive_time_minutes: z.number().int().min(0).optional().nullable(),
+  notes: z.string().trim().max(500).optional().default(""),
+  is_active: z.boolean().optional().default(true),
+}).refine((v) => v.end_time > v.start_time, {
+  message: "End time must be after the start time.",
+  path: ["end_time"],
+});
+
+export const childActivityAttendanceEntrySchema = z.object({
+  person_id: uuid,
+  attendance_status: attendanceStatusSchema,
+});
+
 // Module 1: Relationship & Gift Engine (D-117, relationship_gift_engine_v2 flag) ---
 
 export const wishlistItemSourceSchema = z.enum(["manual", "conversation_log"]);

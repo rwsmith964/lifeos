@@ -389,6 +389,57 @@ export interface TimeOffEntryRow {
 export type TimeOffEntryInsert = Insert<TimeOffEntryRow, "id" | "created_at" | "updated_at">;
 export type TimeOffEntryUpdate = Update<TimeOffEntryRow>;
 
+// child_activities / child_activity_attendance (D-129) ---------------------
+
+export interface ChildActivityRow {
+  id: string;
+  household_id: string;
+  child_person_id: string;
+  name: string;
+  activity_type: string | null;
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+  location_name: string | null;
+  location_address: string | null;
+  location_lat: number | null;
+  location_lng: number | null;
+  drive_time_minutes: number | null;
+  notes: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+export type ChildActivityInsert = Insert<
+  ChildActivityRow,
+  | "id"
+  | "activity_type"
+  | "location_name"
+  | "location_address"
+  | "location_lat"
+  | "location_lng"
+  | "drive_time_minutes"
+  | "notes"
+  | "is_active"
+  | "created_at"
+  | "updated_at"
+>;
+export type ChildActivityUpdate = Update<ChildActivityRow>;
+
+export interface ChildActivityAttendanceRow {
+  id: string;
+  child_activity_id: string;
+  person_id: string;
+  attendance_status: AttendanceStatus;
+  created_at: string;
+  updated_at: string;
+}
+export type ChildActivityAttendanceInsert = Insert<
+  ChildActivityAttendanceRow,
+  "id" | "attendance_status" | "created_at" | "updated_at"
+>;
+export type ChildActivityAttendanceUpdate = Update<ChildActivityAttendanceRow>;
+
 // person_gift_budgets ---------------------------------------------------
 
 export interface PersonGiftBudgetRow {
