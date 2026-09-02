@@ -31,8 +31,9 @@ import { isKidLinkedEventVisibleForViewer } from "@/lib/custody/visibility";
 import { listPeopleForHousehold, peopleRepo } from "@/lib/db/repositories/people";
 import { usersRepo } from "@/lib/db/repositories/households";
 import { isFeatureEnabled } from "@/lib/flags";
-import { detectScheduleConflictsForHousehold } from "@/lib/scheduling/detect-conflicts";
+import { detectScheduleConflictsForHousehold, resolveTravelLegsForHousehold } from "@/lib/scheduling/detect-conflicts";
 import type { TravelConflictWarning } from "@/lib/scheduling/travel-conflicts";
+import { buildDayTimeline, type DayTimelineItemLike, type DayTimelineTravelLeg } from "@/lib/calendar/day-timeline";
 import { listWorkSchedulesForPeople, listTimeOffForPeopleInRange } from "@/lib/db/repositories/work-schedule";
 import { getWeekendPlanForDate } from "@/lib/db/repositories/system";
 import { listOpenOpportunitiesWithSubjectForHouseholdInDateRange } from "@/lib/db/repositories/opportunities";
@@ -90,7 +91,78 @@ const CHIP_KIND_STYLES: Record<string, string> = {
   birthday: "bg-pink-100 text-pink-800 dark:bg-pink-950 dark:text-pink-300",
   work_shift: "bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-300",
   time_off: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
+  // D-133: day timeline positions custody blocks too (unlike the month
+  // grid's frame bar, which deliberately pulls custody out of the chip
+  // list) -- a same-day handover's exact time is worth seeing on an
+  // hourly timeline, so it needs its own block color here.
+  custody: "bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300",
 };
+
+// D-133: day-view hour-positioned timeline. Pure presentational component
+// over the DB-free layout math in lib/calendar/day-timeline.ts -- all the
+// "where does this pixel go" work already happened there, this just draws
+// the hour ruler, positions each item's block, and drops a small travel
+// pill into any gap with a resolved drive-time estimate.
+function DayTimelineView({ timeline }: { timeline: import("@/lib/calendar/day-timeline").DayTimelineLayout }) {
+  const totalHours = timeline.endHour - timeline.startHour;
+  const pixelsPerHour = 56;
+  const trackHeight = totalHours * pixelsPerHour;
+
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-2">
+        {timeline.allDay.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 border-b pb-2">
+            {timeline.allDay.map((item) => (
+              <span
+                key={item.id}
+                className={cn("truncate rounded-sm px-1.5 py-0.5 text-xs", CHIP_KIND_STYLES[item.kind] ?? "bg-muted text-foreground")}
+              >
+                {item.title}
+              </span>
+            ))}
+          </div>
+        )}
+        <div className="relative flex" style={{ height: `${trackHeight}px` }}>
+          <div className="relative w-12 shrink-0 text-right text-[10px] text-muted-foreground">
+            {timeline.hourLabels.map((label, index) => (
+              <span key={label} className="absolute right-1.5 -translate-y-1/2" style={{ top: `${(index / totalHours) * 100}%` }}>
+                {label}
+              </span>
+            ))}
+          </div>
+          <div className="relative flex-1 border-l">
+            {timeline.hourLabels.map((label, index) => (
+              <div key={label} className="absolute left-0 w-full border-t border-dashed border-muted" style={{ top: `${(index / totalHours) * 100}%` }} />
+            ))}
+            {timeline.travelSegments.map((segment) => (
+              <div
+                key={`${segment.fromEventId}-${segment.toEventId}`}
+                className="absolute left-1 flex items-center rounded-sm bg-muted px-1 text-[10px] text-muted-foreground"
+                style={{ top: `${segment.topPercent}%`, height: `${segment.heightPercent}%`, minHeight: "14px" }}
+              >
+                {Math.round(segment.minutes)} min drive
+              </div>
+            ))}
+            {timeline.positioned.map((item) => (
+              <div
+                key={item.id}
+                className={cn(
+                  "absolute right-1 left-16 overflow-hidden rounded-sm border px-1.5 py-0.5 text-xs",
+                  CHIP_KIND_STYLES[item.kind] ?? "bg-muted text-foreground"
+                )}
+                style={{ top: `${item.topPercent}%`, height: `${item.heightPercent}%`, minHeight: "18px" }}
+              >
+                <span className="font-medium">{item.title}</span>{" "}
+                <span className="text-[10px] opacity-80">{format(item.startsAt, "h:mm a")}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 function humanizeChipLabel(raw: string): string {
   return (
@@ -233,6 +305,12 @@ export default async function CalendarPage({
   // anything; a failure here (e.g. travel API down) is swallowed to an
   // empty warning list so it can never break the calendar page itself.
   let scheduleConflicts: TravelConflictWarning[] = [];
+  // D-133: same feature-flag/home-coords gate as the conflict banner below
+  // powers the day-timeline's travel segments -- only resolved when the
+  // day view is actually showing (range === "day"), over just that day's
+  // window rather than the whole grid, since a full day timeline wants
+  // EVERY adjacent leg's minutes, not only the ones flagged as too tight.
+  let dayTimelineTravelLegs: DayTimelineTravelLeg[] = [];
   if (await isFeatureEnabled(supabase, household.id, "scheduling_v2")) {
     try {
       const selfPeople = await peopleRepo.list(supabase, (q) =>
@@ -241,14 +319,41 @@ export default async function CalendarPage({
       const ownerUserId = selfPeople[0]?.user_id;
       const owner = ownerUserId ? await usersRepo.getById(supabase, ownerUserId) : null;
       if (owner?.home_lat != null && owner?.home_lng != null) {
+        const home = { lat: owner.home_lat, lng: owner.home_lng };
+        const travelOptions = { googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY, mapboxAccessToken: process.env.MAPBOX_ACCESS_TOKEN };
         scheduleConflicts = await detectScheduleConflictsForHousehold(
           supabase,
           household.id,
           gridStart.toISOString(),
           gridEnd.toISOString(),
-          { lat: owner.home_lat, lng: owner.home_lng },
-          { googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY, mapboxAccessToken: process.env.MAPBOX_ACCESS_TOKEN }
+          home,
+          travelOptions
         );
+        if (range === "day") {
+          const { located, travelMinutesByEventId } = await resolveTravelLegsForHousehold(
+            supabase,
+            household.id,
+            startOfDay(selectedDay).toISOString(),
+            endOfDay(selectedDay).toISOString(),
+            home,
+            travelOptions
+          );
+          // Each leg in travelMinutesByEventId is keyed by the "to" event's
+          // id (matching detectTravelTimeConflicts's own convention); the
+          // "from" event is whichever located event immediately precedes it
+          // chronologically -- same pairing detectTravelTimeConflicts does
+          // internally, just exposed here instead of collapsed into a
+          // conflict-only warning.
+          const sortedLocated = [...located]
+            .filter((e) => e.locationLat != null && e.locationLng != null)
+            .sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
+          dayTimelineTravelLegs = sortedLocated.slice(1).flatMap((toEvent, index) => {
+            const fromEvent = sortedLocated[index];
+            const lookup = travelMinutesByEventId.get(toEvent.id);
+            if (!lookup) return [];
+            return [{ fromEventId: fromEvent.id, toEventId: toEvent.id, minutes: lookup.minutes }];
+          });
+        }
       }
     } catch (error) {
       console.error("Calendar page: conflict detection failed (non-fatal):", error);
@@ -417,6 +522,23 @@ export default async function CalendarPage({
 
   const selectedDayKey = format(selectedDay, DAY_PARAM_FORMAT);
   const selectedDayItems = byDay.get(selectedDayKey) ?? [];
+
+  // D-133: day-view hour-positioned timeline. work_shift items only carry
+  // a bare date (no real time -- see lib/calendar/work-schedule.ts's known
+  // limitation, QUEUE note below), so they're forced into the all-day
+  // strip alongside birthdays/time off rather than positioned at a
+  // misleading midnight slot. Custody items keep their real times and DO
+  // get positioned, since a same-day handover is genuinely time-of-day
+  // information worth seeing on the timeline.
+  const dayTimelineItems: DayTimelineItemLike[] = selectedDayItems.map((item) => ({
+    id: item.id,
+    kind: item.kind,
+    title: item.title,
+    startsAt: item.startsAt,
+    endsAt: item.endsAt,
+    allDay: item.allDay || item.kind === "work_shift",
+  }));
+  const dayTimeline = range === "day" ? buildDayTimeline(selectedDay, dayTimelineItems, dayTimelineTravelLegs) : null;
 
   const viewQuery = view === "custody" ? "&view=custody" : "";
   const rangeQuery = range !== "month" ? `&range=${range}` : "";
@@ -776,6 +898,7 @@ export default async function CalendarPage({
 
       <div id="selected-day" className="flex flex-col gap-2 scroll-mt-4">
         {range !== "day" && <p className="text-xs font-medium text-muted-foreground">{format(selectedDay, "EEEE, MMMM d")}</p>}
+        {dayTimeline && <DayTimelineView timeline={dayTimeline} />}
         {selectedDayItems.length === 0 ? (
           <Card>
             <CardContent className="text-sm text-muted-foreground">
