@@ -288,6 +288,14 @@ the remaining modules.
 **Reversal cost:** Low — both sub-decisions are easily revisited: the UI still supports switching either schedule back to `Rolling cycle` mode (D-125's cycle path is completely untouched and the old field values are provably still present and correct), and tightening the constraint/schema later to null the unused fields on write is a small, isolated change with no data-loss risk to the schedules already migrated.
 **Blocking:** No
 
+### QUEUE-034
+**Module:** Tooling / live-verification (D-129 child-activity infrastructure)
+**File(s):** N/A — infrastructure/tooling gap, not an app code file.
+**Question:** After deploying D-129 (child-activity infrastructure), the usual UI live-verification step (open the deployed page in an authenticated browser session, add a test activity, confirm it renders, delete it, confirm no residue) could not run: the local browser tool timed out three times waiting for device approval (device likely offline/asleep/no one present to approve), and a cloud (logged-out) browser can't reach an authenticated page without credentials I don't have and shouldn't guess at. Should the standing live-verify step fall back to a documented database-level check (exercised this time: confirmed table/column shapes, confirmed all 4 RLS policies exist on both new tables, ran a real insert-attendance-select-cascade-delete cycle via the Supabase connector, confirmed zero residual rows) whenever the local browser is unreachable, or should genuinely UI-only concerns (does the form actually render on the page, does the client-side attendance dropdown show friendly labels not raw enum values) wait for a browser session to become available before being marked verified?
+**Assumption made:** Treated the database-level check above as sufficient live-verification for this deploy, since `pnpm build` already compiled the new page/components with no type or render errors, and documented D-129 as verified-at-the-data-layer with the UI-render check flagged as still open. Did not block the rest of the backlog (weekend-plan scheduling) on browser availability.
+**Reversal cost:** Low — the next time the local browser is reachable, a two-minute check (open a child's person page, confirm the Activities card renders, add and delete a test activity) closes this out; nothing about the shipped code needs to change either way.
+**Blocking:** No
+
 ---
 
 ## HIGH

@@ -2815,5 +2815,104 @@ brief's event context, while the actual handover day still does.
 request). Custody-aware calendar *visibility* (only showing a day on the responsible parent's own
 calendar when they have the kids), the generic child-activity infrastructure (day/time/location/
 mandatory-optional, opened but not populated with Emlyn's real schedule), and weekend-plan
-one-click scheduling with auto-computed drive/prep time blocks are tracked separately and were not
-part of this fix.
+one-click scheduling with auto-computed drive/prep time blocks are tracked separately (D-128, D-129
+below) and were not part of this fix.
+
+## D-128 | 2026-09-02 | Custody-aware calendar visibility (kid days only show for the responsible parent)
+
+**Problem:** The user asked that when a parent has custody of a child on a given day, that day's
+kid-linked stuff shows on *their* calendar — but not on days they don't have the kids, except for
+events they're personally required at (e.g. Emlyn's games, not her practices).
+
+**Design:** Two independent, additive pieces, both keyed off data that already existed:
+
+1. **Per-event visibility rule** (`lib/custody/visibility.ts`, pure functions, 9 unit tests): a
+   kid-attended event on the shared `/calendar` view is shown to a viewer on a given day only if
+   either (a) the viewer has custody of at least one attending child that day (per the child's
+   `custody_blocks`), or (b) the viewer's own `event_attendees.attendance_status` for that event is
+   `required` — so a mandatory event (a game) always shows regardless of whose custody day it is,
+   while an optional one (a practice) only shows on the responsible parent's own calendar. This
+   reused the existing attendance-status enum from the child-activity/general-attendee work
+   (D-095/D-101 era) with no schema change needed for this half.
+2. **Household-level toggle** for the co-parent's custody rows themselves:
+   `households.calendar_hide_other_parent_custody` (new boolean column, default `true`) hides the
+   *other* parent's custody-block rows from the main `/calendar` view inline, matching the reported
+   preference out of the box. The dedicated `/calendar/custody` page is deliberately left fully
+   visible regardless of this toggle, per the existing D-068 precedent that page is the "see
+   everything" view. Exposed as a checkbox in Settings so a household can flip it back on if they'd
+   rather see the whole custody picture inline on the main calendar.
+
+**Files:** `supabase/migrations/20260902000002_custody_calendar_visibility.sql` (the new column),
+`lib/custody/visibility.ts` (+ `.test.ts`), `lib/db/repositories/calendar.ts`
+(`listAttendeesForEvents` — person_id + attendance_status per event, for identity-aware logic,
+alongside the pre-existing display-name-only `listAttendeeNamesForEvents`), `lib/db/schemas.ts`,
+`app/(app)/calendar/page.tsx` (wires both rules into the day-by-day render), `app/(app)/settings/
+actions.ts` + `settings-form.tsx` (the toggle).
+
+**Verification:** `pnpm typecheck` — 0 errors. `pnpm lint` — 0 errors, 34 pre-existing warnings
+(unchanged). `pnpm test` — 71 files / 689 tests pass (680 previous + 9 new). `pnpm build` —
+succeeds. Migration applied directly to production via the Supabase connector. Merged
+`feat-custody-calendar-visibility` → `main` (`db97b0f`) and pushed. Deployed to
+[lifeos-seven-rho.vercel.app](https://lifeos-seven-rho.vercel.app); confirmed via direct SQL that
+the new `households.calendar_hide_other_parent_custody` column exists with the correct `true`
+default on the Smith Household's row. Full authenticated-browser click-through of the calendar's
+day-by-day rendering was not completed this segment — see QUEUE-034 (local browser unreachable);
+the underlying logic is covered by `lib/custody/visibility.test.ts`'s 9 cases (required-attendee
+shows regardless of custody, optional-attendee shows only on the responsible parent's day,
+co-parent's custody rows hidden/shown per the toggle).
+
+## D-129 | 2026-09-02 | Open (unpopulated) child-activity infrastructure — recurring schedule, location, drive time, per-adult attendance
+
+**Problem:** The user wants to be able to enter a child's recurring activities (e.g. Emlyn's Tuesday/
+Thursday soccer practices, Saturday games) with day/time, location, and drive time, and mark each one
+as mandatory or optional per adult — but explicitly did not want any real schedule data populated
+yet, just the functionality opened up.
+
+**Design:** A weekly recurrence *rule*, not materialized `calendar_events` — deliberately mirrors the
+existing `work_schedules` pattern (D-064) exactly rather than inventing a new shape, and deliberately
+does not auto-create any calendar events (out of scope for this pass; the user's separate ask for
+weekend-plan one-click scheduling is the next piece that will touch `calendar_events` directly).
+
+- `child_activities`: `household_id`, `child_person_id`, `name`, `activity_type` (nullable),
+  `day_of_week` (0=Sun..6=Sat), `start_time`/`end_time` (check `end_time > start_time`),
+  `location_name`/`location_address`/`location_lat`/`location_lng` (nullable, mirrors
+  `activity_locations`' shape), `drive_time_minutes` (nullable), `notes`, `is_active`.
+- `child_activity_attendance`: one row per `(child_activity_id, person_id)` (unique), reusing the
+  existing `attendance_status` enum (`required`/`optional`/`informational`, default `optional`) —
+  the same enum D-128's visibility rule already reads, so once real activities exist, marking one
+  `required` (a game) versus `optional` (a practice) automatically feeds D-128's calendar-visibility
+  logic with no further wiring.
+- New SQL helper `child_activity_household_id(target_child_activity_id uuid)` (security definer,
+  mirrors the existing `activity_household_id` pattern) since `child_activity_attendance` has no
+  direct `household_id` column of its own. RLS on both tables mirrors `work_schedules`/
+  `user_activities` exactly: household members can read, only owner/adult roles can insert/update/
+  delete.
+- UI: an "Activities" card on a child's person detail page (`app/(app)/people/[id]/page.tsx`) with
+  an add-activity form and a per-activity list showing a per-household-adult attendance dropdown.
+  The dropdown shows friendly labels ("Must attend" / "Optional" / "FYI only"), never the raw enum
+  value, per the standing UI rule.
+
+**Files:** `supabase/migrations/20260902000003_child_activities.sql`,
+`lib/db/repositories/child-activities.ts` (new repo), `lib/db/database.types.ts`,
+`lib/db/schemas.ts` (+ 8 new tests in `schemas.test.ts`), `app/(app)/people/[id]/actions.ts`
+(`addChildActivityAction`, `deleteChildActivityAction`, `setChildActivityAttendanceAction`),
+`app/(app)/people/[id]/person-forms.tsx` (`AddChildActivityForm`, `DeleteChildActivityButton`,
+`ChildActivityListItem`), `app/(app)/people/[id]/page.tsx` (wiring).
+
+**Verification:** `pnpm typecheck` — 0 errors. `pnpm lint` — 0 errors, 34 pre-existing warnings
+(unchanged). `pnpm test` — 71 files / 697 tests pass (689 previous + 8 new). `pnpm build` —
+succeeds, all routes compile including `/people/[id]`. Migration applied to production via the
+Supabase connector; confirmed via direct SQL that both tables' columns match the design exactly and
+all 4 RLS policies (`SELECT`/`INSERT`/`UPDATE`/`DELETE`) exist on each table. Ran a real end-to-end
+data-layer cycle against production — inserted a test `child_activities` row for Emlyn plus a
+`child_activity_attendance` row, confirmed the insert succeeded and returned the expected values,
+deleted the activity, and confirmed the attendance row cascade-deleted with it (both tables back to
+zero test rows, no residue). Merged `feat-child-activities` → `main` (`96bfefa`) and pushed. Deployed
+to [lifeos-seven-rho.vercel.app](https://lifeos-seven-rho.vercel.app), confirmed `Ready` status.
+Authenticated-browser confirmation that the "Activities" card actually renders on a child's page and
+the add/delete flow works end-to-end through the UI (not just the database) was not completed this
+segment — local browser access timed out repeatedly; logged as QUEUE-034. No real activity schedule
+data was populated, per the explicit instruction to only open the functionality.
+
+**Remaining scope:** Weekend-plan one-click scheduling (drive+prep time blocks auto-added to the
+calendar) is the last of the user's 4-part request and has not been started yet.
