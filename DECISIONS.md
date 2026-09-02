@@ -2513,3 +2513,84 @@ incrementally and retrofitted onto Modules 1-7's existing brief contributions pe
 | Chores with assignment and completion | Implemented — assignee, optional due date/notes, completion toggle, no recurrence engine (by design) |
 | Recipe capture via Module 3 intake | Implemented — new conversion branch lands photographed/linked recipes as drafts, reviewed through the existing queue |
 | Household surfaces hidden with flag off | Verified live — no nav item, no brief item, `/household` 404s |
+
+## D-124 | 2026-09-02 | Module 8: Brief Integration (generic contributor registration interface, flag `brief_registration_v2`)
+
+**What shipped:** `lib/brief/contributors/` — the generic registration interface the brief calls
+for (§ Module 8 spec): `BriefItem{id, category, priority, leadTimeDays, title, detail?, href?}`,
+a `BriefContributor = (ctx) => Promise<BriefItem[]>` function type, and `composeBrief(items, caps?)`
+which groups by category, sorts each group by priority descending, and caps each category
+independently (default caps: opportunities 2, household 3, ai 12), dropping the lowest-priority
+overflow — satisfying the brief's hard rule that the brief "must never get slower or noisier as
+modules are added." `BRIEF_CONTRIBUTORS` in `contributors/index.ts` is the single list every
+module's contribution is registered in; a ninth module adds one entry there and its own
+contributor file, nothing else.
+
+Two contributors ship this module: `opportunitiesContributor` — a thin adapter wrapping the
+existing D-061/D-070 `listOpenOpportunitiesWithSubjectForHousehold` + `getPresentedOpportunities`
+pipeline unchanged, reusing its score as brief priority so it can never rank differently from the
+`/opportunities` page; `householdContributor` — new for Module 7, gated on `household_layer` in
+addition to `brief_registration_v2` (double-gated, so it is a strict no-op unless both flags are
+on), surfacing a missing dinner plan for today and any open chore that is overdue or due today,
+overdue ranked above due-today.
+
+**Scope decision (QUEUE-031, referencing QUEUE-029):** the pre-existing AI-generated brief
+sections (today/heads up/people/suggestion/weather, `lib/brief/generate.ts` + `schema.ts`) are
+deliberately left on their current direct-render path in `app/(app)/page.tsx`, not retrofitted
+onto the contributor interface. Converting them would mean either changing the LLM's structured-
+output contract or writing a lossy adapter over four already-tested pipelines
+(`prep.test.ts`/`render.test.ts`/`staleness.test.ts`/`template-fallback.test.ts`) — a materially
+bigger, riskier change than this module's scope. Only the two already-structured, non-AI sections
+(Opportunities, and the new Household surface) route through the generic interface for now.
+
+**Additive contract:** all new files (`lib/brief/contributors/{types,compose,opportunities,
+household,index}.ts` plus four test files); the only existing file touched is
+`app/(app)/page.tsx`, and every change there is flag-gated — with `brief_registration_v2` OFF
+(default), the page's data flow and rendered output are byte-identical to pre-Module-8 (verified
+live, see below). No new tables or columns; `householdContributor` reads through the existing
+`lib/db/repositories/household.ts` functions (`listMealPlansForRange`, `listChoresForHousehold`),
+never a raw query. Tenant scoping: every contributor receives `householdId` from the page's
+existing `requireHouseholdContext()` and passes it straight through to the already-tenant-scoped
+repository functions — no new query surface to scope.
+
+**Tests:** characterization-first — 14 new unit tests: `compose.test.ts` (6, pure-function: sort-
+by-priority, cap-drops-lowest-priority, per-category cap independence, explicit cap override,
+empty input), `household.test.ts` (5, using the shared fake-supabase client: flag-off returns
+nothing, dinner-gap detection, dinner-gap suppressed when planned, overdue-outranks-due-today,
+future/no-due-date chores ignored), `opportunities.test.ts` (3: field mapping, dedupe/tiering
+deferred correctly to `getPresentedOpportunities`, empty-input). Full pipeline green: `tsc
+--noEmit` (0 errors), lint (0 errors, only pre-existing generated-Android warnings), 663/663 unit
+tests (up from 649), 97/97 RLS tests (unchanged — no schema change), `pnpm build` succeeded.
+
+**Branch/merge:** built on `feat/module-8-brief-integration` (commit `ea01b69`), merged to `main`
+with `--no-ff` (`7c45cbd`), pushed to GitHub, deployed to production via the `vercel` CLI binary
+directly (per QUEUE-030) and aliased to `lifeos-seven-rho.vercel.app`.
+
+**Verification:** live-verified end-to-end on production for Smith Household via direct
+`feature_flags` upsert/revert across all three relevant combinations: (1) both flags OFF (baseline)
+— Brief renders exactly as before, Opportunities card shows its usual 2 items via the legacy
+direct path, no Household card; (2) `brief_registration_v2` ON, `household_layer` OFF — Brief
+output byte-identical to baseline (Opportunities now sourced through `composeBrief` but same 2
+items, same cap; Household contributor returns `[]` since its own flag is off); (3) both flags ON
+— Household card appears, tested with two seeded test chores (one overdue, one due-today) plus the
+household's actual empty meal-plan state: rendered "TEST: Water plants (overdue) — overdue",
+"TEST: Take out trash (due today) — due today", then "Nothing planned for dinner tonight", in that
+priority order, each linking to `/household`. Test chores deleted and both flags reverted to OFF
+afterward; confirmed the Brief reverted to exact baseline output (no Household card, no test data).
+
+**Deferred/not done:** the AI-generated brief sections stay outside the contributor interface
+(see Scope decision above) — a future ticket if the app ever needs the cap/priority behavior to
+apply there too. No Settings UI toggle for either flag (consistent with every prior module).
+
+**Next:** all 8 modules from the Build Brief are now shipped, merged, deployed, and live-verified,
+each behind its own default-OFF flag. Producing `BUILD-REPORT.md` per brief §8 as the final step.
+
+### Updated capability matrix delta (brief §4, as of D-124)
+
+| Capability | Status |
+| --- | --- |
+| Generic brief-contributor registration interface | Implemented — `BriefItem`/`BriefContributor`/`composeBrief`, flag `brief_registration_v2` (OFF) |
+| Brief composes with per-category caps, never grows noisier | Implemented — `composeBrief` sorts by priority and caps per category, dropping lowest-priority overflow |
+| Opportunities routed through the generic interface | Implemented — `opportunitiesContributor`, same underlying D-061/D-070 data/ranking as the direct path |
+| Household (Module 7) surfaced on the Brief | Implemented — `householdContributor`: dinner-gap + overdue/due-today chores, double-gated on `brief_registration_v2` AND `household_layer` |
+| AI-generated brief sections (today/heads up/people/suggestion) on the generic interface | Deferred — documented scope decision (QUEUE-031), remains on its existing direct-render path |
