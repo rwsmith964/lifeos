@@ -591,6 +591,11 @@ export interface UserActivityRow {
   season_start_month: number | null;
   season_end_month: number | null;
   needs_daylight: boolean;
+  // D-131: how long the prep itself takes, distinct from
+  // prep_lead_time_hours (when before the event prep starts). Nullable —
+  // most rows predate this column; the weekend-plan accept flow falls
+  // back to a default duration when null.
+  prep_duration_minutes: number | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -607,6 +612,7 @@ export type UserActivityInsert = Insert<
   | "season_start_month"
   | "season_end_month"
   | "needs_daylight"
+  | "prep_duration_minutes"
   | "is_active"
   | "created_at"
   | "updated_at"
@@ -991,8 +997,33 @@ export interface WeekendPlanRow {
   content_markdown: string;
   generated_at: string;
   model_version: string;
+  // D-131: the structured form of whichever candidate content_json's
+  // narrated recommendation actually describes. Null when the AI's
+  // recommendation is null (every candidate infeasible) or when regenerated
+  // by a model_version that predates this column.
+  recommended_activity_id: string | null;
+  recommended_location_id: string | null;
+  recommended_block_start: string | null;
+  recommended_block_end: string | null;
+  travel_minutes_each_way: number | null;
+  // Idempotency guard for the one-click accept action.
+  accepted_at: string | null;
+  activity_calendar_event_id: string | null;
+  prep_calendar_event_id: string | null;
 }
-export type WeekendPlanInsert = Insert<WeekendPlanRow, "id" | "generated_at">;
+export type WeekendPlanInsert = Insert<
+  WeekendPlanRow,
+  | "id"
+  | "generated_at"
+  | "recommended_activity_id"
+  | "recommended_location_id"
+  | "recommended_block_start"
+  | "recommended_block_end"
+  | "travel_minutes_each_way"
+  | "accepted_at"
+  | "activity_calendar_event_id"
+  | "prep_calendar_event_id"
+>;
 export type WeekendPlanUpdate = Update<WeekendPlanRow>;
 
 // brain_dump_batches -------------------------------------------------------
