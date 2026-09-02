@@ -1160,6 +1160,7 @@ export interface IntakeDraftRow {
     | "moment"
     | "person_note"
     | "task"
+    | "recipe"
     | "ambiguous"
     | null;
   extracted_fields: Record<string, { value: unknown; confidence: number }>;
@@ -1377,3 +1378,157 @@ export interface AssistantEmailConfigRow {
 }
 export type AssistantEmailConfigInsert = Omit<AssistantEmailConfigRow, "created_at" | "updated_at">;
 export type AssistantEmailConfigUpdate = Partial<Omit<AssistantEmailConfigRow, "household_id">>;
+
+// Module 7: Household Layer (D-123, household_layer flag) -----------------
+// Thin, purely defensive per the brief: meal planning + dietary
+// preferences + pantry awareness, aisle-organized grocery lists, chores
+// with assignment/completion, recipe capture via Module 3 intake.
+
+export type DietaryRestriction =
+  | "vegetarian"
+  | "vegan"
+  | "pescatarian"
+  | "gluten_free"
+  | "dairy_free"
+  | "nut_allergy"
+  | "shellfish_allergy"
+  | "egg_allergy"
+  | "low_carb"
+  | "kosher"
+  | "halal"
+  | "other";
+
+export interface DietaryPreferenceRow {
+  id: string;
+  household_id: string;
+  person_id: string;
+  restriction: DietaryRestriction;
+  notes: string | null;
+  created_at: string;
+}
+export type DietaryPreferenceInsert = Insert<DietaryPreferenceRow, "id" | "notes" | "created_at">;
+export type DietaryPreferenceUpdate = Update<DietaryPreferenceRow>;
+
+export type GroceryAisle =
+  | "produce"
+  | "dairy"
+  | "meat_seafood"
+  | "bakery"
+  | "frozen"
+  | "pantry"
+  | "beverages"
+  | "household"
+  | "other";
+
+export interface PantryItemRow {
+  id: string;
+  household_id: string;
+  name: string;
+  quantity: string | null;
+  aisle: GroceryAisle;
+  expires_on: string | null;
+  created_by_person_id: string | null;
+  created_at: string;
+}
+export type PantryItemInsert = Insert<
+  PantryItemRow,
+  "id" | "quantity" | "aisle" | "expires_on" | "created_by_person_id" | "created_at"
+>;
+export type PantryItemUpdate = Update<PantryItemRow>;
+
+export interface RecipeRow {
+  id: string;
+  household_id: string;
+  created_by_person_id: string | null;
+  title: string;
+  ingredients: string;
+  instructions: string | null;
+  servings: number | null;
+  source_url: string | null;
+  created_at: string;
+}
+export type RecipeInsert = Insert<
+  RecipeRow,
+  "id" | "created_by_person_id" | "instructions" | "servings" | "source_url" | "created_at"
+>;
+export type RecipeUpdate = Update<RecipeRow>;
+
+export type MealSlot = "breakfast" | "lunch" | "dinner" | "snack";
+
+export interface MealPlanRow {
+  id: string;
+  household_id: string;
+  planned_date: string;
+  meal_slot: MealSlot;
+  recipe_id: string | null;
+  custom_meal_name: string | null;
+  created_by_person_id: string | null;
+  created_at: string;
+}
+export type MealPlanInsert = Insert<
+  MealPlanRow,
+  "id" | "recipe_id" | "custom_meal_name" | "created_by_person_id" | "created_at"
+>;
+export type MealPlanUpdate = Update<MealPlanRow>;
+
+export interface GroceryListRow {
+  id: string;
+  household_id: string;
+  title: string;
+  generated_from_meal_plan: boolean;
+  created_by_person_id: string | null;
+  created_at: string;
+}
+export type GroceryListInsert = Insert<
+  GroceryListRow,
+  "id" | "generated_from_meal_plan" | "created_by_person_id" | "created_at"
+>;
+export type GroceryListUpdate = Update<GroceryListRow>;
+
+export interface GroceryListItemRow {
+  id: string;
+  grocery_list_id: string;
+  household_id: string;
+  name: string;
+  quantity: string | null;
+  aisle: GroceryAisle;
+  is_checked: boolean;
+  source_recipe_id: string | null;
+  created_at: string;
+}
+export type GroceryListItemInsert = Insert<
+  GroceryListItemRow,
+  "id" | "quantity" | "aisle" | "is_checked" | "source_recipe_id" | "created_at"
+>;
+export type GroceryListItemUpdate = Update<GroceryListItemRow>;
+
+export type ChoreStatus = "open" | "done";
+
+export interface ChoreRow {
+  id: string;
+  household_id: string;
+  title: string;
+  description: string | null;
+  assigned_person_id: string | null;
+  due_date: string | null;
+  status: ChoreStatus;
+  completed_by_person_id: string | null;
+  completed_at: string | null;
+  created_by_person_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+export type ChoreInsert = Insert<
+  ChoreRow,
+  | "id"
+  | "description"
+  | "assigned_person_id"
+  | "due_date"
+  | "status"
+  | "completed_by_person_id"
+  | "completed_at"
+  | "created_by_person_id"
+  | "created_at"
+  | "updated_at"
+>;
+export type ChoreUpdate = Update<ChoreRow>;

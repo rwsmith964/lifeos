@@ -1289,4 +1289,281 @@ describe("RLS end-to-end (PGlite, real migrations + real seed data)", () => {
       ).rejects.toThrow();
     });
   });
+
+  describe("dietary_preferences (Module 7, D-123, household-writable by any member)", () => {
+    it("a household member can add a preference; the child can read it; the outsider sees none", async () => {
+      await asUser(db, RICHARD_USER, () =>
+        db.exec(
+          `insert into dietary_preferences (household_id, person_id, restriction) values ('${SEEDED_HOUSEHOLD}', '${DAVE_PERSON}', 'vegetarian');`
+        )
+      );
+
+      const childRead = await asUser(db, CHILD_USER, () =>
+        db.query(
+          `select restriction from dietary_preferences where household_id = '${SEEDED_HOUSEHOLD}' and person_id = '${DAVE_PERSON}';`
+        )
+      );
+      expect((childRead.rows[0] as { restriction: string }).restriction).toBe("vegetarian");
+
+      const outsiderRead = await asUser(db, OUTSIDER_USER, () =>
+        db.query(`select count(*)::int as n from dietary_preferences where household_id = '${SEEDED_HOUSEHOLD}';`)
+      );
+      expect((outsiderRead.rows[0] as { n: number }).n).toBe(0);
+    });
+
+    it("the same person can't have the same restriction recorded twice (unique constraint)", async () => {
+      await asUser(db, RICHARD_USER, () =>
+        db.exec(
+          `insert into dietary_preferences (household_id, person_id, restriction) values ('${SEEDED_HOUSEHOLD}', '${RICHARD_PERSON}', 'gluten_free');`
+        )
+      );
+      await expect(
+        asUser(db, RICHARD_USER, () =>
+          db.exec(
+            `insert into dietary_preferences (household_id, person_id, restriction) values ('${SEEDED_HOUSEHOLD}', '${RICHARD_PERSON}', 'gluten_free');`
+          )
+        )
+      ).rejects.toThrow();
+    });
+
+    it("the outsider cannot insert a preference into a household they don't belong to", async () => {
+      await expect(
+        asUser(db, OUTSIDER_USER, () =>
+          db.exec(
+            `insert into dietary_preferences (household_id, person_id, restriction) values ('${SEEDED_HOUSEHOLD}', '${RICHARD_PERSON}', 'vegan');`
+          )
+        )
+      ).rejects.toThrow();
+    });
+  });
+
+  describe("pantry_items (Module 7, D-123, household-writable by any member)", () => {
+    it("a household member can add a pantry item; the child can read it; the outsider sees none", async () => {
+      await asUser(db, RICHARD_USER, () =>
+        db.exec(`insert into pantry_items (household_id, name, aisle) values ('${SEEDED_HOUSEHOLD}', 'Rice', 'pantry');`)
+      );
+
+      const childRead = await asUser(db, CHILD_USER, () =>
+        db.query(`select aisle from pantry_items where household_id = '${SEEDED_HOUSEHOLD}' and name = 'Rice';`)
+      );
+      expect((childRead.rows[0] as { aisle: string }).aisle).toBe("pantry");
+
+      const outsiderRead = await asUser(db, OUTSIDER_USER, () =>
+        db.query(`select count(*)::int as n from pantry_items where household_id = '${SEEDED_HOUSEHOLD}';`)
+      );
+      expect((outsiderRead.rows[0] as { n: number }).n).toBe(0);
+    });
+
+    it("the same household can't have two pantry rows with the same name (unique constraint)", async () => {
+      await asUser(db, RICHARD_USER, () =>
+        db.exec(`insert into pantry_items (household_id, name) values ('${SEEDED_HOUSEHOLD}', 'Flour');`)
+      );
+      await expect(
+        asUser(db, RICHARD_USER, () => db.exec(`insert into pantry_items (household_id, name) values ('${SEEDED_HOUSEHOLD}', 'Flour');`))
+      ).rejects.toThrow();
+    });
+
+    it("the outsider cannot insert a pantry item into a household they don't belong to", async () => {
+      await expect(
+        asUser(db, OUTSIDER_USER, () => db.exec(`insert into pantry_items (household_id, name) values ('${SEEDED_HOUSEHOLD}', 'Sugar');`))
+      ).rejects.toThrow();
+    });
+  });
+
+  describe("recipes (Module 7, D-123, household-writable by any member)", () => {
+    it("a household member can save a recipe; the child can read it; the outsider sees none", async () => {
+      const { rows } = await asUser(db, RICHARD_USER, () =>
+        db.query(
+          `insert into recipes (household_id, title, ingredients) values ('${SEEDED_HOUSEHOLD}', 'Tacos', '1 lb beef\ntortillas') returning id;`
+        )
+      );
+      const { id } = rows[0] as { id: string };
+
+      const childRead = await asUser(db, CHILD_USER, () => db.query(`select title from recipes where id = '${id}';`));
+      expect((childRead.rows[0] as { title: string }).title).toBe("Tacos");
+
+      const outsiderRead = await asUser(db, OUTSIDER_USER, () =>
+        db.query(`select count(*)::int as n from recipes where household_id = '${SEEDED_HOUSEHOLD}';`)
+      );
+      expect((outsiderRead.rows[0] as { n: number }).n).toBe(0);
+    });
+
+    it("servings must be positive when set (check constraint)", async () => {
+      await expect(
+        asUser(db, RICHARD_USER, () =>
+          db.exec(
+            `insert into recipes (household_id, title, ingredients, servings) values ('${SEEDED_HOUSEHOLD}', 'Bad recipe', 'salt', 0);`
+          )
+        )
+      ).rejects.toThrow();
+    });
+
+    it("the outsider cannot insert a recipe into a household they don't belong to", async () => {
+      await expect(
+        asUser(db, OUTSIDER_USER, () =>
+          db.exec(`insert into recipes (household_id, title, ingredients) values ('${SEEDED_HOUSEHOLD}', 'Should fail', 'x');`)
+        )
+      ).rejects.toThrow();
+    });
+  });
+
+  describe("meal_plans (Module 7, D-123, household-writable by any member)", () => {
+    it("a household member can plan a custom meal for a slot; the child can read it; the outsider sees none", async () => {
+      await asUser(db, RICHARD_USER, () =>
+        db.exec(
+          `insert into meal_plans (household_id, planned_date, meal_slot, custom_meal_name) values ('${SEEDED_HOUSEHOLD}', '2026-09-05', 'dinner', 'Leftovers');`
+        )
+      );
+
+      const childRead = await asUser(db, CHILD_USER, () =>
+        db.query(
+          `select custom_meal_name from meal_plans where household_id = '${SEEDED_HOUSEHOLD}' and planned_date = '2026-09-05' and meal_slot = 'dinner';`
+        )
+      );
+      expect((childRead.rows[0] as { custom_meal_name: string }).custom_meal_name).toBe("Leftovers");
+
+      const outsiderRead = await asUser(db, OUTSIDER_USER, () =>
+        db.query(`select count(*)::int as n from meal_plans where household_id = '${SEEDED_HOUSEHOLD}';`)
+      );
+      expect((outsiderRead.rows[0] as { n: number }).n).toBe(0);
+    });
+
+    it("exactly one of recipe_id/custom_meal_name must be set (check constraint rejects neither)", async () => {
+      await expect(
+        asUser(db, RICHARD_USER, () =>
+          db.exec(
+            `insert into meal_plans (household_id, planned_date, meal_slot) values ('${SEEDED_HOUSEHOLD}', '2026-09-06', 'lunch');`
+          )
+        )
+      ).rejects.toThrow();
+    });
+
+    it("the same household can't double-book a date/slot (unique constraint)", async () => {
+      await asUser(db, RICHARD_USER, () =>
+        db.exec(
+          `insert into meal_plans (household_id, planned_date, meal_slot, custom_meal_name) values ('${SEEDED_HOUSEHOLD}', '2026-09-07', 'breakfast', 'Cereal');`
+        )
+      );
+      await expect(
+        asUser(db, RICHARD_USER, () =>
+          db.exec(
+            `insert into meal_plans (household_id, planned_date, meal_slot, custom_meal_name) values ('${SEEDED_HOUSEHOLD}', '2026-09-07', 'breakfast', 'Eggs');`
+          )
+        )
+      ).rejects.toThrow();
+    });
+
+    it("the outsider cannot insert a meal plan into a household they don't belong to", async () => {
+      await expect(
+        asUser(db, OUTSIDER_USER, () =>
+          db.exec(
+            `insert into meal_plans (household_id, planned_date, meal_slot, custom_meal_name) values ('${SEEDED_HOUSEHOLD}', '2026-09-08', 'snack', 'should fail');`
+          )
+        )
+      ).rejects.toThrow();
+    });
+  });
+
+  describe("grocery_lists / grocery_list_items (Module 7, D-123, household-writable by any member)", () => {
+    it("a household member can create a list and add an item; the child can read it; the outsider sees neither", async () => {
+      const { rows } = await asUser(db, RICHARD_USER, () =>
+        db.query(`insert into grocery_lists (household_id, title) values ('${SEEDED_HOUSEHOLD}', 'Weekly run') returning id;`)
+      );
+      const { id: listId } = rows[0] as { id: string };
+
+      await asUser(db, RICHARD_USER, () =>
+        db.exec(
+          `insert into grocery_list_items (grocery_list_id, household_id, name, aisle) values ('${listId}', '${SEEDED_HOUSEHOLD}', 'Milk', 'dairy');`
+        )
+      );
+
+      const childRead = await asUser(db, CHILD_USER, () =>
+        db.query(`select name from grocery_list_items where grocery_list_id = '${listId}';`)
+      );
+      expect((childRead.rows[0] as { name: string }).name).toBe("Milk");
+
+      const outsiderListRead = await asUser(db, OUTSIDER_USER, () =>
+        db.query(`select count(*)::int as n from grocery_lists where household_id = '${SEEDED_HOUSEHOLD}';`)
+      );
+      expect((outsiderListRead.rows[0] as { n: number }).n).toBe(0);
+
+      const outsiderItemRead = await asUser(db, OUTSIDER_USER, () =>
+        db.query(`select count(*)::int as n from grocery_list_items where grocery_list_id = '${listId}';`)
+      );
+      expect((outsiderItemRead.rows[0] as { n: number }).n).toBe(0);
+    });
+
+    it("deleting a grocery list cascades to its items", async () => {
+      const { rows } = await asUser(db, RICHARD_USER, () =>
+        db.query(`insert into grocery_lists (household_id, title) values ('${SEEDED_HOUSEHOLD}', 'To delete') returning id;`)
+      );
+      const { id: listId } = rows[0] as { id: string };
+      await asUser(db, RICHARD_USER, () =>
+        db.exec(`insert into grocery_list_items (grocery_list_id, household_id, name) values ('${listId}', '${SEEDED_HOUSEHOLD}', 'Eggs');`)
+      );
+
+      await asUser(db, RICHARD_USER, () => db.exec(`delete from grocery_lists where id = '${listId}';`));
+
+      const itemsLeft = await asUser(db, RICHARD_USER, () =>
+        db.query(`select count(*)::int as n from grocery_list_items where grocery_list_id = '${listId}';`)
+      );
+      expect((itemsLeft.rows[0] as { n: number }).n).toBe(0);
+    });
+
+    it("the outsider cannot create a grocery list in a household they don't belong to", async () => {
+      await expect(
+        asUser(db, OUTSIDER_USER, () => db.exec(`insert into grocery_lists (household_id, title) values ('${SEEDED_HOUSEHOLD}', 'Should fail');`))
+      ).rejects.toThrow();
+    });
+  });
+
+  describe("chores (Module 7, D-123, household-writable by any member)", () => {
+    it("a household member can assign a chore; the child can complete it; the outsider sees none", async () => {
+      const { rows } = await asUser(db, RICHARD_USER, () =>
+        db.query(
+          `insert into chores (household_id, title, assigned_person_id) values ('${SEEDED_HOUSEHOLD}', 'Take out trash', '${CHILD_PERSON}') returning id;`
+        )
+      );
+      const { id } = rows[0] as { id: string };
+
+      await asUser(db, CHILD_USER, () =>
+        db.exec(
+          `update chores set status = 'done', completed_by_person_id = '${CHILD_PERSON}', completed_at = now() where id = '${id}';`
+        )
+      );
+      const reread = await asUser(db, CHILD_USER, () => db.query(`select status from chores where id = '${id}';`));
+      expect((reread.rows[0] as { status: string }).status).toBe("done");
+
+      const outsiderRead = await asUser(db, OUTSIDER_USER, () =>
+        db.query(`select count(*)::int as n from chores where household_id = '${SEEDED_HOUSEHOLD}';`)
+      );
+      expect((outsiderRead.rows[0] as { n: number }).n).toBe(0);
+    });
+
+    it("the completion pair constraint rejects a done status with no completer set", async () => {
+      await expect(
+        asUser(db, RICHARD_USER, () =>
+          db.exec(`insert into chores (household_id, title, status) values ('${SEEDED_HOUSEHOLD}', 'Bad chore', 'done');`)
+        )
+      ).rejects.toThrow();
+    });
+
+    it("the completion pair constraint rejects an open status with a completer already set", async () => {
+      await expect(
+        asUser(db, RICHARD_USER, () =>
+          db.exec(
+            `insert into chores (household_id, title, status, completed_by_person_id, completed_at) values ('${SEEDED_HOUSEHOLD}', 'Bad chore 2', 'open', '${RICHARD_PERSON}', now());`
+          )
+        )
+      ).rejects.toThrow();
+    });
+
+    it("the outsider cannot insert a chore into a household they don't belong to", async () => {
+      await expect(
+        asUser(db, OUTSIDER_USER, () =>
+          db.exec(`insert into chores (household_id, title) values ('${SEEDED_HOUSEHOLD}', 'Should fail');`)
+        )
+      ).rejects.toThrow();
+    });
+  });
 });

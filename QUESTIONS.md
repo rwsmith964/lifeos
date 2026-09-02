@@ -240,6 +240,22 @@ the remaining modules.
 **Reversal cost:** Low — isolated to one client component's local state derivation; no schema, API, or other component changed.
 **Blocking:** No
 
+### QUEUE-028
+**Module:** Module 7 / Household Layer
+**File(s):** `app/(app)/household/page.tsx`, `app/(app)/layout.tsx`
+**Question:** The brief's Module 7 spec says this layer is "thin, last, purely defensive" and explicitly not meant to distract from the moat — it doesn't say whether the new `/household` route should get a nav item.
+**Assumption made:** Excluded `/household` from `NAV_ITEMS`, same posture as `/ambient` (Module 5) and `/execution` (Module 6) — direct-URL-only, flag-gated 404 via `notFound()`. Keeps the primary nav focused on the moat features (relationship/gift engine, leisure planner, scheduling) rather than surfacing a commoditized household layer alongside them, consistent with "not enough to distract from the moat." Revisit if the household layer ships broadly and users ask for it in nav.
+**Reversal cost:** Low — adding one `NAV_ITEMS` entry once the flag defaults on.
+**Blocking:** No
+
+### QUEUE-029
+**Module:** Module 8 / Brief Integration
+**File(s):** `lib/brief/generate.ts`, `lib/brief/schema.ts`, `lib/brief/prep.ts`, `lib/brief/render.ts`
+**Question:** The brief says Module 8's registration interface should be built "incrementally as each module lands," but no such interface exists yet — Modules 1-6 each wired their own brief contributions directly into `lib/brief/prep.ts`/`generate.ts` rather than through a shared contributor registry, since that registry didn't exist when they landed.
+**Assumption made:** Treat Module 8 as the retrofit point: build the generic registration interface (contributor function returning items with priority/category/lead-time) now, then migrate Modules 1-6's existing direct brief wiring onto it in the same pass, rather than leaving old modules on the old path and only registering Module 7 onward. This satisfies "the brief generator never needs to know about individual modules" for the whole set, not just new ones, and lets the cap-and-drop-lowest-priority rule apply uniformly. Gated behind the existing `brief_registration_v2` flag (already registered in `lib/flags.ts`) so the retrofit itself is additive and reversible.
+**Reversal cost:** Medium — touches brief-generation code paths for every prior module, though behind a flag default-off.
+**Blocking:** No
+
 ---
 
 ## HIGH

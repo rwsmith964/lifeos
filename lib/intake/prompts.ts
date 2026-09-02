@@ -17,7 +17,16 @@ export const intakeExtractionFieldSchema = z.object({
 });
 
 export const intakeExtractionSchema = z.object({
-  recordType: z.enum(["calendar_event", "gift_idea", "person", "moment", "person_note", "task", "ambiguous"]),
+  recordType: z.enum([
+    "calendar_event",
+    "gift_idea",
+    "person",
+    "moment",
+    "person_note",
+    "task",
+    "recipe",
+    "ambiguous",
+  ]),
   // The raw name as it appears in the source, if any -- resolved against
   // the household's real people list by application code
   // (lib/intake/convert.ts), never trusted directly as a personId.
@@ -32,14 +41,14 @@ export type IntakeExtraction = z.infer<typeof intakeExtractionSchema>;
 
 const OUTPUT_CONTRACT = `Return ONLY a single JSON object with exactly this shape (no prose, no markdown fences):
 {
-  "recordType": "calendar_event" | "gift_idea" | "person" | "moment" | "person_note" | "task" | "ambiguous",
+  "recordType": "calendar_event" | "gift_idea" | "person" | "moment" | "person_note" | "task" | "recipe" | "ambiguous",
   "personNameMentioned": string | null,
   "fields": { "<fieldName>": { "value": string | number | boolean | null, "confidence": number } },
   "sourceExcerpt": string
 }
 
 Rules:
-1. Set "recordType" to "ambiguous" whenever you genuinely cannot tell which of the other six types this is, or the content doesn't correspond to anything actionable — never guess just to pick something. An ambiguous draft is fine; a wrongly-typed one is worse.
+1. Set "recordType" to "ambiguous" whenever you genuinely cannot tell which of the other seven types this is, or the content doesn't correspond to anything actionable — never guess just to pick something. An ambiguous draft is fine; a wrongly-typed one is worse.
 2. Every field's "confidence" is YOUR OWN calibrated 0.0-1.0 estimate that the extracted value is correct and complete, not a fixed number. A clearly-printed date on a flyer deserves confidence near 1.0; a date you had to infer from "next Tuesday" relative to an unstated "today" deserves much lower confidence. Never report a confidence you don't believe.
 3. Only include fields relevant to the chosen recordType (see the field names below for each type). Do not invent a field that has no value in the source — omit it entirely rather than guessing.
 4. "personNameMentioned" is the raw name as it literally appears in the source (a first name, nickname, or full name) — never resolve it against any roster yourself, and set it to null if no specific person is named.
@@ -53,6 +62,7 @@ Field names by recordType (use camelCase, ISO 8601 for any date/datetime, plain 
 - person: fullName, relationshipType ("child"|"spouse"|"partner"|"co_parent"|"parent"|"sibling"|"extended_family"|"friend"|"colleague"|"other"), nickname, birthdate
 - moment: title, occurredOn, place, notes
 - task: description, dueDate
+- recipe: recipeTitle, recipeIngredients (each ingredient on its own line within the string value), recipeInstructions, recipeServings, recipeSourceUrl
 - ambiguous: rawSummary (a plain restatement of what the source seems to be about)`;
 
 export const GENERIC_INTAKE_SYSTEM_PROMPT = `${BASE_SYSTEM_PROMPT}
