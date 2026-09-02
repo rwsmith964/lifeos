@@ -2442,3 +2442,74 @@ all, which also means no new AI-cost surface to reason about for a compliance-bo
 | Category allowlist (RSVPs/reschedules/confirmations/gift orders) | Implemented, default all-OFF per household, toggle UI at `/execution` |
 | Hard client-facing/colleague exclusion | Implemented as a true allowlist — colleagues excluded in code before any per-household override; no outbound send exists at all in this module |
 | Draft review queue (approve/discard) | Implemented, `DraftReviewQueue`, human-formatted dates, status never shown as a raw enum |
+
+## D-123 | 2026-09-02 | Module 7: Household Layer (meal planning, pantry, recipes, grocery lists, chores)
+
+**What shipped:** `/household` — a single page with five cards backed by seven new tables
+(`dietary_preferences`, `pantry_items`, `recipes`, `meal_plans`, `grocery_lists`,
+`grocery_list_items`, `chores`), all tenant-scoped to `household_id` with RLS. Dietary
+preferences per person (restriction + optional notes). Pantry tracking with aisle and optional
+expiry, consulted automatically when a grocery list is generated. Recipe capture (title,
+servings, ingredients, instructions, source link) reachable both from the page's own form and as
+a new conversion branch in the Module 3 intake pipeline (`lib/intake/convert.ts`) — a photographed
+or linked recipe lands as a draft, gets reviewed through the existing `DraftReviewQueue`, and
+converts into a real `recipes` row through `lib/db/repositories/household.ts`, never a raw insert.
+A 7-day meal plan grid (recipe or freeform text per slot) that a grocery list can be generated
+from, aisle-organized and automatically skipping anything already in the pantry. Chores with
+assignment to a household person, optional due date and notes, and a completion toggle — no
+recurrence engine, matching the brief's explicit "thin, last, purely defensive" instruction for
+this module.
+
+**Additive contract:** all seven tables are new; no existing table, function, or route was
+modified except the one Module 3 conversion branch, which is itself additive (a new `case` in an
+existing switch, gated the same way every other intake category already is). Every write goes
+through `lib/db/repositories/household.ts` — no page or Server Action inserts directly against a
+household table. Tenant scoping is enforced twice: RLS on every table (household-member read/write,
+no owner/adult gate — brief's spec did not ask for one here, unlike financial/gift data) and an
+explicit `household_id` filter in every repository query as defense in depth.
+
+**Single flag:** `household_layer`, default OFF, registered in `lib/flags.ts`. With the flag off,
+`/household` 404s via `notFound()` and no nav item, brief card, or any other surface references it —
+verified live (see below). This satisfies the module's acceptance criterion verbatim: "flag off, no
+household surfaces appear anywhere including the brief."
+
+**Tests:** characterization-first per the brief — 20 new RLS pglite tests in
+`supabase/tests/pglite/rls.test.ts` covering household-member read/write and outsider isolation on
+all seven tables, plus constraint tests (unique constraints, check constraints on servings, the
+exactly-one-of-recipe-or-custom meal-plan slot, and the completion-pair on chores); 3 new unit tests
+in `lib/intake/convert.test.ts` for the recipe conversion branch (succeeds with the flag on, throws
+with it off, throws on a missing required field) using the existing `createFakeSupabaseClient`
+harness. Full pipeline green: `tsc --noEmit` (0 errors), lint (0 errors, only pre-existing
+generated-Android warnings), 649/649 unit tests (up from 626), 97/97 RLS tests (up from 77),
+`pnpm build` succeeded with `/household` present in the route output.
+
+**Branch/merge:** built on `feat/module-7-household-layer` (commit `f9706fc`), merged to `main`
+with `--no-ff` (`d54a9d2`), pushed to GitHub, then deployed to production via the `vercel` CLI
+binary directly (`vercel deploy --prod --yes --token $VERCEL_TOKEN`, bypassing `npx` — see
+QUEUE-030) and aliased to `lifeos-seven-rho.vercel.app`.
+
+**Verification:** live-verified end-to-end on production for Smith Household via direct
+`feature_flags` upsert/revert: (1) flag OFF → `/household` 404s and no nav item is present; (2)
+flag ON → all five cards render, added a pantry item ("Rice"), got the "Pantry item added." success
+toast, reloaded and confirmed it persisted, then removed it and confirmed the removal persisted;
+confirmed the Brief page shows no household-related content at all with the flag on, which is
+correct per the brief — Module 8's registration interface hasn't wired Module 7 in yet; (3) reverted
+the flag to OFF and confirmed `/household` 404s again, restoring the pre-module default.
+
+**Deferred/not done:** no Settings UI toggle for the flag (consistent with every prior module); no
+Meal-plan-to-brief or chores-to-brief wiring yet — that's Module 8's job, tracked via QUEUE-029's
+retrofit decision.
+
+**Next:** Module 8 (Brief Integration) — the generic contributor-registration interface, built
+incrementally and retrofitted onto Modules 1-7's existing brief contributions per QUEUE-029.
+
+### Updated capability matrix delta (brief §4, as of D-123)
+
+| Capability | Status |
+| --- | --- |
+| Meal planning with dietary preferences | Implemented — `dietary_preferences` per person, 7-day plan grid, flag `household_layer` (OFF) |
+| Pantry awareness | Implemented — pantry items with aisle/expiry, auto-skipped on generated grocery lists |
+| Grocery list generation, aisle-organized | Implemented — generated from the meal plan, pantry-aware |
+| Chores with assignment and completion | Implemented — assignee, optional due date/notes, completion toggle, no recurrence engine (by design) |
+| Recipe capture via Module 3 intake | Implemented — new conversion branch lands photographed/linked recipes as drafts, reviewed through the existing queue |
+| Household surfaces hidden with flag off | Verified live — no nav item, no brief item, `/household` 404s |

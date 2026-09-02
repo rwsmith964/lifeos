@@ -256,6 +256,14 @@ the remaining modules.
 **Reversal cost:** Medium — touches brief-generation code paths for every prior module, though behind a flag default-off.
 **Blocking:** No
 
+### QUEUE-030
+**Module:** Module 7 / Household Layer (deployment, not app code)
+**File(s):** none (deployment tooling only)
+**Question:** `npx vercel deploy --prod --yes --token $VERCEL_TOKEN` (the documented CLI hint for this sandbox's `vercel` connector) failed with an npm registry `403 Forbidden` fetching the `vercel` package itself — the sandbox's npm registry access appears restricted for that package, unrelated to the token or the app.
+**Assumption made:** Call the pre-installed `/usr/local/bin/vercel` binary directly (already on `PATH`, confirmed via `which vercel`) instead of going through `npx`, keeping the same `api_credentials=["vercel"]` bash invocation so `$VERCEL_TOKEN` is still injected. This avoided the network fetch entirely and deployed/aliased successfully. Documenting so future deploys in this sandbox skip straight to the direct binary and don't re-hit the same `npx` 403.
+**Reversal cost:** Low — purely a deploy-command choice, no app or infra change.
+**Blocking:** No
+
 ---
 
 ## HIGH
