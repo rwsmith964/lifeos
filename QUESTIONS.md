@@ -264,6 +264,14 @@ the remaining modules.
 **Reversal cost:** Low — purely a deploy-command choice, no app or infra change.
 **Blocking:** No
 
+### QUEUE-031
+**Module:** Module 8 / Brief Integration
+**File(s):** `lib/brief/contributors/index.ts`, `app/(app)/page.tsx`
+**Question:** QUEUE-029 anticipated retrofitting Modules 1-6's existing direct brief wiring onto the new registration interface "in the same pass" as building it. Having now built the interface, the only pre-existing direct wiring is (a) the AI-generated schema (today/heads up/people/suggestion/weather from `lib/brief/generate.ts`+`schema.ts`, Modules 1/3/4) and (b) the Opportunities card (Module 2, D-061/D-070). Converting (a) means either having the LLM emit generic `BriefItem`s instead of its current fixed structured schema, or writing an adapter that flattens five differently-shaped arrays into one -- both are materially bigger changes to an already-tested, already-shipped generation pipeline (`prep.test.ts`, `render.test.ts`, `staleness.test.ts`, `template-fallback.test.ts` all assume the current `BriefContent` shape) than the brief's "thin, last" instruction for Module 7/8 implies is in scope right now.
+**Assumption made:** Retrofit (b) Opportunities fully (it was already structured data outside the AI schema, so wrapping it in a contributor is a clean, low-risk adapter -- see `lib/brief/contributors/opportunities.ts`), retrofit Module 7 (Household) as the new module going through the interface from day one, and leave (a) the AI schema on its current direct-wiring path, documented here rather than silently dropped. Every module from Module 9 onward registers through `lib/brief/contributors/index.ts`; the AI schema retrofit becomes its own future ticket if the app ever needs the cap/priority behavior to apply to those sections too.
+**Reversal cost:** Medium — wrapping the AI schema later means either changing the AI's structured-output contract or writing a translation layer; neither touches data already written, so no migration risk, just implementation effort.
+**Blocking:** No
+
 ---
 
 ## HIGH
