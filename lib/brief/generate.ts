@@ -26,6 +26,7 @@ import { getNwsForecast } from "../external/nws";
 import { getTravelTime } from "../external/travel";
 import { evaluateCadence, suppressCadencesSeenToday } from "../contact/cadence";
 import { dispatchNotification } from "../notifications/dispatch";
+import { filterActualCustodyTransitions } from "./custody-transitions";
 import { computePrepObligations, computeTravelLegs } from "./prep";
 import { renderBriefMarkdown } from "./render";
 import { buildTemplatedBriefContent } from "./template-fallback";
@@ -216,7 +217,13 @@ export async function generateDailyBrief(
     // Section 8.2: "today's and tomorrow's calendar_events ... including
     // custody blocks" — custody_blocks is a separate table, folded in here
     // as pseudo-events so the brief treats them the same as any other item.
-    ...custodyBlocks.map((c) => {
+    // D-127: custodyBlocks itself comes from an *overlap* query (a block
+    // spanning Fri 4:30pm -> Mon 8:30am overlaps every day in between), so
+    // it must be narrowed to blocks whose handover actually starts inside
+    // [windowStart, windowEnd) before being printed as "happening" —
+    // otherwise a multi-day block gets re-announced at its original
+    // handover time on every day it merely continues through.
+    ...filterActualCustodyTransitions(custodyBlocks, windowStart, windowEnd).map((c) => {
       const child = peopleById.get(c.child_person_id);
       const responsible = peopleById.get(c.responsible_person_id);
       const childLabel = child ? tokenMap.labelFor(child) : "child";
