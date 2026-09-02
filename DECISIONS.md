@@ -2916,3 +2916,81 @@ data was populated, per the explicit instruction to only open the functionality.
 
 **Remaining scope:** Weekend-plan one-click scheduling (drive+prep time blocks auto-added to the
 calendar) is the last of the user's 4-part request and has not been started yet.
+
+## D-130 | 2026-09-02 | One-off custody override reconciliation (start/end time split, multi-child, overlap resolution)
+
+**Problem:** The user built a one-off vacation override ("I'm going to be out of town Saturday
+through Monday this week (5th-7th) so the kids will be with Melissa") and the calendar still showed
+him as having custody that weekend.
+
+**Root cause (three compounding bugs):** (1) The one-off form had a single `handoverTime` field
+applied to both the block's `starts_at` and `ends_at` — a vacation override genuinely needs an
+independent departure time and return time. (2) The create form's child selector was a single
+`<select>`, so the override was only ever created for one child (Cal), not both, despite "the kids"
+being plural. (3) The real bug: nothing in the app ever reconciled a new one-off block against
+existing overlapping `custody_blocks` for the same child. The vacation override (Mel responsible)
+and the regular-schedule block for the same days (Richard responsible) simply coexisted as two
+separate, conflicting rows. With `calendar_hide_other_parent_custody` on, the filter hid the override
+(other parent responsible) while the stale regular block (self responsible) stayed visible — so the
+calendar kept showing "I have the kids" for a span the user had just overridden away.
+
+**Fix:**
+- `lib/custody/overrides.ts` (new): pure `resolveCustodyBlockOverrides(existingBlocks, override)`
+  computes, for every existing block of the same child overlapping the override's `[startsAt,
+  endsAt)` span, whether it should be deleted (fully contained), truncated at the start, truncated
+  at the end, or split into two (override falls entirely inside it) — the new/edited override always
+  wins for its own span. `applyCustodyBlockOverrides()` executes those resolutions through the
+  existing `custodyBlocksRepo` (no raw inserts). `reconcileCustodyBlockOverride()` is the convenience
+  wrapper: fetches overlapping blocks via the pre-existing `listCustodyBlocksForChildInRange`, then
+  resolves and applies. Applies uniformly whether the pre-existing block is schedule-generated or
+  itself a prior one-off.
+- `app/api/calendar/custody/route.ts` (POST): now accepts `childPersonIds` (multi-select, falls back
+  to legacy `childPersonId`) and independent `startTime`/`endTime` (falls back to legacy
+  `handoverTime`). Loops per selected child, calling `reconcileCustodyBlockOverride` before each
+  create, so one submission can correctly override several children at once.
+- `app/api/calendar/custody/[id]/route.ts` (PATCH): same independent `startTime`/`endTime` handling;
+  calls `reconcileCustodyBlockOverride` with `excludeBlockId` so an edit never reconciles against
+  itself.
+- `custody-block-form.tsx`: `handoverTime` split into separate "Start time"/"End time" inputs; new
+  `allowMultipleChildren` prop switches the child selector to a checkbox multi-select (mirrors the
+  `preferredCompanionIds` pattern already used in `activity-form.tsx`) on the create page.
+- `lib/custody/overrides.test.ts` (new, 10 cases): reproduces the exact reported bug shape, plus
+  different-child-ignored, no-overlap-ignored, truncate-start, truncate-end, split,
+  exact-match-delete, `excludeBlockId` self-exclusion, and multiple-overlapping-blocks-resolved-
+  independently.
+
+**Live data correction:** The already-created vacation block for Cal had the wrong dates (Sept 2
+11:00 → Sept 7 11:00, instead of the stated Sept 5-7) and no Emlyn counterpart existed at all.
+Corrected via direct SQL against production, mirroring exactly what the new reconciliation logic
+computes (see QUEUE-035 for the three bundled assumptions — retroactively creating Emlyn's override,
+trusting the user's stated dates over the mistyped stored ones, and full-day granularity for the
+time-of-day boundary):
+- Cal's vacation block (`4be29335-...`) corrected to `2026-09-05 00:00` → `2026-09-08 00:00` UTC,
+  `block_type: vacation`, responsible Melissa.
+- Cal's regular-schedule Friday block (`48cedef0-...`, was Richard 09-04 16:30 → 09-07 08:30)
+  truncated to end at `2026-09-05 00:00` — Richard keeps Friday evening as normal, override takes
+  over exactly at Saturday midnight.
+- Cal's regular-schedule following block (`22fd3d91-...`, Mel) truncated to start at
+  `2026-09-08 00:00` so there's no residual overlap once the override ends.
+- New vacation block created for Emlyn (`7103d368-...`) with identical dates/responsible person.
+- Emlyn's analogous Friday block (`fc02d16c-...`) and following block (`7386f898-...`) truncated the
+  same way.
+- Confirmed via direct query: for the `[2026-09-05, 2026-09-08)` window, both Cal and Emlyn now have
+  exactly one `custody_blocks` row each, `block_type: vacation`, responsible Melissa Smith — no
+  conflicting Richard row remains.
+
+**Verification:** `pnpm typecheck` — 0 errors. `pnpm lint` — 0 errors (only pre-existing generated-
+file warnings). `pnpm test` — 707 tests / 72 files pass (697 previous + 10 new). `pnpm build` —
+succeeds, full route manifest including `/calendar/custody/one-off` and
+`/calendar/custody/one-off/[id]/edit`. Merged `fix-custody-one-off-override-reconciliation` → `main`
+(`4ecd083`) and pushed. Deployed to
+[lifeos-seven-rho.vercel.app](https://lifeos-seven-rho.vercel.app), confirmed `Ready`. Live-verified
+at the data layer (authenticated browser was unreachable — local device approval did not come
+through, consistent with QUEUE-034's precedent — so this follows the same documented database-level
+fallback): direct query confirms only Melissa's vacation blocks exist for both children across
+Sept 5-8, with `calendar_hide_other_parent_custody` still `true`; since Melissa is now the only
+responsible person in that window, the filter will correctly show nothing for Richard rather than the
+previous stale Richard block.
+
+**Remaining scope:** Weekend-plan one-click scheduling (drive+prep time blocks auto-added to the
+calendar) is next.

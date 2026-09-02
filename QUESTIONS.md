@@ -296,6 +296,14 @@ the remaining modules.
 **Reversal cost:** Low — the next time the local browser is reachable, a two-minute check (open a child's person page, confirm the Activities card renders, add and delete a test activity) closes this out; nothing about the shipped code needs to change either way.
 **Blocking:** No
 
+### QUEUE-035
+**Module:** Calendar / Custody scheduling (D-130 one-off override reconciliation)
+**File(s):** `app/api/calendar/custody/route.ts`, `app/(app)/calendar/custody/one-off/custody-block-form.tsx`, live `custody_blocks` rows for Cal (`aba0d3b1-...`) and Emlyn (`7103d368-...`).
+**Question:** Three things bundled into this fix: (1) the user's message said "the kids will be with melissa" (plural) but the one-off override he'd already created only existed for Cal, not Emlyn — should the fix retroactively create the missing Emlyn override, or leave it since he only explicitly built one? (2) The live vacation block's stored dates (Sept 2 11:00 → Sept 7 11:00) didn't match his stated intent ("Saturday through Monday this week, the 5th-7th") — should the fix trust the literal stored dates or correct them to match what he actually said? (3) With no explicit time-of-day given for a "Saturday through Monday" vacation, what time should the override start/end at?
+**Assumption made:** (1) Created the missing Emlyn override with identical dates/type, since "the kids" is unambiguous and the existing single-child `<select>` on the create form (now fixed to a multi-select, per this same change) was almost certainly why only Cal's got created in the first place. (2) Corrected the live block to the literal stated range (Sept 5-7) rather than trusting the mistyped Sept 2-7 dates — the user's words are the source of truth for intent, and the reversal cost of a wrong date range on a near-term real-world custody arrangement is high, whereas leaving obviously-wrong dates in place guarantees the same bug reappears. (3) Used full-day granularity: both overrides start 2026-09-05 00:00 and end 2026-09-08 00:00 (i.e. all of Saturday through all of Monday), which also cleanly reconciles against the household's regular schedule — Richard keeps custody through Friday evening as normal (his existing Friday block is truncated to end at Saturday midnight, not deleted), and the regular alternating schedule resumes exactly at Monday midnight with Mel already responsible, avoiding an arbitrary clock-time guess like "8am" or "5pm" that has no basis in anything the user said.
+**Reversal cost:** Low — both overrides are ordinary `custody_blocks` rows editable via the (now-fixed) one-off edit form; changing the time-of-day boundary later is a two-field edit, not a schema change.
+**Blocking:** No
+
 ---
 
 ## HIGH
