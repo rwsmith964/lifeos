@@ -60,9 +60,16 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   try {
     // A full replace of the recurring definition — switching recurrence_type
-    // (e.g. cycle -> weekly_segments) is allowed; whichever fields the new
-    // type doesn't use are explicitly nulled by the schema so the DB check
-    // constraint (custody_schedules_recurrence_fields_check) stays satisfied.
+    // (e.g. cycle -> weekly_segments) is allowed. Note (D-126): the schema only
+    // *permits* null on the fields the new type doesn't use — it does not force
+    // them to null, and the client omits those keys entirely rather than sending
+    // explicit nulls, so a Supabase partial update leaves the old type's columns
+    // untouched in the DB after a switch. This satisfies
+    // custody_schedules_recurrence_fields_check, which only checks that the
+    // *active* recurrence_type's required fields are present — it does not
+    // require the other shape's fields to be absent. Harmless today since every
+    // read branches on recurrence_type, but don't assume the unused columns are
+    // actually null.
     const updated = await custodySchedulesRepo.update(supabase, id, parsed.data);
     const { blocksCreated } = await materializeCustodySchedule(supabase, updated);
     return NextResponse.json({ id: updated.id, blocksCreated });

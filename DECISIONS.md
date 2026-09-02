@@ -2683,3 +2683,85 @@ they stay as-is on `cycle` (functionally equivalent for the current pattern) unl
 convert. No changes made to `lib/brief/generate.ts` or `lib/opportunities/detect.ts` in this pass;
 both already read custody data only through the shared repository/projection functions, which
 handle both recurrence types uniformly, so no hidden cycle-only assumption was found there.
+
+## D-126 | 2026-09-02 | Custody edit-form save bugfix (`handoverTime` HH:MM:SS round-trip) + real-schedule migration to `weekly_segments`
+
+**Bug found during live-verification of D-125's new edit form:** opening
+`/calendar/custody/[id]/edit` and saving with zero changes failed validation with
+`"expected HH:MM 24-hour time"`, blocking every save — including saves that only touched the new
+day-of-week/handoff mode, since the cycle-mode `handoverTime` field is shared across both tabs and
+is always submitted.
+
+**Root cause:** `custody_schedules.handover_time` is a Postgres `time` column
+(`supabase/migrations/20260820000019_custody_schedules.sql`). Supabase's JS client returns Postgres
+`time` values as `"HH:MM:SS"` strings (confirmed via direct SQL: stored/returned value was
+`"17:00:00"`). `app/(app)/calendar/custody/[id]/edit/page.tsx` passed `schedule.handover_time`
+straight through to the edit form's `EditScheduleFormDefaults.handoverTime` with no normalization,
+and `edit-schedule-form.tsx` used that value directly as the initial React state for a native
+`<input type="time">`. The input displays `"17:00:00"` correctly as `05:00 PM` without the user
+touching it, so an unchanged submit sent `"17:00:00"` in the PATCH body — which `custodyScheduleUpdateSchema`'s
+`handoverTimeSchema` (`lib/db/schemas.ts`, regex `^([01]\d|2[0-3]):[0-5]\d$`) rejects as not matching
+strict `HH:MM`. `custom_handover_times` (the per-day jsonb overrides column) was not actually broken
+in practice — it's populated only via form submission, never round-tripped through a Postgres `time`
+type, so it was already clean `"HH:MM"` — but was defensively normalized anyway since doing so costs
+nothing. Display-only paths (`formatHandoverTime` in `lib/custody/schedule.ts`) were already tolerant
+since they just read the first two `:`-delimited segments, so no fix was needed there. The create
+form hardcodes a fresh `"17:00"` default and was never affected.
+
+**Fix:** added a `normalizeTime(t: string): string { return t.slice(0, 5); }` helper in
+`edit-schedule-form.tsx` (with a comment explaining the Postgres-serialization vs. Zod-regex
+mismatch) and applied it to both the `handoverTime` `useState` initializer and the
+`customHandoverOverrides` `useState` initializer (now a lazy initializer mapping every entry through
+`normalizeTime`). No schema or API change — purely a client-side state-hydration fix.
+
+**Verification:** before the fix, saving an unchanged cycle-mode schedule reproducibly failed with
+the validation error shown at the bottom of the form. After the fix (deployed to production and
+re-verified against the live site), the same unchanged save succeeds, redirects to the schedule
+detail page, and the detail page's handover summary is unchanged; direct SQL confirmed every DB
+column (`handover_time`, `custom_handover_times`, `cycle_length_days`, `cycle_assignments`,
+`anchor_date`, `recurrence_type`) is byte-identical to its pre-save value.
+
+**Tests/build:** `pnpm typecheck` 0 errors; `pnpm lint` 0 errors (34 pre-existing Android-asset
+warnings, unchanged baseline); `pnpm test` 69 files / 674 tests pass (unchanged count — no
+React Testing Library harness exists yet for client-component tests in this repo, so this fix,
+being pure state-hydration logic inside a client component, has no unit-test home; covered instead
+by the live browser verification above); `pnpm build` succeeds, ~70 routes.
+
+**Branch/merge:** `custody-edit-time-fix` branch off `main` at `95dee87`, feature commit `9953d3d`,
+merged with `--no-ff` and pushed (`95dee87..2b84ef1`).
+
+**Real-schedule migration (follow-up in the same session, not a separate branch — data-only via the
+already-shipped edit UI, no code change):** with the bugfix deployed, migrated both of the Smith
+Household's existing custody schedules — `2e9f542f-...` (Callan "Cal" Smith) and `59ea5ea0-...`
+(Emlyn "Em" Smith) — from `cycle` to `weekly_segments`, entering the user's actual real-world
+custody pattern (kids with Mel Tuesday–Friday 4:30 PM, with Richard Friday 4:30 PM–Monday 8:30 AM)
+directly through the new "Day-of-week & handoffs" tab. Both schedules' pre-migration `cycle`
+fields (`cycle_length_days=7`, `cycle_assignments`, `anchor_date=2026-08-30`,
+`handover_time="17:00:00"`, `custom_handover_times={"1":"08:30","5":"16:30"}`) were already an
+approximation of this same real pattern (same day-1 alignment, same 8:30/16:30 override times), so
+this is a faithful re-expression, not a behavior change to who has the kids when. Verified via
+direct SQL post-save: both rows now have `recurrence_type='weekly_segments'` and a 9-entry
+`weekly_segments` array (7 midnight breakpoints + the Monday 8:30 AM and Friday 4:30 PM handoffs).
+
+**Note — old cycle fields not nulled on migration:** contrary to what the additive schema contract
+description in D-125 implied ("switching recurrence_type nulls the fields the new type doesn't
+use"), the PATCH path does not actually null out `cycle_length_days`/`cycle_assignments`/
+`anchor_date`/`handover_time`/`custom_handover_times` when switching to `weekly_segments` — both
+migrated rows still carry their old cycle-mode values alongside the new `weekly_segments` data.
+**Root cause, verified this session:** `custodyScheduleWeeklySegmentsSchema` marks the unused cycle
+fields `z.null().optional()`, which *permits* `null` but does not coerce a missing key to `null`;
+`edit-schedule-form.tsx`'s weekly-segments submit body simply omits those keys rather than sending
+them as explicit `null`, so Supabase's partial-update PATCH never touches those columns and their
+prior values survive. `custody_schedules_recurrence_fields_check` (added in the same D-125
+migration) does not catch this either — it only asserts that the *active* recurrence_type's own
+required fields are present; it was never written to require the other shape's fields to be absent,
+so a row with both shapes populated satisfies it. This is harmless today since every read path
+(`projectCustodySchedule`, the detail-page summary, the .ics export) branches on `recurrence_type`
+and only ever reads the fields for the active mode — but it does mean the DB no longer proves
+mutual exclusivity the way the migration's own comment claims, so anything added later that reads
+cycle fields without checking `recurrence_type` first would silently read stale data. Corrected the
+misleading comment in `app/api/calendar/custody/schedules/[id]/route.ts` to describe actual
+behavior. Logged as **QUEUE-033** below rather than fixed further now, since tightening the check
+constraint or having the client send explicit nulls is non-blocking and low-reversal-cost
+(switching back to `Rolling cycle` in the UI still works either way, since the old cycle data is
+still intact).
