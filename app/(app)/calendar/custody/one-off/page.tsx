@@ -22,7 +22,11 @@ export default async function NewCustodyBlockPage() {
           No children on record yet — add one under People first.
         </p>
       ) : (
-        <CustodyBlockForm childPeople={children} responsibleCandidates={responsibleCandidates} />
+        <CustodyBlockForm
+          childPeople={children}
+          responsibleCandidates={responsibleCandidates}
+          allowMultipleChildren
+        />
       )}
     </div>
   );

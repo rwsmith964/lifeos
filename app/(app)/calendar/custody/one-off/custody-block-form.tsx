@@ -14,12 +14,22 @@ const BLOCK_TYPES = ["regular", "holiday", "swap", "vacation"] as const;
 // /calendar/custody/one-off/[id]/edit (edit) — same fields/validation,
 // only endpoint/method/defaults/redirect/labels differ, mirroring how
 // EventForm was generalized for create+edit in D-056.
+//
+// D-130: handoverTime split into startTime/endTime — a one-off block like
+// a vacation override needs an independent departure time and return
+// time, not one clock time applied to both ends. On create only,
+// childPersonId becomes a checkbox multi-select (allowMultipleChildren)
+// mirroring the preferredCompanionIds pattern in activity-form.tsx — "the
+// kids" is a common real request, and the API creates one reconciled
+// block per selected child. Edit keeps a single child, since a saved
+// block is inherently about one child.
 export interface CustodyBlockFormDefaults {
   childPersonId: string;
   responsiblePersonId: string;
   startDate: string;
   endDate: string;
-  handoverTime: string;
+  startTime: string;
+  endTime: string;
   blockType: string;
   location: string;
 }
@@ -30,6 +40,7 @@ export function CustodyBlockForm({
   endpoint = "/api/calendar/custody",
   method = "POST",
   defaults,
+  allowMultipleChildren = false,
   redirectTo = () => "/calendar/custody",
   submitLabel = "Save custody block",
   pendingLabel = "Saving…",
@@ -39,6 +50,7 @@ export function CustodyBlockForm({
   endpoint?: string;
   method?: "POST" | "PATCH";
   defaults?: CustodyBlockFormDefaults;
+  allowMultipleChildren?: boolean;
   redirectTo?: () => string;
   submitLabel?: string;
   pendingLabel?: string;
@@ -54,22 +66,42 @@ export function CustodyBlockForm({
 
   return (
     <form ref={formRef} noValidate onChange={clearInvalid} className="flex flex-col gap-4">
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="childPersonId">Child</Label>
-        <select
-          id="childPersonId"
-          name="childPersonId"
-          required
-          defaultValue={defaults?.childPersonId}
-          className="border-input h-9 rounded-md border bg-transparent px-3 text-sm"
-        >
-          {childPeople.map((child) => (
-            <option key={child.id} value={child.id}>
-              {child.full_name}
-            </option>
-          ))}
-        </select>
-      </div>
+      {allowMultipleChildren ? (
+        <div className="flex flex-col gap-2">
+          <Label>Children</Label>
+          <div className="flex flex-col gap-2">
+            {childPeople.map((child) => (
+              <label key={child.id} className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  name="childPersonIds"
+                  value={child.id}
+                  defaultChecked={childPeople.length === 1}
+                  className="border-input h-4 w-4 rounded"
+                />
+                {child.full_name}
+              </label>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="childPersonId">Child</Label>
+          <select
+            id="childPersonId"
+            name="childPersonId"
+            required
+            defaultValue={defaults?.childPersonId}
+            className="border-input h-9 rounded-md border bg-transparent px-3 text-sm"
+          >
+            {childPeople.map((child) => (
+              <option key={child.id} value={child.id}>
+                {child.full_name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
       <div className="flex flex-col gap-2">
         <Label htmlFor="responsiblePersonId">Responsible parent</Label>
         <select
@@ -98,30 +130,40 @@ export function CustodyBlockForm({
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-2">
-          <Label htmlFor="handoverTime">Handover time</Label>
+          <Label htmlFor="startTime">Start time</Label>
           <Input
-            id="handoverTime"
-            name="handoverTime"
+            id="startTime"
+            name="startTime"
             type="time"
-            defaultValue={defaults?.handoverTime ?? "17:00"}
+            defaultValue={defaults?.startTime ?? "17:00"}
             required
           />
         </div>
         <div className="flex flex-col gap-2">
-          <Label htmlFor="blockType">Type</Label>
-          <select
-            id="blockType"
-            name="blockType"
-            defaultValue={defaults?.blockType ?? "regular"}
-            className="border-input h-9 rounded-md border bg-transparent px-3 text-sm"
-          >
-            {BLOCK_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
+          <Label htmlFor="endTime">End time</Label>
+          <Input
+            id="endTime"
+            name="endTime"
+            type="time"
+            defaultValue={defaults?.endTime ?? "17:00"}
+            required
+          />
         </div>
+      </div>
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="blockType">Type</Label>
+        <select
+          id="blockType"
+          name="blockType"
+          defaultValue={defaults?.blockType ?? "regular"}
+          className="border-input h-9 rounded-md border bg-transparent px-3 text-sm"
+        >
+          {BLOCK_TYPES.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
       </div>
       <div className="flex flex-col gap-2">
         <Label htmlFor="location">Handover location (optional)</Label>
