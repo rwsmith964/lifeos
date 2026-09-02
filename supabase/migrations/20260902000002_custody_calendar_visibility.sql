@@ -1,0 +1,24 @@
+-- D-128: custody-based calendar visibility.
+--
+-- Two additive, independently-defaulted toggles:
+--
+-- 1. households.calendar_hide_other_parent_custody — the shared main
+--    /calendar view currently lists every custody block for every day in
+--    the visible range, regardless of which parent is responsible that day
+--    (see app/(app)/calendar/page.tsx's custodyItems). The user reported
+--    they only want "kids with <me>" days on their own calendar, not every
+--    "kids with <co-parent>" day too — that full picture is what the
+--    dedicated /calendar/custody page is already for (D-068 established
+--    that page as deliberately full-visibility). Defaults true (hide the
+--    other parent's custody days on the main calendar) to match the
+--    reported preference out of the box; a household can flip it back off
+--    in Settings if they'd rather see the whole custody picture inline.
+--
+-- 2. Nothing new needed for the mandatory/optional kid-activity visibility
+--    rule itself — it's computed at render time from the *existing*
+--    event_attendees.attendance_status enum (required/optional/
+--    informational, already shipped) crossed with custody_blocks, so no
+--    schema change is needed for that half of the feature. See
+--    lib/custody/visibility.ts.
+alter table households
+  add column calendar_hide_other_parent_custody boolean not null default true;

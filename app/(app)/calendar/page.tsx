@@ -23,9 +23,11 @@ import {
 import { requireHouseholdContext } from "@/lib/auth/session";
 import {
   listAttendeeNamesForEvents,
+  listAttendeesForEvents,
   listCustodyBlocksForHouseholdInRange,
   listEventsInRange,
 } from "@/lib/db/repositories/calendar";
+import { isKidLinkedEventVisibleForViewer } from "@/lib/custody/visibility";
 import { listPeopleForHousehold, peopleRepo } from "@/lib/db/repositories/people";
 import { usersRepo } from "@/lib/db/repositories/households";
 import { isFeatureEnabled } from "@/lib/flags";
@@ -137,7 +139,7 @@ export default async function CalendarPage({
   searchParams: Promise<{ month?: string; day?: string; view?: string; range?: string }>;
 }) {
   const { month: monthParam, day: dayParam, view: viewParam, range: rangeParam } = await searchParams;
-  const { supabase, household } = await requireHouseholdContext();
+  const { supabase, household, selfPerson } = await requireHouseholdContext();
   const view = viewParam === "custody" ? "custody" : "all";
   const range = parseRangeParam(rangeParam);
 
@@ -191,10 +193,16 @@ export default async function CalendarPage({
       format(gridEnd, DAY_PARAM_FORMAT)
     ),
   ]);
-  const attendeesByEvent = await listAttendeeNamesForEvents(
-    supabase,
-    events.map((e) => e.id)
-  );
+  const [attendeesByEvent, attendeeRowsByEvent] = await Promise.all([
+    listAttendeeNamesForEvents(
+      supabase,
+      events.map((e) => e.id)
+    ),
+    listAttendeesForEvents(
+      supabase,
+      events.map((e) => e.id)
+    ),
+  ]);
 
   // Module 4 (scheduling_v2, D-120): read-only travel-time conflict
   // warnings over the same grid window already computed above. Mirrors
@@ -231,20 +239,51 @@ export default async function CalendarPage({
   const childColors = buildChildColorMap(people.filter((p) => p.relationship_type === "child").map((p) => p.id));
   const defaultChildColor = { dot: "bg-primary", badge: "bg-muted text-foreground" };
 
-  const eventItems: DayItem[] = events.map((e) => ({
-    id: e.id,
-    kind: "event",
-    startsAt: new Date(e.starts_at),
-    endsAt: new Date(e.ends_at),
-    title: e.title,
-    subtitle: e.event_type,
-    allDay: e.all_day,
-    attendees: attendeesByEvent.get(e.id) ?? [],
-    location: e.location,
-    dotClassName: "bg-primary",
-  }));
+  // D-128: a kid-linked event (has one or more child attendees) only
+  // shows on the main calendar for a day this viewer actually has custody
+  // of at least one attending child — unless the viewer's own attendance
+  // is "required" (a mandatory event, e.g. a game, attend regardless of
+  // whose custody day it is). Events with no child attendee at all are
+  // untouched. Only applies to the shared "all" view; /calendar/custody
+  // stays fully visible per D-068's precedent.
+  const childPersonIds = new Set(people.filter((p) => p.relationship_type === "child").map((p) => p.id));
+  const eventItems: DayItem[] = events
+    .filter((e) => {
+      if (view === "custody") return true;
+      const attendeeRows = attendeeRowsByEvent.get(e.id) ?? [];
+      const childAttendeePersonIds = attendeeRows.filter((a) => childPersonIds.has(a.personId)).map((a) => a.personId);
+      const viewerAttendanceStatus = attendeeRows.find((a) => a.personId === selfPerson.id)?.attendanceStatus ?? null;
+      return isKidLinkedEventVisibleForViewer({
+        viewerPersonId: selfPerson.id,
+        childAttendeePersonIds,
+        viewerAttendanceStatus,
+        eventStartsAt: new Date(e.starts_at),
+        custodyBlocks,
+      });
+    })
+    .map((e) => ({
+      id: e.id,
+      kind: "event",
+      startsAt: new Date(e.starts_at),
+      endsAt: new Date(e.ends_at),
+      title: e.title,
+      subtitle: e.event_type,
+      allDay: e.all_day,
+      attendees: attendeesByEvent.get(e.id) ?? [],
+      location: e.location,
+      dotClassName: "bg-primary",
+    }));
 
-  const custodyItems: DayItem[] = custodyBlocks.map((c) => {
+  // D-128: on the shared "all" view, a household can opt to only show
+  // their OWN custody days inline (hide "kids with the co-parent" rows) —
+  // the full who-has-the-kids-when picture is always available on the
+  // dedicated /calendar/custody view regardless of this setting.
+  const visibleCustodyBlocks =
+    view !== "custody" && household.calendar_hide_other_parent_custody
+      ? custodyBlocks.filter((c) => c.responsible_person_id === selfPerson.id)
+      : custodyBlocks;
+
+  const custodyItems: DayItem[] = visibleCustodyBlocks.map((c) => {
     const color = childColors.get(c.child_person_id) ?? defaultChildColor;
     const childName = peopleById.get(c.child_person_id) ?? "Someone";
     const responsibleName = peopleById.get(c.responsible_person_id) ?? "Unknown";
