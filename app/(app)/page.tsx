@@ -1,15 +1,17 @@
 import { addDays, format, formatDistanceToNow, startOfDay } from "date-fns";
 import Link from "next/link";
-import { AlertTriangle, CalendarClock, Cloud, Gift, Mic, Sparkles, Users, Zap } from "lucide-react";
+import { AlertTriangle, CalendarClock, CheckSquare, Cloud, Gift, Mic, Sparkles, Users, Zap } from "lucide-react";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { generateDailyBrief } from "@/lib/brief/generate";
 import { isBriefStale } from "@/lib/brief/staleness";
+import { isFeatureEnabled } from "@/lib/flags";
 import { createSupabaseServiceRoleClient } from "@/lib/db/client-service-role";
 import { briefsRepo, getBriefForPersonAndDate } from "@/lib/db/repositories/system";
 import { listCustodyBlocksForHouseholdInRange, listEventsInRange } from "@/lib/db/repositories/calendar";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
 import { listOpenOpportunitiesWithSubjectForHousehold } from "@/lib/db/repositories/opportunities";
 import { getPresentedOpportunities } from "@/lib/opportunities/present";
+import { BRIEF_CONTRIBUTORS, composeBrief, itemsForCategory } from "@/lib/brief/contributors";
 import type { BriefContent } from "@/lib/brief/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -43,7 +45,29 @@ export default async function BriefPage() {
   // P1-6/D-070: same threshold/dedupe/tiering the Opportunities page and
   // Calendar nudge use, so this card never shows something that wouldn't
   // also show up there.
-  const topOpportunities = getPresentedOpportunities(rawOpportunities).flat.slice(0, 2);
+  const legacyTopOpportunities = getPresentedOpportunities(rawOpportunities).flat.slice(0, 2);
+
+  // Module 8 (brief_registration_v2, D-1XX): with the flag on, Opportunities
+  // and Household route through the generic contributor/compose pipeline
+  // instead of each having its own bespoke query+slice here. Behind the
+  // flag so a household that hasn't opted in sees byte-identical output to
+  // before this module shipped (QUEUE-031 -- the AI-generated sections
+  // below are unaffected either way, flag on or off).
+  const registrationV2 = await isFeatureEnabled(supabase, household.id, "brief_registration_v2");
+  const composedItems = registrationV2
+    ? composeBrief(
+        (
+          await Promise.all(
+            BRIEF_CONTRIBUTORS.map((contributor) =>
+              contributor({ supabase, householdId: household.id, personId: selfPerson.id, today })
+            )
+          )
+        ).flat()
+      )
+    : [];
+  const composedOpportunities = itemsForCategory(composedItems, "opportunities");
+  const composedHousehold = itemsForCategory(composedItems, "household");
+  const topOpportunities = registrationV2 ? composedOpportunities : legacyTopOpportunities;
 
   // D-048 (tappability): brief content stores each person by their real
   // full_name (lib/ai/context.ts's labelFor), never a stable id — the brief
@@ -212,15 +236,50 @@ export default async function BriefPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-2">
-              {topOpportunities.map((opp) => (
-                <div key={opp.id} className="text-sm">
-                  <span className="font-medium">{opp.headline}</span>
-                  <p className="text-muted-foreground">{opp.reasoning}</p>
-                </div>
-              ))}
+              {registrationV2
+                ? composedOpportunities.map((item) => (
+                    <div key={item.id} className="text-sm">
+                      <span className="font-medium">{item.title}</span>
+                      {item.detail && <p className="text-muted-foreground">{item.detail}</p>}
+                    </div>
+                  ))
+                : legacyTopOpportunities.map((opp) => (
+                    <div key={opp.id} className="text-sm">
+                      <span className="font-medium">{opp.headline}</span>
+                      <p className="text-muted-foreground">{opp.reasoning}</p>
+                    </div>
+                  ))}
               <Link href="/opportunities" className="text-sm underline-offset-2 hover:underline">
                 See all opportunities
               </Link>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Module 8 (brief_registration_v2): only ever appears when the flag
+            is on AND the household contributor (Module 7) actually had
+            something to say -- e.g. household_layer off, or on with nothing
+            due, both mean this card doesn't render at all. */}
+        {composedHousehold.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <CheckSquare className="size-4" /> Household
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-2">
+              {composedHousehold.map((item) => (
+                <div key={item.id} className="text-sm">
+                  {item.href ? (
+                    <Link href={item.href} className="font-medium underline-offset-2 hover:underline">
+                      {item.title}
+                    </Link>
+                  ) : (
+                    <span className="font-medium">{item.title}</span>
+                  )}
+                  {item.detail && <p className="text-muted-foreground">{item.detail}</p>}
+                </div>
+              ))}
             </CardContent>
           </Card>
         )}
