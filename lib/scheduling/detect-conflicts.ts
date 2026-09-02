@@ -22,19 +22,28 @@ export interface DetectScheduleConflictsOptions {
   mapboxAccessToken?: string;
 }
 
+export interface ResolvedTravelLegs {
+  located: LocatedTimedEvent[];
+  travelMinutesByEventId: Map<string, TravelMinutesLookup>;
+}
+
 /**
- * Runs the read-only travel-time conflict pass for one household over
- * [startsAtISO, endsAtISO). `home` is the fallback "previous location" for
- * the day's first located event (same semantics as computeTravelLegs).
+ * D-133: shared resolution step, factored out of
+ * detectScheduleConflictsForHousehold so the day-timeline view (which wants
+ * EVERY adjacent leg's drive time, not just the ones that are too tight)
+ * can reuse the exact same event-fetch + leg-building + cached-or-fresh
+ * minutes lookup instead of duplicating it. Read-only; never writes
+ * anything. `home` is the fallback "previous location" for the day's first
+ * located event (same semantics as computeTravelLegs).
  */
-export async function detectScheduleConflictsForHousehold(
+export async function resolveTravelLegsForHousehold(
   client: SupabaseClient,
   householdId: string,
   startsAtISO: string,
   endsAtISO: string,
   home: LatLng,
   options: DetectScheduleConflictsOptions = {}
-): Promise<TravelConflictWarning[]> {
+): Promise<ResolvedTravelLegs> {
   const events = await listEventsInRange(client, householdId, startsAtISO, endsAtISO);
 
   const located: LocatedTimedEvent[] = events.map((e) => ({
@@ -74,5 +83,29 @@ export async function detectScheduleConflictsForHousehold(
     travelMinutesByEventId.set(leg.eventId, { leg, minutes: result.minutes, source: result.source });
   }
 
+  return { located, travelMinutesByEventId };
+}
+
+/**
+ * Runs the read-only travel-time conflict pass for one household over
+ * [startsAtISO, endsAtISO). `home` is the fallback "previous location" for
+ * the day's first located event (same semantics as computeTravelLegs).
+ */
+export async function detectScheduleConflictsForHousehold(
+  client: SupabaseClient,
+  householdId: string,
+  startsAtISO: string,
+  endsAtISO: string,
+  home: LatLng,
+  options: DetectScheduleConflictsOptions = {}
+): Promise<TravelConflictWarning[]> {
+  const { located, travelMinutesByEventId } = await resolveTravelLegsForHousehold(
+    client,
+    householdId,
+    startsAtISO,
+    endsAtISO,
+    home,
+    options
+  );
   return detectTravelTimeConflicts(located, travelMinutesByEventId);
 }
