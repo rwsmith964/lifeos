@@ -2,13 +2,20 @@
 // half of lib/custody/schedule.ts's pure projection engine. Every reader
 // in the app (calendar, the person page's custody card, brief generation)
 // queries custody_blocks directly and stays untouched by this; a schedule
-// is purely a generator. See DECISIONS.md D-033.
+// is purely a generator. See DECISIONS.md D-033 (cycle model) and D-125
+// (weekly_segments model).
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { addDays, format } from "date-fns";
-import type { CustodyScheduleRow } from "../db/database.types";
+import type { CustodyCycleAssignment, CustodyScheduleRow, CustodyWeeklySegment } from "../db/database.types";
 import { custodyBlocksRepo } from "../db/repositories/calendar";
 import { listExceptionsForSchedule } from "../db/repositories/custody-schedules";
-import { cycleDayIndexForDate, handoverTimeForDayIndex, projectCustodySchedule, type ProjectedCustodyDay } from "./schedule";
+import {
+  cycleDayIndexForDate,
+  handoverTimeForDayIndex,
+  projectCustodySchedule,
+  projectWeeklySegmentSchedule,
+  type ProjectedCustodyDay,
+} from "./schedule";
 
 export const MATERIALIZE_WINDOW_DAYS = 90;
 
@@ -35,25 +42,53 @@ function mergeConsecutiveDays(days: ProjectedCustodyDay[]): MergedRun[] {
   return runs;
 }
 
+/** A row shape ready for custodyBlocksRepo.createMany — shared by both recurrence-type branches below. */
+interface MaterializedBlockRow {
+  household_id: string;
+  child_person_id: string;
+  responsible_person_id: string;
+  starts_at: string;
+  ends_at: string;
+  block_type: "regular" | "holiday";
+  location: string | null;
+  notes: string;
+  custody_schedule_id: string;
+}
+
 /**
- * Regenerates custody_blocks for a schedule across a rolling window
- * starting today. Only touches blocks this schedule itself produced
- * (custody_schedule_id = schedule.id) — a manually created one-off block
- * is never affected. Safe to call repeatedly (e.g. after editing the
- * schedule): it deletes and re-inserts its own future window each time.
+ * Narrows a CustodyScheduleRow to guarantee its cycle_* fields are
+ * present. Every 'cycle' row satisfies this by the DB check constraint
+ * (custody_schedules_recurrence_fields_check); this only guards against
+ * a schedule being materialized as the wrong recurrence type by mistake.
  */
-export async function materializeCustodySchedule(
-  client: SupabaseClient,
+function assertCycleFields(
+  schedule: CustodyScheduleRow
+): asserts schedule is CustodyScheduleRow & {
+  cycle_length_days: number;
+  cycle_assignments: CustodyCycleAssignment[];
+  anchor_date: string;
+} {
+  if (schedule.cycle_length_days == null || schedule.cycle_assignments == null || schedule.anchor_date == null) {
+    throw new Error(`Custody schedule ${schedule.id} is recurrence_type 'cycle' but is missing its cycle fields.`);
+  }
+}
+
+/** Same guarantee as assertCycleFields, for the 'weekly_segments' recurrence type. */
+function assertWeeklySegmentsFields(
+  schedule: CustodyScheduleRow
+): asserts schedule is CustodyScheduleRow & { weekly_segments: CustodyWeeklySegment[] } {
+  if (!schedule.weekly_segments || schedule.weekly_segments.length === 0) {
+    throw new Error(`Custody schedule ${schedule.id} is recurrence_type 'weekly_segments' but has no weekly_segments.`);
+  }
+}
+
+function materializeCycleRows(
   schedule: CustodyScheduleRow,
-  windowDays: number = MATERIALIZE_WINDOW_DAYS
-): Promise<{ blocksCreated: number }> {
-  const exceptions = await listExceptionsForSchedule(client, schedule.id);
-  const exceptionsByDate = new Map(exceptions.map((e) => [e.exception_date, e.responsible_person_id]));
-
-  const windowStart = new Date();
-  windowStart.setHours(0, 0, 0, 0);
-  const windowEnd = addDays(windowStart, windowDays);
-
+  exceptionsByDate: Map<string, string>,
+  windowStart: Date,
+  windowEnd: Date
+): MaterializedBlockRow[] {
+  assertCycleFields(schedule);
   const days = projectCustodySchedule(
     {
       cycleLengthDays: schedule.cycle_length_days,
@@ -68,18 +103,7 @@ export async function materializeCustodySchedule(
   );
   const runs = mergeConsecutiveDays(days);
 
-  // Clear this schedule's own future-window blocks before re-inserting —
-  // never touches another schedule's blocks or manually created ones.
-  const { error: deleteError } = await client
-    .from("custody_blocks")
-    .delete()
-    .eq("custody_schedule_id", schedule.id)
-    .gte("starts_at", windowStart.toISOString());
-  if (deleteError) throw deleteError;
-
-  if (runs.length === 0) return { blocksCreated: 0 };
-
-  const rows = runs.map((run) => {
+  return runs.map((run) => {
     // Each run's own handover time is resolved from whatever is configured
     // for the run's *start* day (e.g. Friday 4:30pm for a Fri-Sat-Sun run) —
     // this is what lets two different runs in the same schedule use two
@@ -119,6 +143,80 @@ export async function materializeCustodySchedule(
       custody_schedule_id: schedule.id,
     };
   });
+}
+
+/**
+ * 'weekly_segments' counterpart to materializeCycleRows. Each projected
+ * interval already carries its own precise starts_at/ends_at clock time
+ * (see projectWeeklySegmentSchedule) — unlike the cycle branch above,
+ * ends_at is a real distinct instant, which is what lets a single
+ * calendar day split into two custody_blocks rows (e.g. Friday 00:00-16:30
+ * to one parent, 16:30-24:00 to the other).
+ */
+function materializeWeeklySegmentsRows(
+  schedule: CustodyScheduleRow,
+  exceptionsByDate: Map<string, string>,
+  windowStart: Date,
+  windowEnd: Date
+): MaterializedBlockRow[] {
+  assertWeeklySegmentsFields(schedule);
+  const intervals = projectWeeklySegmentSchedule(
+    schedule.weekly_segments,
+    schedule.start_date,
+    schedule.end_date,
+    exceptionsByDate,
+    windowStart,
+    windowEnd
+  );
+  return intervals.map((interval) => ({
+    household_id: schedule.household_id,
+    child_person_id: schedule.child_person_id,
+    responsible_person_id: interval.responsiblePersonId,
+    starts_at: new Date(interval.startsAt).toISOString(),
+    ends_at: new Date(interval.endsAt).toISOString(),
+    block_type: interval.isException ? ("holiday" as const) : ("regular" as const),
+    location: schedule.handover_location,
+    notes: "",
+    custody_schedule_id: schedule.id,
+  }));
+}
+
+/**
+ * Regenerates custody_blocks for a schedule across a rolling window
+ * starting today. Only touches blocks this schedule itself produced
+ * (custody_schedule_id = schedule.id) — a manually created one-off block
+ * is never affected. Safe to call repeatedly (e.g. after editing the
+ * schedule): it deletes and re-inserts its own future window each time.
+ * Branches on recurrence_type — the 'cycle' path is byte-for-byte the
+ * original logic; 'weekly_segments' is new (see D-125).
+ */
+export async function materializeCustodySchedule(
+  client: SupabaseClient,
+  schedule: CustodyScheduleRow,
+  windowDays: number = MATERIALIZE_WINDOW_DAYS
+): Promise<{ blocksCreated: number }> {
+  const exceptions = await listExceptionsForSchedule(client, schedule.id);
+  const exceptionsByDate = new Map(exceptions.map((e) => [e.exception_date, e.responsible_person_id]));
+
+  const windowStart = new Date();
+  windowStart.setHours(0, 0, 0, 0);
+  const windowEnd = addDays(windowStart, windowDays);
+
+  // Clear this schedule's own future-window blocks before re-inserting —
+  // never touches another schedule's blocks or manually created ones.
+  const { error: deleteError } = await client
+    .from("custody_blocks")
+    .delete()
+    .eq("custody_schedule_id", schedule.id)
+    .gte("starts_at", windowStart.toISOString());
+  if (deleteError) throw deleteError;
+
+  const rows =
+    schedule.recurrence_type === "weekly_segments"
+      ? materializeWeeklySegmentsRows(schedule, exceptionsByDate, windowStart, windowEnd)
+      : materializeCycleRows(schedule, exceptionsByDate, windowStart, windowEnd);
+
+  if (rows.length === 0) return { blocksCreated: 0 };
 
   await custodyBlocksRepo.createMany(client, rows);
   return { blocksCreated: rows.length };

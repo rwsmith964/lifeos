@@ -1,13 +1,18 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Download } from "lucide-react";
+import { ArrowLeft, Download, Pencil } from "lucide-react";
 import { format } from "date-fns";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
 import { listExceptionsForSchedule, custodySchedulesRepo } from "@/lib/db/repositories/custody-schedules";
 import { filterEligibleResponsibleAdults } from "@/lib/custody/eligible-parents";
 import { MATERIALIZE_WINDOW_DAYS } from "@/lib/custody/materialize";
-import { describeCustodyHandoverTimes, findGaps, projectCustodySchedule } from "@/lib/custody/schedule";
+import {
+  describeCustodyHandoverTimes,
+  describeWeeklySegmentsPattern,
+  findGaps,
+  projectCustodySchedule,
+} from "@/lib/custody/schedule";
 import { Card, CardContent } from "@/components/ui/card";
 import { ExceptionForm } from "./exception-form";
 import { DeleteExceptionButton } from "./delete-exception-button";
@@ -47,19 +52,33 @@ export default async function CustodyScheduleDetailPage({
   const windowEnd = new Date(windowStart);
   windowEnd.setDate(windowEnd.getDate() + MATERIALIZE_WINDOW_DAYS);
   const exceptionsByDate = new Map(exceptions.map((e) => [e.exception_date, e.responsible_person_id]));
-  const projectedDays = projectCustodySchedule(
-    {
-      cycleLengthDays: schedule.cycle_length_days,
-      cycleAssignments: schedule.cycle_assignments,
-      anchorDate: schedule.anchor_date,
-      startDate: schedule.start_date,
-      endDate: schedule.end_date,
-    },
-    exceptionsByDate,
-    windowStart,
-    windowEnd
-  );
-  const gaps = findGaps(projectedDays, windowStart, windowEnd);
+  // Skipped entirely for weekly_segments: personAtWeekMinutes always
+  // resolves to a responsible person for every day/time in the week (it
+  // carries the last breakpoint forward, wrapping circularly), so a
+  // weekly_segments schedule with at least one segment can never have an
+  // unassigned gap the way a cycle with an unfilled dayIndex can.
+  const gaps =
+    schedule.recurrence_type === "weekly_segments" ||
+    schedule.cycle_length_days == null ||
+    !schedule.cycle_assignments ||
+    schedule.anchor_date == null
+      ? []
+      : findGaps(
+          projectCustodySchedule(
+            {
+              cycleLengthDays: schedule.cycle_length_days,
+              cycleAssignments: schedule.cycle_assignments,
+              anchorDate: schedule.anchor_date,
+              startDate: schedule.start_date,
+              endDate: schedule.end_date,
+            },
+            exceptionsByDate,
+            windowStart,
+            windowEnd
+          ),
+          windowStart,
+          windowEnd
+        );
 
   const sortedExceptions = [...exceptions].sort((a, b) => a.exception_date.localeCompare(b.exception_date));
 
@@ -73,19 +92,36 @@ export default async function CustodyScheduleDetailPage({
         <div>
           <h1 className="text-xl font-semibold">{peopleById.get(schedule.child_person_id) ?? "Unknown child"}&rsquo;s schedule</h1>
           <p className="text-sm text-muted-foreground">
-            {describeCustodyHandoverTimes(schedule)}
+            {schedule.recurrence_type === "weekly_segments" && schedule.weekly_segments
+              ? describeWeeklySegmentsPattern(schedule.weekly_segments, peopleById)
+              : schedule.cycle_length_days != null && schedule.cycle_assignments && schedule.anchor_date
+                ? describeCustodyHandoverTimes({
+                    handover_time: schedule.handover_time,
+                    custom_handover_times: schedule.custom_handover_times,
+                    anchor_date: schedule.anchor_date,
+                    cycle_length_days: schedule.cycle_length_days,
+                  })
+                : "Custom pattern"}
             {schedule.handover_location && ` at ${schedule.handover_location}`} · from{" "}
             {format(new Date(`${schedule.start_date}T00:00:00`), "MMM d, yyyy")}
             {schedule.end_date ? ` to ${format(new Date(`${schedule.end_date}T00:00:00`), "MMM d, yyyy")}` : " · ongoing"}
           </p>
         </div>
-        <a
-          href={`/api/calendar/custody/schedules/${schedule.id}/ics`}
-          className="flex shrink-0 items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
-          download
-        >
-          <Download className="size-3.5" /> Export .ics
-        </a>
+        <div className="flex shrink-0 items-center gap-2">
+          <Link
+            href={`/calendar/custody/${schedule.id}/edit`}
+            className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
+          >
+            <Pencil className="size-3.5" /> Edit schedule
+          </Link>
+          <a
+            href={`/api/calendar/custody/schedules/${schedule.id}/ics`}
+            className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
+            download
+          >
+            <Download className="size-3.5" /> Export .ics
+          </a>
+        </div>
       </div>
 
       {gaps.length > 0 && (

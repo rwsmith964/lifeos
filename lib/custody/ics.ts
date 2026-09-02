@@ -6,7 +6,7 @@
 // lib/custody/schedule.ts) and pass the result in here.
 import { addDays, format, parseISO } from "date-fns";
 import { APP_NAME } from "@/lib/constants";
-import type { ProjectedCustodyDay } from "./schedule";
+import type { ProjectedCustodyDay, ProjectedCustodyInterval } from "./schedule";
 
 interface MergedIcsRun {
   startDate: string; // yyyy-MM-dd, inclusive
@@ -103,6 +103,76 @@ export function buildCustodyIcs({ scheduleId, childName, runs, peopleNamesById, 
     );
     if (run.hasException) {
       lines.push(`DESCRIPTION:${escapeIcsText("Exception day — overrides the regular cycle.")}`);
+    }
+    lines.push("END:VEVENT");
+  }
+
+  lines.push("END:VCALENDAR");
+  return lines.map(foldIcsLine).join("\r\n") + "\r\n";
+}
+
+function toIcsFloatingDateTime(naiveDateTime: string): string {
+  // naiveDateTime is "yyyy-MM-ddTHH:mm:00" (see ProjectedCustodyInterval).
+  // Emitted with no trailing Z and no TZID — a "floating" local time per
+  // RFC 5545 §3.3.5, which every mainstream calendar app renders in the
+  // *importing* device's own local timezone. That is the right behavior
+  // here: a 4:30pm handoff should show as 4:30pm wherever it's viewed,
+  // matching how the naive strings are already treated everywhere else
+  // in lib/custody/* (no household timezone is stored — see D-125).
+  return naiveDateTime.replace(/[-:]/g, "").replace(/(\d{8}T\d{6}).*/, "$1");
+}
+
+export interface BuildTimedCustodyIcsInput {
+  scheduleId: string;
+  childName: string;
+  intervals: ProjectedCustodyInterval[];
+  peopleNamesById: Map<string, string>;
+  generatedAt?: Date;
+}
+
+/**
+ * Timed counterpart to buildCustodyIcs, for weekly_segments schedules —
+ * one VEVENT per projected interval with a real clock start/end instead
+ * of an all-day VALUE=DATE event, so a split day (e.g. Friday handoff at
+ * 4:30pm) exports as two correctly-timed events rather than one all-day
+ * block. Intervals are expected pre-merged across day boundaries (which
+ * projectWeeklySegmentSchedule already does), so no further merging
+ * happens here.
+ */
+export function buildTimedCustodyIcs({
+  scheduleId,
+  childName,
+  intervals,
+  peopleNamesById,
+  generatedAt = new Date(),
+}: BuildTimedCustodyIcsInput): string {
+  const stamp = format(generatedAt, "yyyyMMdd'T'HHmmss'Z'");
+  const lines: string[] = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    `PRODID:-//${APP_NAME}//Custody Schedule Export//EN`,
+    "CALSCALE:GREGORIAN",
+    `X-WR-CALNAME:${escapeIcsText(`${childName} — custody schedule`)}`,
+  ];
+
+  for (const interval of intervals) {
+    const personName = peopleNamesById.get(interval.responsiblePersonId) ?? "Unknown";
+    const dtStart = toIcsFloatingDateTime(interval.startsAt);
+    const dtEnd = toIcsFloatingDateTime(interval.endsAt);
+    const summary = `${childName} with ${personName}`;
+    // Stable across regenerations, like buildCustodyIcs's UID.
+    const uid = `${scheduleId}-${interval.startsAt}@lifeos-custody`;
+
+    lines.push(
+      "BEGIN:VEVENT",
+      `UID:${uid}`,
+      `DTSTAMP:${stamp}`,
+      `DTSTART:${dtStart}`,
+      `DTEND:${dtEnd}`,
+      `SUMMARY:${escapeIcsText(summary)}`
+    );
+    if (interval.isException) {
+      lines.push(`DESCRIPTION:${escapeIcsText("Exception day — overrides the regular weekly pattern.")}`);
     }
     lines.push("END:VEVENT");
   }

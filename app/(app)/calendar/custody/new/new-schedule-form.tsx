@@ -7,6 +7,7 @@ import type { PersonRow } from "@/lib/db/database.types";
 import {
   buildPresetCycle,
   CUSTODY_PRESET_LABELS,
+  describeWeeklySegmentsPattern,
   findGaps,
   formatHandoverTime,
   projectCustodySchedule,
@@ -18,6 +19,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  emptyWeeklySegmentsState,
+  findWeeklySegmentsGaps,
+  weeklySegmentsStateToDefinitions,
+  WeeklySegmentsEditor,
+  type WeeklySegmentsState,
+} from "../weekly-segments-editor";
 
 const PRESET_NAMES = Object.keys(CUSTODY_PRESET_LABELS) as CustodyPresetName[];
 const selectClass = "border-input h-9 rounded-md border bg-transparent px-3 text-sm";
@@ -30,7 +38,7 @@ function mostRecentSunday(dateStr: string): string {
   return format(d, "yyyy-MM-dd");
 }
 
-type Mode = "preset" | "weekly" | "advanced";
+type Mode = "preset" | "weekly" | "advanced" | "segments";
 
 interface AgreementParseResult {
   weeklyAssignments: Record<string, string | null>;
@@ -80,6 +88,13 @@ export function NewScheduleForm({
   const [weeklyAssignments, setWeeklyAssignments] = useState<Record<number, string>>({});
   const [weeklyAllDay, setWeeklyAllDay] = useState<Record<number, boolean>>({ 0: true, 1: true, 2: true, 3: true, 4: true, 5: true, 6: true });
   const [weeklyHandoverTime, setWeeklyHandoverTime] = useState<Record<number, string>>({});
+
+  // Day-of-week & handoffs mode state ('weekly_segments' recurrence type)
+  // — a fixed weekly pattern where a single calendar day can be split
+  // between two people at an exact handoff time (e.g. Friday 4:30 PM),
+  // which the cycle-based Weekly mode above cannot express. See
+  // weekly-segments-editor.tsx and DECISIONS.md D-125.
+  const [segmentsState, setSegmentsState] = useState<WeeklySegmentsState>(emptyWeeklySegmentsState());
 
   const [startDate, setStartDate] = useState(today);
   const [endDate, setEndDate] = useState("");
@@ -198,7 +213,15 @@ export function NewScheduleForm({
 
   const peopleById = useMemo(() => new Map(responsibleCandidates.map((p) => [p.id, p.nickname || p.full_name])), [responsibleCandidates]);
 
+  const segmentsDefinitions = useMemo(() => weeklySegmentsStateToDefinitions(segmentsState), [segmentsState]);
+  const segmentsGaps = useMemo(() => findWeeklySegmentsGaps(segmentsState), [segmentsState]);
+  const segmentsSummary = useMemo(
+    () => (segmentsDefinitions.length > 0 ? describeWeeklySegmentsPattern(segmentsDefinitions, peopleById) : ""),
+    [segmentsDefinitions, peopleById]
+  );
+
   const preview = useMemo(() => {
+    if (mode === "segments") return [];
     if (cycleLengthDays === 0 || cycleAssignments.length === 0 || !effectiveAnchorDate || !startDate) return [];
     const windowStart = new Date(`${today}T00:00:00`);
     const windowEnd = new Date(windowStart);
@@ -209,22 +232,32 @@ export function NewScheduleForm({
       windowStart,
       windowEnd
     );
-  }, [cycleLengthDays, cycleAssignments, effectiveAnchorDate, startDate, endDate, today]);
+  }, [mode, cycleLengthDays, cycleAssignments, effectiveAnchorDate, startDate, endDate, today]);
 
   const gaps = useMemo(() => {
+    if (mode === "segments") return [];
     if (preview.length === 0 || cycleLengthDays === 0) return [];
     const windowStart = new Date(`${today}T00:00:00`);
     const windowEnd = new Date(windowStart);
     windowEnd.setDate(windowEnd.getDate() + 13);
     return findGaps(preview, windowStart, windowEnd);
-  }, [preview, cycleLengthDays, today]);
+  }, [mode, preview, cycleLengthDays, today]);
 
   function toggleChild(id: string) {
     setSelectedChildIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
 
   async function handleSubmit() {
-    if (selectedChildIds.length === 0 || cycleAssignments.length === 0) {
+    if (selectedChildIds.length === 0) {
+      setError("Pick at least one child.");
+      return;
+    }
+    if (mode === "segments") {
+      if (segmentsGaps.length > 0) {
+        setError(`Every day needs someone assigned starting at midnight. Missing: ${segmentsGaps.join(", ")}.`);
+        return;
+      }
+    } else if (cycleAssignments.length === 0) {
       setError("Pick at least one child and make sure every day has someone assigned.");
       return;
     }
@@ -232,20 +265,31 @@ export function NewScheduleForm({
     setError(null);
     try {
       for (const childPersonId of selectedChildIds) {
+        const body =
+          mode === "segments"
+            ? {
+                child_person_id: childPersonId,
+                recurrence_type: "weekly_segments" as const,
+                weekly_segments: segmentsDefinitions,
+                handover_location: handoverLocation.trim() || null,
+                start_date: startDate,
+                end_date: endDate || null,
+              }
+            : {
+                child_person_id: childPersonId,
+                cycle_length_days: cycleLengthDays,
+                cycle_assignments: cycleAssignments,
+                anchor_date: effectiveAnchorDate,
+                handover_time: handoverTime,
+                custom_handover_times: customHandoverTimes,
+                handover_location: handoverLocation.trim() || null,
+                start_date: startDate,
+                end_date: endDate || null,
+              };
         const res = await fetch("/api/calendar/custody/schedules", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            child_person_id: childPersonId,
-            cycle_length_days: cycleLengthDays,
-            cycle_assignments: cycleAssignments,
-            anchor_date: effectiveAnchorDate,
-            handover_time: handoverTime,
-            custom_handover_times: customHandoverTimes,
-            handover_location: handoverLocation.trim() || null,
-            start_date: startDate,
-            end_date: endDate || null,
-          }),
+          body: JSON.stringify(body),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
@@ -383,7 +427,23 @@ export function NewScheduleForm({
         <Button type="button" size="sm" variant={mode === "advanced" ? "default" : "outline"} onClick={() => setMode("advanced")}>
           Advanced
         </Button>
+        <Button type="button" size="sm" variant={mode === "segments" ? "default" : "outline"} onClick={() => setMode("segments")}>
+          Day-of-week & handoffs
+        </Button>
       </div>
+
+      {mode === "segments" && (
+        <div className="flex flex-col gap-2">
+          <Label>Who has the kids, by day and handoff time</Label>
+          <p className="text-xs text-muted-foreground">
+            Use this when your arrangement is tied to specific days of the week and exact handoff times — e.g. every Friday at
+            4:30 PM through Monday at 8:30 AM. Every day starts with an “all day” assignment at midnight; add another handoff
+            time within the same day if responsibility changes partway through (like a Friday evening pickup or a Monday
+            morning return).
+          </p>
+          <WeeklySegmentsEditor value={segmentsState} onChange={setSegmentsState} responsibleCandidates={responsibleCandidates} />
+        </div>
+      )}
 
       {mode === "preset" && (
         <>
@@ -536,16 +596,32 @@ export function NewScheduleForm({
           <Input id="endDate" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="handoverTime">{mode === "weekly" ? "Default handover time (All Day days)" : "Handover time"}</Label>
-          <Input id="handoverTime" type="time" value={handoverTime} onChange={(e) => setHandoverTime(e.target.value)} />
-        </div>
+      <div className={mode === "segments" ? "flex flex-col gap-2" : "grid grid-cols-2 gap-3"}>
+        {mode !== "segments" && (
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="handoverTime">{mode === "weekly" ? "Default handover time (All Day days)" : "Handover time"}</Label>
+            <Input id="handoverTime" type="time" value={handoverTime} onChange={(e) => setHandoverTime(e.target.value)} />
+          </div>
+        )}
         <div className="flex flex-col gap-2">
           <Label htmlFor="handoverLocation">Handover location (optional)</Label>
           <Input id="handoverLocation" placeholder="e.g. School pickup" value={handoverLocation} onChange={(e) => setHandoverLocation(e.target.value)} />
         </div>
       </div>
+
+      {mode === "segments" && segmentsDefinitions.length > 0 && (
+        <Card>
+          <CardContent className="flex flex-col gap-1">
+            <p className="text-sm font-medium">Pattern summary</p>
+            <p className="text-xs text-muted-foreground">{segmentsSummary}</p>
+            {segmentsGaps.length > 0 && (
+              <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                No one assigned starting midnight on: {segmentsGaps.join(", ")}. Pick someone for each day above.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {preview.length > 0 && (
         <Card>

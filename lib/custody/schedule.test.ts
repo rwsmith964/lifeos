@@ -3,10 +3,13 @@ import {
   buildPresetCycle,
   cycleAssignmentForDate,
   cycleDayIndexForDate,
+  describeWeeklySegmentBreakpoint,
   findGaps,
   handoverTimeForDayIndex,
   projectCustodySchedule,
+  projectWeeklySegmentSchedule,
   type CustodyScheduleDefinition,
+  type CustodyWeeklySegmentDefinition,
 } from "./schedule";
 
 const PARENT_A = "parent-a";
@@ -197,5 +200,103 @@ describe("handoverTimeForDayIndex — D-074 per-day handover time overrides", ()
     expect(handoverTimeForDayIndex(schedule, 5)).toBe("16:30");
     expect(handoverTimeForDayIndex(schedule, 1)).toBe("08:30");
     expect(handoverTimeForDayIndex(schedule, 2)).toBe("17:00:00"); // untouched day still falls back
+  });
+});
+
+describe("projectWeeklySegmentSchedule", () => {
+  const ME = "me";
+  const MEL = "mel";
+
+  // The user's actual real-world request, expressed as only the two
+  // breakpoints where responsibility changes: Monday 8:30am -> Mel,
+  // Friday 4:30pm -> me. Full intended pattern:
+  //   Sun (all day) me, Mon 00:00-08:30 me, Mon 08:30-24:00 Mel,
+  //   Tue/Wed/Thu (all day) Mel, Fri 00:00-16:30 Mel, Fri 16:30-24:00 me,
+  //   Sat (all day) me.
+  const richardsSchedule: CustodyWeeklySegmentDefinition[] = [
+    { dayOfWeek: 1, time: "08:30", responsiblePersonId: MEL },
+    { dayOfWeek: 5, time: "16:30", responsiblePersonId: ME },
+  ];
+
+  it("reproduces the user's day-of-week/handoff-time pattern from just the two change points", () => {
+    // 2026-08-30 is a Sunday -- one full week, Sun through Sat.
+    const intervals = projectWeeklySegmentSchedule(
+      richardsSchedule,
+      "2026-08-30",
+      null,
+      new Map(),
+      new Date(2026, 7, 30),
+      new Date(2026, 8, 5)
+    );
+
+    expect(intervals).toEqual([
+      { startsAt: "2026-08-30T00:00:00", endsAt: "2026-08-31T08:30:00", responsiblePersonId: ME, isException: false },
+      { startsAt: "2026-08-31T08:30:00", endsAt: "2026-09-04T16:30:00", responsiblePersonId: MEL, isException: false },
+      { startsAt: "2026-09-04T16:30:00", endsAt: "2026-09-06T00:00:00", responsiblePersonId: ME, isException: false },
+    ]);
+  });
+
+  it("produces the identical pattern when every literal day is submitted as its own breakpoint", () => {
+    // What the UI is expected to submit if the user ticks every day
+    // individually rather than relying on only-the-changes shorthand.
+    const literal: CustodyWeeklySegmentDefinition[] = [
+      { dayOfWeek: 0, time: "00:00", responsiblePersonId: ME },
+      { dayOfWeek: 1, time: "00:00", responsiblePersonId: ME },
+      { dayOfWeek: 1, time: "08:30", responsiblePersonId: MEL },
+      { dayOfWeek: 2, time: "00:00", responsiblePersonId: MEL },
+      { dayOfWeek: 3, time: "00:00", responsiblePersonId: MEL },
+      { dayOfWeek: 4, time: "00:00", responsiblePersonId: MEL },
+      { dayOfWeek: 5, time: "00:00", responsiblePersonId: MEL },
+      { dayOfWeek: 5, time: "16:30", responsiblePersonId: ME },
+      { dayOfWeek: 6, time: "00:00", responsiblePersonId: ME },
+    ];
+    const intervals = projectWeeklySegmentSchedule(literal, "2026-08-30", null, new Map(), new Date(2026, 7, 30), new Date(2026, 8, 5));
+    expect(intervals).toEqual(
+      projectWeeklySegmentSchedule(richardsSchedule, "2026-08-30", null, new Map(), new Date(2026, 7, 30), new Date(2026, 8, 5))
+    );
+  });
+
+  it("overrides the entire calendar day for an exception, splitting whatever interval would otherwise cross it", () => {
+    // 2026-09-04 is a Friday -- normally split Mel (until 16:30) / me (after).
+    // An exception should hand the whole day to Mel regardless.
+    const exceptions = new Map([["2026-09-04", MEL]]);
+    const intervals = projectWeeklySegmentSchedule(
+      richardsSchedule,
+      "2026-08-30",
+      null,
+      exceptions,
+      new Date(2026, 8, 3),
+      new Date(2026, 8, 5)
+    );
+    expect(intervals).toEqual([
+      { startsAt: "2026-09-03T00:00:00", endsAt: "2026-09-04T00:00:00", responsiblePersonId: MEL, isException: false },
+      { startsAt: "2026-09-04T00:00:00", endsAt: "2026-09-05T00:00:00", responsiblePersonId: MEL, isException: true },
+      { startsAt: "2026-09-05T00:00:00", endsAt: "2026-09-06T00:00:00", responsiblePersonId: ME, isException: false },
+    ]);
+  });
+
+  it("clips to the schedule's own start/end window", () => {
+    const intervals = projectWeeklySegmentSchedule(
+      richardsSchedule,
+      "2026-09-02", // starts mid-week, a Wednesday
+      "2026-09-04", // ends the Friday before the 16:30 handoff would otherwise show
+      new Map(),
+      new Date(2026, 7, 30),
+      new Date(2026, 8, 10)
+    );
+    expect(intervals[0].startsAt).toBe("2026-09-02T00:00:00");
+    expect(intervals[intervals.length - 1].endsAt).toBe("2026-09-05T00:00:00");
+  });
+
+  it("returns nothing for an empty segment list", () => {
+    expect(projectWeeklySegmentSchedule([], "2026-08-30", null, new Map(), new Date(2026, 7, 30), new Date(2026, 8, 5))).toEqual([]);
+  });
+});
+
+describe("describeWeeklySegmentBreakpoint", () => {
+  it("formats a day-of-week + time breakpoint for display", () => {
+    expect(describeWeeklySegmentBreakpoint({ dayOfWeek: 5, time: "16:30", responsiblePersonId: "x" })).toBe("Fri 4:30 PM");
+    expect(describeWeeklySegmentBreakpoint({ dayOfWeek: 1, time: "08:30", responsiblePersonId: "x" })).toBe("Mon 8:30 AM");
+    expect(describeWeeklySegmentBreakpoint({ dayOfWeek: 0, time: "00:00", responsiblePersonId: "x" })).toBe("Sun 12 AM");
   });
 });

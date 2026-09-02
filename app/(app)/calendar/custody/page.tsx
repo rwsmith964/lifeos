@@ -9,7 +9,12 @@ import { listWorkSchedulesForPeople, listTimeOffForPeopleInRange } from "@/lib/d
 import { workShiftsInRange, timeOffInRange, workShiftTitle, timeOffTitle } from "@/lib/calendar/work-schedule";
 import { detectCustodyWorkConflicts } from "@/lib/custody/conflicts";
 import { buildChildColorMap } from "@/lib/custody/colors";
-import { CUSTODY_PRESET_LABELS, describeCustodyHandoverTimes, type CustodyPresetName } from "@/lib/custody/schedule";
+import {
+  CUSTODY_PRESET_LABELS,
+  describeCustodyHandoverTimes,
+  describeWeeklySegmentsPattern,
+  type CustodyPresetName,
+} from "@/lib/custody/schedule";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -118,7 +123,16 @@ export default async function CustodyHubPage() {
                       <p className="text-sm font-medium">{peopleById.get(schedule.child_person_id) ?? "Unknown child"}</p>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      {detectPresetLabel(schedule.cycle_length_days, schedule.cycle_assignments)} · {describeCustodyHandoverTimes(schedule)}
+                      {schedule.recurrence_type === "weekly_segments" && schedule.weekly_segments
+                        ? `Day-of-week schedule · ${describeWeeklySegmentsPattern(schedule.weekly_segments, peopleById)}`
+                        : schedule.cycle_length_days != null && schedule.cycle_assignments
+                          ? `${detectPresetLabel(schedule.cycle_length_days, schedule.cycle_assignments)} · ${describeCustodyHandoverTimes({
+                              handover_time: schedule.handover_time,
+                              custom_handover_times: schedule.custom_handover_times,
+                              anchor_date: schedule.anchor_date ?? schedule.start_date,
+                              cycle_length_days: schedule.cycle_length_days,
+                            })}`
+                          : "Custom pattern"}
                       {schedule.handover_location && ` at ${schedule.handover_location}`}
                     </p>
                     <p className="text-xs text-muted-foreground">
