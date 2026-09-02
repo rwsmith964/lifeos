@@ -4,8 +4,14 @@ import { addDays, format } from "date-fns";
 import { ArrowLeft, Mail, Pencil, Phone } from "lucide-react";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { peopleRepo } from "@/lib/db/repositories/people";
-import { listInterestsForPerson, listBudgetsForPerson, listGiftSitesForPerson } from "@/lib/db/repositories/people";
+import {
+  listInterestsForPerson,
+  listBudgetsForPerson,
+  listGiftSitesForPerson,
+  listPeopleForHousehold,
+} from "@/lib/db/repositories/people";
 import { listWorkSchedulesForPerson, listTimeOffForPerson } from "@/lib/db/repositories/work-schedule";
+import { listChildActivitiesForChild, listAttendanceForActivities } from "@/lib/db/repositories/child-activities";
 import { listGiftsForPerson } from "@/lib/db/repositories/gifts";
 import { getCadenceForPerson, listInteractionsForPerson } from "@/lib/db/repositories/contact";
 import {
@@ -24,6 +30,8 @@ import {
   AddInterestForm,
   AddTimeOffForm,
   AddWorkScheduleForm,
+  AddChildActivityForm,
+  ChildActivityListItem,
   CadenceForm,
   DeleteBudgetButton,
   GiftHistoryItem,
@@ -50,21 +58,48 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
   // work_schedules.day_of_week (see lib/calendar/work-schedule.ts).
   const DAY_OF_WEEK_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
-  const [interests, budgets, giftSites, gifts, cadence, interactions, upcomingEvents, custodyBlocks, workSchedules, timeOffEntries] =
-    await Promise.all([
-      listInterestsForPerson(supabase, id),
-      listBudgetsForPerson(supabase, id),
-      listGiftSitesForPerson(supabase, id),
-      listGiftsForPerson(supabase, id, 10),
-      getCadenceForPerson(supabase, id),
-      listInteractionsForPerson(supabase, id, 5),
-      listUpcomingEventsForPerson(supabase, id, now.toISOString(), 5),
-      isChild
-        ? listCustodyBlocksForChildInRange(supabase, id, now.toISOString(), new Date(now.getTime() + 14 * 86400000).toISOString())
-        : Promise.resolve([]),
-      listWorkSchedulesForPerson(supabase, id),
-      listTimeOffForPerson(supabase, id),
-    ]);
+  const [
+    interests,
+    budgets,
+    giftSites,
+    gifts,
+    cadence,
+    interactions,
+    upcomingEvents,
+    custodyBlocks,
+    workSchedules,
+    timeOffEntries,
+    childActivities,
+    householdAdults,
+  ] = await Promise.all([
+    listInterestsForPerson(supabase, id),
+    listBudgetsForPerson(supabase, id),
+    listGiftSitesForPerson(supabase, id),
+    listGiftsForPerson(supabase, id, 10),
+    getCadenceForPerson(supabase, id),
+    listInteractionsForPerson(supabase, id, 5),
+    listUpcomingEventsForPerson(supabase, id, now.toISOString(), 5),
+    isChild
+      ? listCustodyBlocksForChildInRange(supabase, id, now.toISOString(), new Date(now.getTime() + 14 * 86400000).toISOString())
+      : Promise.resolve([]),
+    listWorkSchedulesForPerson(supabase, id),
+    listTimeOffForPerson(supabase, id),
+    // D-129: activity infrastructure only applies to children -- skip the
+    // fetch entirely for adults/self rather than fetch-and-discard.
+    isChild ? listChildActivitiesForChild(supabase, id) : Promise.resolve([]),
+    // Every other household adult (self + co-parent + any other adults) is
+    // a candidate for the per-activity mandatory/optional attendance select
+    // -- excludes children so a sibling never shows up as an "attendee".
+    isChild
+      ? listPeopleForHousehold(supabase, household.id).then((people) =>
+          people.filter((p) => p.relationship_type !== "child")
+        )
+      : Promise.resolve([]),
+  ]);
+
+  const attendanceByActivity = isChild
+    ? await listAttendanceForActivities(supabase, childActivities.map((a) => a.id))
+    : new Map();
 
   // Only show time off that hasn't fully passed yet -- past entries stay
   // in the table (informational history, same as gift history below) but
@@ -159,6 +194,35 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
                 <p className="text-xs text-muted-foreground">{format(new Date(block.starts_at), "EEE, MMM d, h:mm a")}</p>
               </div>
             ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {isChild && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Activities</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <p className="text-muted-foreground text-xs">
+              {person.full_name}&apos;s recurring weekly activities -- practices, lessons, anything on a regular
+              schedule. Mark whether each adult has to be there (games) or it&apos;s optional (practices). This
+              doesn&apos;t add anything to the calendar yet -- it&apos;s just where the schedule lives.
+            </p>
+            {childActivities.length > 0 && (
+              <div className="flex flex-col gap-3">
+                {childActivities.map((activity) => (
+                  <ChildActivityListItem
+                    key={activity.id}
+                    childPersonId={id}
+                    activity={activity}
+                    householdAdults={householdAdults}
+                    attendance={attendanceByActivity.get(activity.id) ?? []}
+                  />
+                ))}
+              </div>
+            )}
+            <AddChildActivityForm childPersonId={id} />
           </CardContent>
         </Card>
       )}

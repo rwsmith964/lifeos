@@ -22,9 +22,13 @@ import {
   deleteWorkScheduleAction,
   addTimeOffAction,
   deleteTimeOffAction,
+  addChildActivityAction,
+  deleteChildActivityAction,
+  setChildActivityAttendanceAction,
   type SimpleFormState,
   type GenerateSuggestionsState,
 } from "./actions";
+import type { ChildActivityAttendanceRow, ChildActivityRow, PersonRow } from "@/lib/db/database.types";
 import { useAiHealth } from "@/lib/hooks/use-ai-health";
 import { useFormValidity } from "@/lib/hooks/use-form-validity";
 import { giftReactionDisplayLabel, occasionTypeDisplayLabel } from "@/lib/gifts/occasions";
@@ -813,6 +817,252 @@ export function AddTimeOffForm({ personId }: { personId: string }) {
         Add time off
       </Button>
     </form>
+  );
+}
+
+// D-129: a recurring weekly activity ("soccer practice Tue/Thu 4-5pm") for
+// a child, plus an optional location. Mirrors AddWorkScheduleForm's
+// manual dispatch() pattern exactly -- see that component's comment.
+export function AddChildActivityForm({ childPersonId }: { childPersonId: string }) {
+  const action = addChildActivityAction.bind(null, childPersonId);
+  const [state, dispatch, pending] = useActionState(action, initialState);
+  const formRef = useRef<HTMLFormElement>(null);
+  const { invalid, checkValid, clearInvalid } = useFormValidity(formRef);
+  const justSubmittedRef = useRef(false);
+  const [errorDismissed, setErrorDismissed] = useState(false);
+
+  function handleAdd() {
+    if (!checkValid()) return;
+    justSubmittedRef.current = true;
+    setErrorDismissed(false);
+    dispatch(new FormData(formRef.current!));
+  }
+
+  useEffect(() => {
+    if (justSubmittedRef.current && !state.error) {
+      formRef.current?.reset();
+    }
+    justSubmittedRef.current = false;
+  }, [state]);
+
+  const showError = state.error && !errorDismissed;
+
+  return (
+    <form ref={formRef} noValidate onChange={clearInvalid} className="flex flex-wrap items-end gap-2">
+      <div className="flex flex-col gap-1">
+        <Label htmlFor={`activity-name-${childPersonId}`} className="text-xs">
+          Name
+        </Label>
+        <Input
+          id={`activity-name-${childPersonId}`}
+          name="name"
+          placeholder="Soccer practice"
+          required
+          className="h-8 w-40"
+          aria-invalid={!!showError || undefined}
+          onChange={() => setErrorDismissed(true)}
+        />
+      </div>
+      <div className="flex flex-col gap-1">
+        <Label htmlFor={`activity-type-${childPersonId}`} className="text-xs">
+          Type (optional)
+        </Label>
+        <Input
+          id={`activity-type-${childPersonId}`}
+          name="activityType"
+          placeholder="Sports"
+          className="h-8 w-28"
+          onChange={() => setErrorDismissed(true)}
+        />
+      </div>
+      <div className="flex flex-col gap-1">
+        <Label htmlFor={`activity-day-${childPersonId}`} className="text-xs">
+          Day
+        </Label>
+        <select
+          id={`activity-day-${childPersonId}`}
+          name="dayOfWeek"
+          defaultValue="2"
+          aria-label="Day of the week"
+          className="border-input h-8 rounded-md border bg-transparent px-2 text-sm"
+          onChange={() => setErrorDismissed(true)}
+        >
+          {DAY_OF_WEEK_LABELS.map((day, index) => (
+            <option key={day} value={index}>
+              {day}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="flex flex-col gap-1">
+        <Label htmlFor={`activity-start-${childPersonId}`} className="text-xs">
+          Start
+        </Label>
+        <Input
+          id={`activity-start-${childPersonId}`}
+          name="startTime"
+          type="time"
+          required
+          defaultValue="16:00"
+          className="h-8 w-28"
+          aria-invalid={!!showError || undefined}
+          onChange={() => setErrorDismissed(true)}
+        />
+      </div>
+      <div className="flex flex-col gap-1">
+        <Label htmlFor={`activity-end-${childPersonId}`} className="text-xs">
+          End
+        </Label>
+        <Input
+          id={`activity-end-${childPersonId}`}
+          name="endTime"
+          type="time"
+          required
+          defaultValue="17:00"
+          className="h-8 w-28"
+          aria-invalid={!!showError || undefined}
+          onChange={() => setErrorDismissed(true)}
+        />
+      </div>
+      <div className="flex flex-col gap-1">
+        <Label htmlFor={`activity-location-name-${childPersonId}`} className="text-xs">
+          Location (optional)
+        </Label>
+        <Input
+          id={`activity-location-name-${childPersonId}`}
+          name="locationName"
+          placeholder="Field name"
+          className="h-8 w-32"
+          onChange={() => setErrorDismissed(true)}
+        />
+      </div>
+      <div className="flex flex-col gap-1">
+        <Label htmlFor={`activity-location-address-${childPersonId}`} className="text-xs">
+          Address (optional)
+        </Label>
+        <Input
+          id={`activity-location-address-${childPersonId}`}
+          name="locationAddress"
+          placeholder="Address"
+          className="h-8 w-40"
+          onChange={() => setErrorDismissed(true)}
+        />
+      </div>
+      {showError && <p className="text-xs text-destructive">{state.error}</p>}
+      {invalid && !showError && <p className="text-xs text-destructive">Name, start time, and end time are required.</p>}
+      <Button type="button" size="sm" onClick={handleAdd} disabled={pending}>
+        Add activity
+      </Button>
+    </form>
+  );
+}
+
+export function DeleteChildActivityButton({ childPersonId, activityId }: { childPersonId: string; activityId: string }) {
+  return (
+    <ConfirmDeleteButton
+      variant="icon"
+      ariaLabel="Remove activity"
+      className="ml-1"
+      action={() => deleteChildActivityAction(childPersonId, activityId)}
+    />
+  );
+}
+
+// Raw enum values never reach the user (standing UI rule) -- pair each
+// attendance_status value with a display label, same pattern as
+// occasionTypeDisplayLabel/giftReactionDisplayLabel elsewhere in this file.
+const ATTENDANCE_OPTIONS: { value: "required" | "optional" | "informational"; label: string }[] = [
+  { value: "required", label: "Must attend" },
+  { value: "optional", label: "Optional" },
+  { value: "informational", label: "FYI only" },
+];
+
+/**
+ * One activity's read-only summary plus a per-household-adult attendance
+ * select -- "I have to go to games, not practices" (D-129). Each select
+ * change sends the *entire* current entry set for this activity (matching
+ * setAttendanceForActivity's replace-all semantics), built from the
+ * already-loaded attendanceByPerson map with just that one adult's value
+ * swapped in.
+ */
+export function ChildActivityListItem({
+  childPersonId,
+  activity,
+  householdAdults,
+  attendance,
+}: {
+  childPersonId: string;
+  activity: ChildActivityRow;
+  householdAdults: PersonRow[];
+  attendance: ChildActivityAttendanceRow[];
+}) {
+  const [attendanceByPerson, setAttendanceByPerson] = useState<Record<string, string>>(() => {
+    const map: Record<string, string> = {};
+    for (const row of attendance) map[row.person_id] = row.attendance_status;
+    return map;
+  });
+  const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  function handleAttendanceChange(personId: string, status: string) {
+    const next = { ...attendanceByPerson, [personId]: status };
+    setAttendanceByPerson(next);
+    setError(null);
+    startTransition(async () => {
+      const entries = householdAdults.map((adult) => ({
+        person_id: adult.id,
+        attendance_status: next[adult.id] ?? "optional",
+      }));
+      const result = await setChildActivityAttendanceAction(childPersonId, activity.id, entries);
+      if (result.error) setError(result.error);
+    });
+  }
+
+  return (
+    <div className="flex flex-col gap-2 border-b pb-2 last:border-b-0 last:pb-0">
+      <div className="flex items-start justify-between gap-2">
+        <div className="text-sm">
+          <p>
+            <span className="font-medium">{DAY_OF_WEEK_LABELS[activity.day_of_week]}</span>{" "}
+            <span className="text-muted-foreground">
+              {activity.name} {activity.start_time}–{activity.end_time}
+            </span>
+          </p>
+          {(activity.location_name || activity.location_address) && (
+            <p className="text-xs text-muted-foreground">
+              {[activity.location_name, activity.location_address].filter(Boolean).join(" · ")}
+            </p>
+          )}
+        </div>
+        <DeleteChildActivityButton childPersonId={childPersonId} activityId={activity.id} />
+      </div>
+      {householdAdults.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3">
+          {householdAdults.map((adult) => (
+            <div key={adult.id} className="flex items-center gap-1">
+              <Label htmlFor={`attendance-${activity.id}-${adult.id}`} className="text-xs text-muted-foreground">
+                {adult.full_name}
+              </Label>
+              <select
+                id={`attendance-${activity.id}-${adult.id}`}
+                value={attendanceByPerson[adult.id] ?? "optional"}
+                disabled={isPending}
+                onChange={(e) => handleAttendanceChange(adult.id, e.target.value)}
+                className="border-input h-7 rounded-md border bg-transparent px-1 text-xs"
+              >
+                {ATTENDANCE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              {isPending && <Loader2 className="size-3 animate-spin text-muted-foreground" />}
+            </div>
+          ))}
+        </div>
+      )}
+      {error && <p className="text-xs text-destructive">{error}</p>}
+    </div>
   );
 }
 

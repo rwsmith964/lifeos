@@ -14,6 +14,8 @@ import {
   tripIdeaInsertSchema,
   userActivityInsertSchema,
   workScheduleInsertSchema,
+  childActivityInsertSchema,
+  childActivityAttendanceEntrySchema,
 } from "./schemas";
 
 const PERSON_ID = "11111111-1111-4111-8111-111111111111";
@@ -223,6 +225,106 @@ describe("timeOffEntryInsertSchema", () => {
       person_id: PERSON_ID,
       start_date: "09/04/2026",
       end_date: "09/04/2026",
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("childActivityInsertSchema", () => {
+  it("accepts a valid weekly activity with no location", () => {
+    const result = childActivityInsertSchema.safeParse({
+      household_id: HOUSEHOLD_ID,
+      child_person_id: PERSON_ID,
+      name: "Soccer practice",
+      day_of_week: 2,
+      start_time: "16:00",
+      end_time: "17:00",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts a valid activity with a full location and drive time", () => {
+    const result = childActivityInsertSchema.safeParse({
+      household_id: HOUSEHOLD_ID,
+      child_person_id: PERSON_ID,
+      name: "Soccer game",
+      activity_type: "Sports",
+      day_of_week: 6,
+      start_time: "09:00",
+      end_time: "10:30",
+      location_name: "Riverside Fields",
+      location_address: "123 River Rd, Portland, OR",
+      location_lat: 45.52,
+      location_lng: -122.68,
+      drive_time_minutes: 20,
+      notes: "Bring cleats",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects an end time before the start time", () => {
+    const result = childActivityInsertSchema.safeParse({
+      household_id: HOUSEHOLD_ID,
+      child_person_id: PERSON_ID,
+      name: "Soccer practice",
+      day_of_week: 2,
+      start_time: "17:00",
+      end_time: "16:00",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a day_of_week outside 0-6", () => {
+    const result = childActivityInsertSchema.safeParse({
+      household_id: HOUSEHOLD_ID,
+      child_person_id: PERSON_ID,
+      name: "Soccer practice",
+      day_of_week: 9,
+      start_time: "16:00",
+      end_time: "17:00",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects an empty name", () => {
+    const result = childActivityInsertSchema.safeParse({
+      household_id: HOUSEHOLD_ID,
+      child_person_id: PERSON_ID,
+      name: "   ",
+      day_of_week: 2,
+      start_time: "16:00",
+      end_time: "17:00",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects an out-of-range latitude", () => {
+    const result = childActivityInsertSchema.safeParse({
+      household_id: HOUSEHOLD_ID,
+      child_person_id: PERSON_ID,
+      name: "Soccer practice",
+      day_of_week: 2,
+      start_time: "16:00",
+      end_time: "17:00",
+      location_lat: 200,
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("childActivityAttendanceEntrySchema", () => {
+  it("accepts a required entry", () => {
+    const result = childActivityAttendanceEntrySchema.safeParse({
+      person_id: PERSON_ID,
+      attendance_status: "required",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects an attendance_status outside the enum", () => {
+    const result = childActivityAttendanceEntrySchema.safeParse({
+      person_id: PERSON_ID,
+      attendance_status: "maybe",
     });
     expect(result.success).toBe(false);
   });
