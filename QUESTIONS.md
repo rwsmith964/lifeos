@@ -312,6 +312,14 @@ the remaining modules.
 **Reversal cost:** Low — `prep_duration_minutes` is editable per-activity at any time with no migration; the "always create the main event" behavior is an isolated `if` branch in `acceptWeekendPlan()` that could be changed to require both without touching the schema.
 **Blocking:** No
 
+### QUEUE-037
+**Module:** Auth / magic-link sign-in (D-134)
+**File(s):** `app/actions.ts` (`sendMagicLink`), Supabase project `moblcysnsaxohnslubym` dashboard config (Authentication → URL Configuration) — not a repo file.
+**Question:** Found and fixed a real production bug during live-verify: magic-link sign-in emails redirected to `http://localhost:3000` and failed with `ERR_CONNECTION_REFUSED` for any real user, because `sendMagicLink()` never passed `emailRedirectTo`. Fixed the app-side code (now builds the redirect from the real request origin, same pattern as the existing password-reset action), but Supabase Auth only honors a custom `emailRedirectTo` if it matches an entry in that project's Redirect URLs allow-list — otherwise it silently falls back to the dashboard's Site URL (currently `localhost:3000`) regardless of what the app sends. No Supabase dashboard session or management API token was available this session to check or update that allow-list directly.
+**Assumption made:** Shipped the app-side code fix (it's strictly correct regardless of the dashboard state) and logged this rather than guessing at dashboard credentials or leaving the code bug in place. Could not verify end-to-end whether magic-link sign-in now actually works in production — that depends on the dashboard-side allow-list this session couldn't reach.
+**Reversal cost:** Low — the dashboard fix is a two-field settings change (Site URL + Redirect URLs), no data or schema involved, five minutes in the Supabase dashboard.
+**Blocking:** No, but recommended before relying on magic-link sign-in for any real user (including Richard's own account) — this is a genuine "real users can't log in this way" bug, not a cosmetic one.
+
 ---
 
 ## HIGH

@@ -3067,3 +3067,137 @@ the test event and reset the plan row so no trace was left in production.
 
 **Remaining scope:** none outstanding for the standing directive's two blocking items (D-130 custody
 fix and D-131 weekend-plan feature) — both are now complete.
+
+
+## D-132 | 2026-09-02 | Month-view density redesign — inline time chips + custody frame bars
+
+**Problem:** Richard shared a screenshot of a different calendar app (dense month grid with
+per-day event chips) and asked for a similar month view, with one difference: custody days
+(each parent's block of time with the kids) should render as a lightweight visual frame around
+the affected days rather than an entire full-day block competing for space with real events.
+
+**Fix:**
+- Month grid day cells now render compact inline chips (title + time) for each event on that
+  day, replacing the previous sparser layout, styled per event kind via `CHIP_KIND_STYLES`.
+- Added a `custody` chip kind: rendered as a thin colored frame/bar (blue for one parent, pink
+  for the other, matching each parent's assigned color from `buildParentColorMap`) spanning the
+  day cells covered by that custody block, instead of an opaque full-day fill — so a multi-day
+  custody stretch reads as a lightweight banner, not a wall of color blocking real events from
+  view.
+- Legend row above the grid ("Alex has the kids" / "Jamie has the kids" in the demo household;
+  Richard/Melissa's real names and colors in the Smith Household) explains the frame-bar colors.
+
+**Verification:** `pnpm typecheck` / `pnpm lint` / `pnpm test` (724/74, +9 from baseline) /
+`pnpm build` all pass. Committed on `feature/d132-month-view-density` (`3677ddb`), merged to
+`main` (`4f8bc8d`, `--no-ff`), pushed, deployed to
+[lifeos-seven-rho.vercel.app](https://lifeos-seven-rho.vercel.app). Live-verified against the
+seed/demo "Rivera Household" account (Richard's own login was unreachable this session — see
+D-134): September 2026 month grid shows custody frame bars correctly spanning Sep 11-13, and
+inline time chips render on Sep 2 (birthday), Sep 5 (8:00am Hike), Sep 9 (7:00pm), Sep 12
+(7:00pm) with no overflow or wrapping issues.
+
+**Remaining scope:** none — this closes the month-view half of Richard's calendar-redesign
+request (photo reference: IMG_2073.jpeg).
+
+## D-133 | 2026-09-02 | Day-view hour timeline with travel-time segments
+
+**Problem:** The second half of Richard's calendar-redesign request: "having the calendar view
+be a timeline for each day... being able to look at the entire day and see when the events are
+and when travel time is from event to event." The existing day view was a flat agenda card list
+with no sense of *when* in the day something happened relative to everything else, and no
+visibility into travel time between located events.
+
+**Fix (additive — the existing agenda card list with Edit/Delete controls is untouched below the
+new timeline, per "don't refactor beyond what each fix needs"):**
+- `lib/calendar/day-timeline.ts` (new, pure/DB-free, fully unit-tested): `buildDayTimeline(day,
+  items, travelLegs)` splits a day's items into an all-day bucket (birthdays, time off, work
+  shifts — items without meaningful clock times) and a positioned bucket (every timed item gets
+  a `{topPercent, heightPercent}` within an auto-sizing hour window — default 7 AM-9 PM, expands
+  with 1hr padding if an item starts earlier or ends later, clamped to 0-24h). Multi-day items
+  (e.g. a custody block spanning several days) are clipped to just the slice that falls on the
+  viewed day. Resolved travel legs between chronologically adjacent located events become their
+  own positioned segments dropped into the visual gap between the two event blocks they connect.
+- `DayTimelineView` component (`app/(app)/calendar/page.tsx`) renders: an all-day strip across
+  the top, an hour ruler down the side (`layout.hourLabels`), absolutely-positioned event blocks
+  colored via `CHIP_KIND_STYLES` (extended with a `custody` entry to match D-132's frame-bar
+  color), and travel-segment pills showing `"{minutes} min drive"` in the gaps
+  (`layout.travelSegments`). `pixelsPerHour = 56`.
+- Reuses the existing `resolveTravelLegsForHousehold` travel-conflict-detection plumbing
+  (`lib/scheduling/detect-conflicts.ts`) rather than adding a second travel-time computation path.
+- `lib/calendar/day-timeline.test.ts` (new, 14 cases): hour-window auto-expansion in both
+  directions, multi-day clipping, all-day vs. timed split, travel-segment placement including
+  the "events touch/overlap — no gap to draw" and "one side isn't on this day" skip cases.
+
+**Live-verify finding (fixed before calling this done):** viewing Sep 12/13 (days inside a
+multi-day custody block, per D-132's live seed data) showed the block's original `startsAt`
+clock time (e.g. "5:00 PM", from when the block actually began days earlier) floating at the
+7 AM line where the clipped block visually starts on that day — read as if the event started
+at 7 AM but was labeled 5 PM, a misleading real bug caught only by looking at the live page, not
+by any test (the unit tests check position, not the displayed label copy). Fixed by comparing
+the item's real `startsAt` against the viewed day's start and showing "In progress" instead of
+a clock time whenever the two disagree (commit `19c174f`). Re-verified on Sep 12 and Sep 13 in
+production — both now correctly show "In progress" instead of the stale time.
+
+**Verification:** `pnpm typecheck` — 0 errors. `pnpm exec eslint` — 0 errors. `pnpm vitest run` —
+738/75 passing (full suite, +14 new from `day-timeline.test.ts`). `pnpm build` — succeeds.
+Committed on `feature/d133-day-timeline` (`c4fded3`), merged to `main` (`b5a03e7`, `--no-ff`),
+pushed; live-verify fix committed directly to `main` (`19c174f`) after the finding above. Both
+deployed to [lifeos-seven-rho.vercel.app](https://lifeos-seven-rho.vercel.app) and confirmed
+`Ready`. Live-verified against the seed/demo "Rivera Household": Sep 5 day view shows the hour
+ruler (7 AM-9 PM+), "Hike with Chris" positioned correctly at the 8 AM line with no
+overflow/wrapping, and the pre-existing agenda card (with working Edit/Delete) still renders
+unchanged below it; Sep 12/13 day views confirm the multi-day custody block clips correctly to
+each day's window with the corrected "In progress" label.
+
+**Remaining scope:** travel-segment pills themselves ("N min drive") were not visually confirmed
+against a live pair of adjacent located events this session — no day in the current seed/live
+data happened to have two back-to-back located events close enough together to trigger one. The
+unit tests cover the placement math directly; a live sighting is a nice-to-have, not a blocker,
+next time such a day naturally occurs in real data.
+
+## D-134 | 2026-09-02 | Magic-link sign-in redirects to localhost in production (real auth bug, found during live-verify)
+
+**Problem:** While live-verifying D-132/D-133, attempted to sign in as Richard via the
+production magic-link flow and hit `ERR_CONNECTION_REFUSED` — the emailed sign-in link redirected
+to `http://localhost:3000`, unreachable from a real browser hitting production. Manually
+redirecting the link's `?code=` param to the production root also failed, since `/` doesn't
+handle a bare `?code=` query param (it just bounces to `/login`). This is a real bug blocking
+every real user's magic-link sign-in in production, not a verification-environment artifact —
+worth fixing proactively given the standing directive's emphasis on launch/security readiness,
+rather than just logging it and moving on.
+
+**Root cause:** `sendMagicLink()` (`app/actions.ts`) called
+`supabase.auth.signInWithOtp({ email })` with no `options.emailRedirectTo`. Without an explicit
+redirect target, Supabase Auth falls back to the project's dashboard-configured Site URL, which
+is set to `http://localhost:3000` — a dev-environment leftover never updated for the production
+domain.
+
+**Fix:** Mirrors the already-correct `sendPasswordResetEmail` action in the same file: build the
+redirect from the actual request origin via the existing `getSiteOrigin()`
+helper (`lib/http/site-origin.ts`) and pass it explicitly:
+`signInWithOtp({ email, options: { emailRedirectTo: \`${origin}/auth/callback\` } })`. Lands back
+on the already-working `app/auth/callback/route.ts`, which exchanges the code for a session and
+redirects to `/onboarding` (which itself redirects into the app for an existing household) —
+no changes needed there.
+
+**Verification:** `pnpm typecheck` — 0 errors. `pnpm lint` — 0 errors. `pnpm vitest run` —
+738/75 passing (unchanged — no existing test covered this action's redirect target; a
+regression test wasn't added because the actual failure mode is a live cross-service
+misconfiguration, not something a unit test against mocked Supabase calls would catch).
+`pnpm build` — succeeds. Committed directly to `main` (`2469a72`) and deployed to
+[lifeos-seven-rho.vercel.app](https://lifeos-seven-rho.vercel.app), confirmed `Ready`.
+
+**Not independently re-verified end-to-end** (sending a real magic-link email and clicking it)
+because doing so requires either Richard's own inbox access mid-flow or risks spamming a real
+inbox unnecessarily for a code-review-level fix — logged as QUEUE-037 below for Richard to
+confirm on his end.
+
+**Remaining external step (cannot be completed from here — see QUEUE-037):** if the Supabase
+project's Authentication > URL Configuration "Redirect URLs" allow-list does not already include
+the production origin, Supabase will still silently ignore this fix's `emailRedirectTo` and fall
+back to the (currently wrong) Site URL regardless of what the app passes — the allow-list and the
+app-side param have to agree. No Supabase dashboard session or management API token was available
+this session to check or correct that allow-list directly; this needs five minutes in the
+Supabase dashboard from Richard (Authentication → URL Configuration → set Site URL to
+`https://lifeos-seven-rho.vercel.app` and confirm/add it — or a `https://lifeos-seven-rho.vercel.app/**`
+wildcard — under Redirect URLs).
