@@ -16,6 +16,7 @@ import { NextResponse } from "next/server";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { custodyBlocksRepo } from "@/lib/db/repositories/calendar";
 import { custodyBlockUpdateSchema } from "@/lib/db/schemas";
+import { reconcileCustodyBlockOverride } from "@/lib/custody/overrides";
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -35,17 +36,29 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const formData = await request.formData();
   const startDate = String(formData.get("startDate") ?? "");
   const endDate = String(formData.get("endDate") ?? "");
-  const handoverTime = String(formData.get("handoverTime") ?? "17:00");
+  // D-130: separate start/end handover times — see the POST route for why.
+  // Falls back to the legacy shared handoverTime field, then to the
+  // block's own current time-of-day so an old client that only ever sends
+  // one field doesn't silently shift the other end to 17:00.
+  const legacyHandoverTime = formData.get("handoverTime");
+  const existingStartTime = existing.starts_at.slice(11, 16);
+  const existingEndTime = existing.ends_at.slice(11, 16);
+  const startTime = String(formData.get("startTime") ?? legacyHandoverTime ?? existingStartTime);
+  const endTime = String(formData.get("endTime") ?? legacyHandoverTime ?? existingEndTime);
 
   if (endDate < startDate) {
     return NextResponse.json({ error: "End date can't be before the start date." }, { status: 400 });
   }
 
+  const childPersonId = String(formData.get("childPersonId") ?? "");
+  const startsAt = new Date(`${startDate}T${startTime}:00`).toISOString();
+  const endsAt = new Date(`${endDate}T${endTime}:00`).toISOString();
+
   const parsed = custodyBlockUpdateSchema.safeParse({
-    child_person_id: String(formData.get("childPersonId") ?? ""),
+    child_person_id: childPersonId,
     responsible_person_id: String(formData.get("responsiblePersonId") ?? ""),
-    starts_at: new Date(`${startDate}T${handoverTime}:00`).toISOString(),
-    ends_at: new Date(`${endDate}T${handoverTime}:00`).toISOString(),
+    starts_at: startsAt,
+    ends_at: endsAt,
     block_type: String(formData.get("blockType") ?? "regular"),
     notes: String(formData.get("notes") ?? ""),
     location: String(formData.get("location") ?? "").trim() || null,
@@ -55,6 +68,15 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
 
   try {
+    // D-130: reconcile against any other block for this child that now
+    // overlaps the edited span, excluding this block itself so it doesn't
+    // get reconciled against its own pre-edit row.
+    await reconcileCustodyBlockOverride(supabase, {
+      childPersonId,
+      startsAt,
+      endsAt,
+      excludeBlockId: id,
+    });
     const block = await custodyBlocksRepo.update(supabase, id, parsed.data);
     return NextResponse.json({ id: block.id });
   } catch (error) {

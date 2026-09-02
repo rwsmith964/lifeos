@@ -35,7 +35,8 @@ export default async function EditCustodyBlockPage({ params }: { params: Promise
     responsiblePersonId: block.responsible_person_id,
     startDate: toDateStr(block.starts_at),
     endDate: toDateStr(block.ends_at),
-    handoverTime: toTimeStr(block.starts_at),
+    startTime: toTimeStr(block.starts_at),
+    endTime: toTimeStr(block.ends_at),
     blockType: block.block_type,
     location: block.location ?? "",
   };
