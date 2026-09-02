@@ -562,7 +562,13 @@ export default async function CalendarPage({
                     second click can't double-book the same weekend. */}
                 {weekendPlan.accepted_at ? (
                   <p className="text-xs text-muted-foreground">Added to your calendar.</p>
-                ) : weekendPlan.recommended_activity_id ? (
+                ) : weekendPlan.recommended_activity_id && weekendPlan.recommended_block_start && weekendPlan.recommended_block_end ? (
+                  // D-131 (live-verify finding): recommended_activity_id can be set from
+                  // the AI's narration even when no open block exists this weekend (e.g.
+                  // the whole window is inside a vacation custody block) -- generate.ts
+                  // leaves recommended_block_start/end null in that case. Only offer the
+                  // button when there's an actual feasible block to schedule against, so
+                  // it never surfaces just to fail with a "no recommendation" error.
                   <div>
                     <AcceptWeekendPlanButton />
                   </div>
