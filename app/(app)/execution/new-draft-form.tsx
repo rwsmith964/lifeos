@@ -21,7 +21,7 @@ export function NewDraftForm({
   enabledCategories: ExecutionCategory[];
 }) {
   const { showToast } = useToast();
-  const [category, setCategory] = useState<ExecutionCategory | "">(enabledCategories[0] ?? "");
+  const [category, setCategory] = useState<ExecutionCategory | "">("");
   const [contactPersonId, setContactPersonId] = useState<string>("");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
@@ -40,21 +40,37 @@ export function NewDraftForm({
   const selectablePeople = people.filter((p) => !excludedIds.has(p.id));
   const disabled = enabledCategories.length === 0;
 
+  // Derive the actually-usable category/contact from current props on
+  // every render instead of syncing `category`/`contactPersonId` via a
+  // useState initializer or a useEffect. Either of those would go stale
+  // the moment enabledCategories or the exclusion list changes after this
+  // form first mounts: the <select> would still show the first option
+  // highlighted (an unmatched controlled value falls back to a highlighted
+  // first option in every browser), which looks selected, while the real
+  // state silently held "" (or an id no longer in selectablePeople) and
+  // kept "Save for review" disabled with no explanation. Recomputing here
+  // means the effective value is always consistent with the current props,
+  // with no extra render pass and no risk of stomping a user's own
+  // still-valid in-progress selection.
+  const effectiveCategory: ExecutionCategory | "" =
+    category && enabledCategories.includes(category) ? category : enabledCategories[0] ?? "";
+  const effectiveContactPersonId = selectablePeople.some((p) => p.id === contactPersonId) ? contactPersonId : "";
+
   function applyTemplate() {
-    if (!category) return;
-    const contact = selectablePeople.find((p) => p.id === contactPersonId);
-    setBody(templateForCategory(category, contact?.full_name ?? null));
+    if (!effectiveCategory) return;
+    const contact = selectablePeople.find((p) => p.id === effectiveContactPersonId);
+    setBody(templateForCategory(effectiveCategory, contact?.full_name ?? null));
   }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!category) return;
+    if (!effectiveCategory) return;
     setPending(true);
     try {
-      const contact = selectablePeople.find((p) => p.id === contactPersonId);
+      const contact = selectablePeople.find((p) => p.id === effectiveContactPersonId);
       await createExecutionDraftAction({
-        category,
-        contactPersonId: contactPersonId || null,
+        category: effectiveCategory,
+        contactPersonId: effectiveContactPersonId || null,
         contactName: contact?.full_name ?? null,
         draftSubject: subject,
         draftBody: body,
@@ -82,7 +98,7 @@ export function NewDraftForm({
           <select
             id="execution-category"
             className="border-input h-9 w-full rounded-md border bg-transparent px-3 text-sm shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
-            value={category}
+            value={effectiveCategory}
             disabled={disabled}
             onChange={(e) => setCategory(e.target.value as ExecutionCategory)}
           >
@@ -99,7 +115,7 @@ export function NewDraftForm({
           <select
             id="execution-contact"
             className="border-input h-9 w-full rounded-md border bg-transparent px-3 text-sm shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
-            value={contactPersonId}
+            value={effectiveContactPersonId}
             disabled={disabled}
             onChange={(e) => setContactPersonId(e.target.value)}
           >
@@ -127,7 +143,7 @@ export function NewDraftForm({
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center justify-between">
           <Label htmlFor="execution-body">Draft text</Label>
-          <Button type="button" size="sm" variant="ghost" disabled={disabled || !category} onClick={applyTemplate}>
+          <Button type="button" size="sm" variant="ghost" disabled={disabled || !effectiveCategory} onClick={applyTemplate}>
             Use a starter template
           </Button>
         </div>
@@ -142,7 +158,7 @@ export function NewDraftForm({
       </div>
 
       <div>
-        <Button type="submit" disabled={disabled || pending || !category || !body.trim()}>
+        <Button type="submit" disabled={disabled || pending || !effectiveCategory || !body.trim()}>
           {pending ? "Saving…" : "Save for review"}
         </Button>
       </div>
