@@ -86,6 +86,35 @@ export async function listAttendeeNamesForEvents(
   return byEvent;
 }
 
+/**
+ * Full attendee rows (person_id + attendance_status) for a batch of events,
+ * grouped by event id. Unlike listAttendeeNamesForEvents (display names
+ * only), this is for logic that needs to know WHO is attending and HOW
+ * (required/optional/informational) — see D-128's custody-based visibility
+ * filter in lib/custody/visibility.ts, which needs both a child attendee's
+ * identity and the viewer's own attendance_status on the same event.
+ */
+export async function listAttendeesForEvents(
+  client: SupabaseClient,
+  calendarEventIds: string[]
+): Promise<Map<string, { personId: string; attendanceStatus: EventAttendeeRow["attendance_status"] }[]>> {
+  const byEvent = new Map<string, { personId: string; attendanceStatus: EventAttendeeRow["attendance_status"] }[]>();
+  if (calendarEventIds.length === 0) return byEvent;
+
+  const { data, error } = await client
+    .from("event_attendees")
+    .select("calendar_event_id, person_id, attendance_status")
+    .in("calendar_event_id", calendarEventIds);
+  if (error) throw error;
+
+  for (const row of (data ?? []) as { calendar_event_id: string; person_id: string; attendance_status: EventAttendeeRow["attendance_status"] }[]) {
+    const rows = byEvent.get(row.calendar_event_id) ?? [];
+    rows.push({ personId: row.person_id, attendanceStatus: row.attendance_status });
+    byEvent.set(row.calendar_event_id, rows);
+  }
+  return byEvent;
+}
+
 /** Upcoming events this person is attending, for their CRM detail page. */
 export async function listUpcomingEventsForPerson(
   client: SupabaseClient,

@@ -96,6 +96,12 @@ export interface HouseholdRow {
   // P3-5: optional delivery channels beyond the always-on in_app channel
   // (see migration 20260830000005 for why in_app itself isn't stored here).
   notification_channels: NotificationChannel[];
+  // D-128: when true, the shared /calendar ("all") view only shows custody
+  // blocks where this household's self person is responsible — the
+  // co-parent's custody days are hidden inline (still fully visible on
+  // /calendar/custody, which is deliberately the full picture per D-068).
+  // Defaults true to match the reported preference out of the box.
+  calendar_hide_other_parent_custody: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -111,6 +117,7 @@ export type HouseholdInsert = Insert<
   | "ai_daily_spend_ceiling_cents"
   | "brief_time"
   | "notification_channels"
+  | "calendar_hide_other_parent_custody"
   | "created_at"
   | "updated_at"
 >;

@@ -23,6 +23,7 @@ function baseHousehold(overrides: Partial<HouseholdRow> = {}): HouseholdRow {
     ai_daily_spend_ceiling_cents: 500,
     brief_time: "07:00",
     notification_channels: [],
+    calendar_hide_other_parent_custody: true,
     created_at: "2026-01-01T00:00:00.000Z",
     updated_at: "2026-01-01T00:00:00.000Z",
     ...overrides,

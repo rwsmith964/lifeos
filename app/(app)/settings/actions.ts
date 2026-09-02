@@ -35,6 +35,8 @@ export async function updateHouseholdSettingsAction(
     // checkbox is disabled (not implemented until the v2 Expo shell), so it
     // never submits and is never persisted as an enabled channel.
     notification_channels: formData.get("notifyEmail") != null ? ["email"] : [],
+    // D-128: same absent-means-unchecked convention as notifyEmail above.
+    calendar_hide_other_parent_custody: formData.get("calendarHideOtherParentCustody") != null,
   });
   if (!parsedHousehold.success) {
     return { error: parsedHousehold.error.issues[0]?.message ?? "Invalid input.", saved: false };

@@ -98,6 +98,7 @@ export const householdInsertSchema = z.object({
   // this schema doesn't restrict beyond the enum since the dispatcher
   // itself already no-ops safely on any channel it doesn't implement yet.
   notification_channels: z.array(notificationChannelSchema).optional(),
+  calendar_hide_other_parent_custody: z.boolean().optional(),
 });
 
 export const userInsertSchema = z.object({

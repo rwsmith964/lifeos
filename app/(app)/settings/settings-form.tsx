@@ -133,6 +133,22 @@ export function SettingsForm({
           </div>
 
           <div className="flex flex-col gap-2">
+            <Label>Custody calendar</Label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                name="calendarHideOtherParentCustody"
+                defaultChecked={household.calendar_hide_other_parent_custody}
+              />{" "}
+              Only show my own custody days on the main calendar
+            </label>
+            <p className="text-xs text-muted-foreground">
+              Uncheck to also show days the kids are with the other parent inline. The full custody schedule is
+              always available on the Custody calendar view either way.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-2">
             <Label htmlFor="giftScanHorizonDays">Gift scan horizon (days)</Label>
             <Input
               id="giftScanHorizonDays"
