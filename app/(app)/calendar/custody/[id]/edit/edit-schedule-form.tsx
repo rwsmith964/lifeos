@@ -30,6 +30,16 @@ import {
 const selectClass = "border-input h-9 rounded-md border bg-transparent px-3 text-sm";
 const WEEKDAY_LABELS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
+// Postgres `time` columns (handover_time) round-trip through Supabase as
+// "HH:MM:SS", but custodyScheduleUpdateSchema's handoverTimeSchema requires
+// exact "HH:MM". Without this, loading the edit form and saving without
+// touching the (already-filled) handover time fields fails validation on
+// every save. custom_handover_times is jsonb and already stores clean
+// "HH:MM", but normalizing defensively here costs nothing.
+function normalizeTime(t: string): string {
+  return t.slice(0, 5);
+}
+
 type RecurrenceMode = "cycle" | "weekly_segments";
 
 export type EditScheduleFormDefaults =
@@ -76,10 +86,13 @@ export function EditScheduleForm({
     return map;
   });
   const [anchorDate, setAnchorDate] = useState(defaults.recurrenceType === "cycle" ? defaults.anchorDate : today);
-  const [handoverTime, setHandoverTime] = useState(defaults.recurrenceType === "cycle" ? defaults.handoverTime : "17:00");
-  const [customHandoverOverrides, setCustomHandoverOverrides] = useState<Record<string, string>>(
-    defaults.recurrenceType === "cycle" ? (defaults.customHandoverTimes ?? {}) : {}
+  const [handoverTime, setHandoverTime] = useState(
+    defaults.recurrenceType === "cycle" ? normalizeTime(defaults.handoverTime) : "17:00"
   );
+  const [customHandoverOverrides, setCustomHandoverOverrides] = useState<Record<string, string>>(() => {
+    if (defaults.recurrenceType !== "cycle" || !defaults.customHandoverTimes) return {};
+    return Object.fromEntries(Object.entries(defaults.customHandoverTimes).map(([day, time]) => [day, normalizeTime(time)]));
+  });
 
   // weekly_segments mode state
   const [segmentsState, setSegmentsState] = useState<WeeklySegmentsState>(
