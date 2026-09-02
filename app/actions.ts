@@ -124,9 +124,20 @@ export async function sendMagicLink(
   formData: FormData
 ): Promise<AuthActionState> {
   const email = String(formData.get("email") ?? "");
+  const origin = await getSiteOrigin();
 
+  // D-134: without an explicit emailRedirectTo, Supabase falls back to the
+  // dashboard's configured Site URL for this project, which is set to
+  // localhost:3000 (a dev leftover) -- every magic-link email sent in
+  // production pointed the user's browser at localhost and failed with
+  // ERR_CONNECTION_REFUSED. Build the redirect from the actual request
+  // origin instead, exactly like sendPasswordResetEmail already does below,
+  // so this keeps working under any host (prod, preview, local dev).
   const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.auth.signInWithOtp({ email });
+  const { error } = await supabase.auth.signInWithOtp({
+    email,
+    options: { emailRedirectTo: `${origin}/auth/callback` },
+  });
   if (error) return { error: error.message };
 
   return { error: null };
