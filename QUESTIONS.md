@@ -304,6 +304,14 @@ the remaining modules.
 **Reversal cost:** Low — both overrides are ordinary `custody_blocks` rows editable via the (now-fixed) one-off edit form; changing the time-of-day boundary later is a two-field edit, not a schema change.
 **Blocking:** No
 
+### QUEUE-036
+**Module:** Calendar / Weekend planner (D-131 accept-to-calendar)
+**File(s):** `lib/planner/accept-plan.ts`, `app/(app)/calendar/accept-weekend-plan-button.tsx`.
+**Question:** Two things bundled into this feature, both edge cases with no existing product answer: (1) most `requires_prep` activities on file predate `prep_duration_minutes` and have it null — how long should the created prep block actually be when the activity itself doesn't say? (2) if the accept flow can't find any open slot for the prep block within its lookback window (e.g. the whole window is inside a custody block, as it live-verified against real data), should the main activity event still be created, or should the whole accept fail so nothing gets half-scheduled?
+**Assumption made:** (1) Defaulted to 30 minutes (`DEFAULT_PREP_DURATION_MINUTES`) when `prep_duration_minutes` is null — a reasonable generic "gather gear" estimate, and it's a per-activity field the user can now fill in on any activity's edit page to override it. (2) Always create the main event regardless of prep-slot outcome, and surface a soft "added to your calendar, but no prep slot found" notice instead of a hard error — the activity itself getting on the calendar is the primary value of the feature, and silently failing the whole thing because a secondary reminder couldn't be placed felt like the wrong trade every time.
+**Reversal cost:** Low — `prep_duration_minutes` is editable per-activity at any time with no migration; the "always create the main event" behavior is an isolated `if` branch in `acceptWeekendPlan()` that could be changed to require both without touching the schema.
+**Blocking:** No
+
 ---
 
 ## HIGH

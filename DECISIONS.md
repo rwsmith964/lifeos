@@ -2994,3 +2994,76 @@ previous stale Richard block.
 
 **Remaining scope:** Weekend-plan one-click scheduling (drive+prep time blocks auto-added to the
 calendar) is next.
+
+## D-131 | 2026-09-02 | Weekend-plan one-click scheduling ("Add to calendar" for the AI's recommendation)
+
+**Problem:** Section 9's weekend planner only ever produced a narrated markdown blob ("Fishing at
+Willamette River scores highest this weekend…"). There was no way to turn that recommendation into
+a real calendar entry without retyping it by hand, and no drive-time or prep-time block was ever
+created for it either.
+
+**Fix (additive-only, per the standing contract — new nullable columns, no schema changes to
+existing ones):**
+- Migration `20260902000004_weekend_plan_accept.sql`: `user_activities.prep_duration_minutes`
+  (nullable — how long the prep itself takes, distinct from the existing `prep_lead_time_hours`,
+  which is *when before the event* prep starts); `weekend_plans.recommended_activity_id` /
+  `recommended_location_id` / `recommended_block_start` / `recommended_block_end` /
+  `travel_minutes_each_way` (the structured form of whichever candidate the AI's narration
+  describes, alongside the existing text); `weekend_plans.accepted_at` (idempotency guard) /
+  `activity_calendar_event_id` / `prep_calendar_event_id`.
+- `lib/planner/generate.ts`: `generateWeekendPlan()` now matches the AI's narrated
+  `content.recommendation` back to its source scored candidate (by activity type + location name,
+  falling back to activity type alone, then the top-scored candidate) and persists its structured
+  identity and the best open block's start/end. When regenerating an already-accepted plan and the
+  winning candidate hasn't changed, `accepted_at`/the event-id pointers are preserved; if it *has*
+  changed, they're reset to null so a stale "already accepted" state can't linger against a
+  different recommendation.
+- `lib/planner/accept-plan.ts` (new): pure, unit-tested slot-resolution helpers —
+  `computeMainEventWindow(blockStart, blockEnd, typicalDurationMinutes)` (starts at the block start,
+  runs for the activity's typical duration, capped at the block's own end) and
+  `resolvePrepSlot(prepAt, durationMinutes, searchWindowStart, searchWindowEnd, busyPeriods)`
+  (prefers the ideal lead-time slot; falls back to the nearest sufficiently-long open block via the
+  existing `findOpenBlocks`; returns `null` if nothing fits, which the caller treats as "prep
+  skipped," never as a reason to fail the whole accept or double-book something). The
+  `acceptWeekendPlan()` orchestrator is idempotent on `accepted_at` and writes exclusively through
+  `calendarEventsRepo`/`weekendPlansRepo`/`userActivitiesRepo`/`activityLocationsRepo` — never a raw
+  insert.
+- `app/(app)/calendar/actions.ts`: new `acceptWeekendPlanAction()` server action, mirroring
+  `generateWeekendPlanAction()`'s service-role-client pattern (`weekend_plans` has no insert/update
+  policy for regular users).
+- `app/(app)/calendar/accept-weekend-plan-button.tsx` (new) + wired into `calendar/page.tsx`'s
+  existing weekend-plan panel: shows "Add to calendar" only when there's a recommendation *and* an
+  actual feasible block (`recommended_block_start`/`end` both set — see live-verify finding below);
+  shows a plain "Added to your calendar" confirmation once accepted; surfaces a soft warning instead
+  of an error when the main event was created but no open slot existed for its prep block.
+- `lib/planner/accept-plan.test.ts` (new, 8 cases): `computeMainEventWindow` exact-fit and
+  duration-exceeds-block capping; `resolvePrepSlot` ideal-slot-free, ideal-slot-conflict-falls-back,
+  nearest-of-two-open-blocks-chosen, no-block-long-enough-returns-null, and
+  only-too-short-block-available-returns-null.
+
+**Live-verify finding (fixed before shipping):** the deployed generate.ts run against Richard's real
+data for the 2026-09-05 weekend (fully inside the Sept 5-7 vacation custody block from D-130) showed
+`recommended_activity_id` set from the AI's narration while `recommended_block_start`/`end` stayed
+null (no open block existed anywhere in the window) — correct persistence, but the button as first
+written would have shown anyway and then failed with a "no recommendation" error on click. Gated the
+button on the block fields too (commit `ce06c7b`) so it only appears when there's something real to
+accept.
+
+**Verification:** `pnpm typecheck` — 0 errors. `pnpm lint` — 0 errors (only pre-existing
+generated-file/config warnings). `pnpm test` — 715 tests / 73 files pass (707 previous + 8 new).
+`pnpm build` — succeeds. Merged `feat-weekend-plan-accept` → `main` (`2ee53cd`, then UI fix `ce06c7b`)
+and pushed. Migration applied directly to the live database (project `moblcysnsaxohnslubym`); all 9
+new columns confirmed present via direct query. Deployed to
+[lifeos-seven-rho.vercel.app](https://lifeos-seven-rho.vercel.app) twice (feature, then the UI fix),
+both confirmed `Ready`. Live-verified at two levels since the authenticated browser was unreachable
+again (same `start_browser("local")` timeout as QUEUE-034/QUEUE-035's precedent): (1) triggered the
+deployed `/api/cron/weekend-plan` endpoint directly against production for both real households —
+`generated: 2, errors: []`, confirmed the new columns populate correctly including the
+correctly-null-when-no-block case above; (2) exercised the full accept-side write path (main event
+create — exact field-for-field match with what `computeMainEventWindow` computes — prep-slot search
+correctly finding no opening against a real custody-block conflict and skipping gracefully,
+`weekend_plans` update) against the pre-existing seed/demo "Rivera Household" fixture, then deleted
+the test event and reset the plan row so no trace was left in production.
+
+**Remaining scope:** none outstanding for the standing directive's two blocking items (D-130 custody
+fix and D-131 weekend-plan feature) — both are now complete.
