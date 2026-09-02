@@ -1302,3 +1302,78 @@ export type CalendarSyncAccountInsert = Insert<
   | "updated_at"
 >;
 export type CalendarSyncAccountUpdate = Update<CalendarSyncAccountRow>;
+
+// Module 6: Execution (draft-only) scaffold (D-122, execution_draft_only flag)
+// -------------------------------------------------------------------------
+
+export type ExecutionCategory = "rsvp" | "reschedule" | "confirmation" | "gift_order";
+
+export interface ExecutionCategoryRow {
+  id: string;
+  household_id: string;
+  category: ExecutionCategory;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+export type ExecutionCategoryInsert = Insert<ExecutionCategoryRow, "id" | "enabled" | "created_at" | "updated_at">;
+export type ExecutionCategoryUpdate = Update<ExecutionCategoryRow>;
+
+export type ExecutionAutonomyTier = "draft_only" | "send_with_approval" | "send_autonomously";
+
+export interface ContactExecutionSettingsRow {
+  id: string;
+  household_id: string;
+  person_id: string;
+  autonomy_tier: ExecutionAutonomyTier;
+  is_business_contact: boolean;
+  created_at: string;
+  updated_at: string;
+}
+export type ContactExecutionSettingsInsert = Insert<
+  ContactExecutionSettingsRow,
+  "id" | "autonomy_tier" | "is_business_contact" | "created_at" | "updated_at"
+>;
+export type ContactExecutionSettingsUpdate = Update<ContactExecutionSettingsRow>;
+
+export type ExecutionDraftSourceType = "manual" | "templated" | "inbound_email";
+export type ExecutionDraftStatus = "pending_review" | "approved" | "discarded";
+
+export interface ExecutionDraftRow {
+  id: string;
+  household_id: string;
+  category: ExecutionCategory;
+  contact_person_id: string | null;
+  source_type: ExecutionDraftSourceType;
+  source_reference: string | null;
+  draft_subject: string | null;
+  draft_body: string;
+  status: ExecutionDraftStatus;
+  reviewed_by_person_id: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+export type ExecutionDraftInsert = Insert<
+  ExecutionDraftRow,
+  | "id"
+  | "contact_person_id"
+  | "source_type"
+  | "source_reference"
+  | "draft_subject"
+  | "status"
+  | "reviewed_by_person_id"
+  | "reviewed_at"
+  | "created_at"
+  | "updated_at"
+>;
+export type ExecutionDraftUpdate = Update<ExecutionDraftRow>;
+
+export interface AssistantEmailConfigRow {
+  household_id: string;
+  alias: string;
+  created_at: string;
+  updated_at: string;
+}
+export type AssistantEmailConfigInsert = Omit<AssistantEmailConfigRow, "created_at" | "updated_at">;
+export type AssistantEmailConfigUpdate = Partial<Omit<AssistantEmailConfigRow, "household_id">>;
