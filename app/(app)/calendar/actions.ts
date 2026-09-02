@@ -6,8 +6,11 @@ import { calendarEventsRepo, custodyBlocksRepo, eventAttendeesRepo } from "@/lib
 import { timeOffEntriesRepo } from "@/lib/db/repositories/work-schedule";
 import { createSupabaseServiceRoleClient } from "@/lib/db/client-service-role";
 import { generateWeekendPlan } from "@/lib/planner/generate";
+import { acceptWeekendPlan } from "@/lib/planner/accept-plan";
+import { getWeekendPlanForDate } from "@/lib/db/repositories/system";
 import { friendlyMutationError } from "@/lib/db/errors";
 import type { CalendarEventRow } from "@/lib/db/database.types";
+import { format, startOfDay } from "date-fns";
 
 export interface DeleteActionState {
   error: string | null;
@@ -140,4 +143,66 @@ export async function generateWeekendPlanAction(): Promise<WeekendPlanActionStat
 
   revalidatePath("/calendar");
   return { error: null };
+}
+
+export interface AcceptWeekendPlanActionState {
+  error: string | null;
+  // D-131: distinct from a hard error -- the event(s) were created
+  // successfully but the prep obligation couldn't find an open slot in the
+  // lookback window (QUEUE-036). Surfaced as a soft warning, not a
+  // blocking error, since the main activity is on the calendar either way.
+  prepSkipped: boolean;
+}
+
+// Looks up the current household's upcoming-Saturday weekend plan and
+// accepts it -- mirrors generateWeekendPlanAction's "no plan id in scope"
+// shape (the UI only ever has one weekend plan in view at a time, for
+// upcomingSaturday, so there's nothing for the caller to pass).
+export async function acceptWeekendPlanAction(): Promise<AcceptWeekendPlanActionState> {
+  const { household, selfPerson } = await requireHouseholdContext();
+
+  // weekend_plans has no insert/update policy for regular authenticated
+  // users (see the migration comment and D-029/D-131) -- same service-role
+  // swap generateWeekendPlanAction uses, with household.id already
+  // resolved and scoped above so this doesn't broaden what it can touch.
+  const serviceRoleClient = createSupabaseServiceRoleClient();
+
+  try {
+    // The plan the UI shows is always "the upcoming Saturday's" -- same
+    // daysUntilSaturday math as app/(app)/calendar/page.tsx's weekendPlan
+    // lookup, so the button never needs to know a weekend_plans id.
+    const today = startOfDay(new Date());
+    const daysUntilSaturday = (6 - today.getDay() + 7) % 7;
+    const upcomingSaturday = format(new Date(today.getTime() + daysUntilSaturday * 86400000), "yyyy-MM-dd");
+    const plan = await getWeekendPlanForDate(serviceRoleClient, household.id, upcomingSaturday);
+    if (!plan) {
+      return { error: "No weekend plan to accept yet -- generate one first.", prepSkipped: false };
+    }
+
+    const result = await acceptWeekendPlan(serviceRoleClient, {
+      weekendPlanId: plan.id,
+      householdId: household.id,
+      createdByPersonId: selfPerson.id,
+    });
+
+    if (result.status === "not_found") {
+      return { error: "No weekend plan to accept yet -- generate one first.", prepSkipped: false };
+    }
+    if (result.status === "no_recommendation") {
+      return { error: "This weekend's plan has no feasible recommendation to add to the calendar.", prepSkipped: false };
+    }
+    if (result.status === "already_accepted") {
+      // Idempotent no-op -- e.g. a double-click or a retried request.
+      // Nothing new to report, and nothing failed either.
+      return { error: null, prepSkipped: false };
+    }
+    return { error: null, prepSkipped: result.prepSkipped };
+  } catch (error) {
+    return {
+      error: friendlyMutationError(error, { fallback: "Couldn't add this plan to the calendar -- please try again." }),
+      prepSkipped: false,
+    };
+  } finally {
+    revalidatePath("/calendar");
+  }
 }

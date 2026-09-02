@@ -48,6 +48,7 @@ import { cn } from "@/lib/utils";
 import { DeleteCalendarItemButton } from "./delete-item-button";
 import { Pencil } from "lucide-react";
 import { GenerateWeekendPlanButton } from "./generate-weekend-plan-button";
+import { AcceptWeekendPlanButton } from "./accept-weekend-plan-button";
 
 const MONTH_PARAM_FORMAT = "yyyy-MM";
 const DAY_PARAM_FORMAT = "yyyy-MM-dd";
@@ -554,6 +555,18 @@ export default async function CalendarPage({
             {weekendPlan ? (
               <>
                 <RenderedMarkdown content={weekendPlan.content_markdown} className="flex flex-col gap-1.5 text-sm text-muted-foreground" />
+                {/* D-131: one-click "add the recommended activity (and its
+                    prep time, if any) to the calendar" -- only offered when
+                    generate.ts found a feasible recommendation to persist,
+                    and swapped for a plain confirmation once accepted so a
+                    second click can't double-book the same weekend. */}
+                {weekendPlan.accepted_at ? (
+                  <p className="text-xs text-muted-foreground">Added to your calendar.</p>
+                ) : weekendPlan.recommended_activity_id ? (
+                  <div>
+                    <AcceptWeekendPlanButton />
+                  </div>
+                ) : null}
                 <div>
                   <GenerateWeekendPlanButton variant="regenerate" />
                 </div>

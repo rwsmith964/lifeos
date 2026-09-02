@@ -99,7 +99,10 @@ export async function generateWeekendPlan(
   const householdPeople = await listPeopleForHousehold(client, householdId);
   const tokenMap = buildChildTokenMap(householdPeople);
 
-  const scored: (ScoredActivityContext & { totalScore: number; activityId: string })[] = [];
+  // D-131: locationId is carried alongside the existing narration-only
+  // fields so the winning candidate's structured identity (not just its
+  // rendered text) can be persisted onto weekend_plans for the accept flow.
+  const scored: (ScoredActivityContext & { totalScore: number; activityId: string; locationId: string | null })[] = [];
 
   for (const activity of activities) {
     // D-085 (P3-3): out-of-season activities, and needs_daylight
@@ -192,6 +195,7 @@ export async function generateWeekendPlan(
 
     scored.push({
       activityId: activity.id,
+      locationId: location?.id ?? null,
       activityType: activity.activity_type,
       locationName: location?.name ?? null,
       score: result.totalScore,
@@ -263,11 +267,53 @@ export async function generateWeekendPlan(
   // getWeekendPlanForDate. Always upsert now so a rerun genuinely
   // regenerates the visible plan, matching the brief's regenerate
   // behavior (D-057).
+  // D-131: identify which scored candidate the narrated recommendation
+  // actually describes (usually scored[0], but the system prompt allows
+  // the AI to pivot to a different comparatively-best candidate when the
+  // top score is low) so its real IDs/times can be persisted alongside the
+  // narration for the accept-to-calendar action. Match on activityType +
+  // locationName first (most specific — a household can have two
+  // same-typed activities at different locations), falling back to
+  // activityType alone, and finally to scored[0] defensively.
+  const recommended = content.recommendation
+    ? (scored.find(
+        (s) => s.activityType === content.recommendation!.activityType && s.locationName === content.recommendation!.locationName
+      ) ??
+      scored.find((s) => s.activityType === content.recommendation!.activityType) ??
+      scored[0] ??
+      null)
+    : null;
+
   const existing = await getWeekendPlanForDate(client, householdId, forDate);
+  const recommendedActivityId = recommended?.activityId ?? null;
+  const recommendedBlockStart = recommended && bestBlock ? bestBlock.start.toISOString() : null;
+  const recommendedBlockEnd = recommended && bestBlock ? bestBlock.end.toISOString() : null;
+  // D-131: if this regeneration still points at the same recommended
+  // activity and block as an already-accepted prior plan, keep the
+  // existing accepted_at/event-id pointers so a routine regenerate (e.g.
+  // conditions refreshed but the winner didn't change) doesn't silently
+  // un-schedule an already-created calendar event. Only reset acceptance
+  // when the recommendation actually changed — a stale accepted_at
+  // pointing at a superseded recommendation would block the accept action
+  // from ever creating an event for the new one.
+  const recommendationUnchanged =
+    existing?.accepted_at != null &&
+    existing.recommended_activity_id === recommendedActivityId &&
+    existing.recommended_block_start === recommendedBlockStart &&
+    existing.recommended_block_end === recommendedBlockEnd;
+
   const planFields = {
     content_json: content,
     content_markdown: markdown,
     model_version: aiResponse ? AI_MODEL : "template-fallback",
+    recommended_activity_id: recommendedActivityId,
+    recommended_location_id: recommended?.locationId ?? null,
+    recommended_block_start: recommendedBlockStart,
+    recommended_block_end: recommendedBlockEnd,
+    travel_minutes_each_way: recommended?.travelMinutesEachWay ?? null,
+    accepted_at: recommendationUnchanged ? existing!.accepted_at : null,
+    activity_calendar_event_id: recommendationUnchanged ? existing!.activity_calendar_event_id : null,
+    prep_calendar_event_id: recommendationUnchanged ? existing!.prep_calendar_event_id : null,
   };
   if (existing) {
     await weekendPlansRepo.update(client, existing.id, planFields);
