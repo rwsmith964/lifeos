@@ -39,7 +39,8 @@ import { listOpenOpportunitiesWithSubjectForHouseholdInDateRange } from "@/lib/d
 import { getPresentedOpportunities } from "@/lib/opportunities/present";
 import { birthdaysInRange, birthdayTitle } from "@/lib/calendar/birthdays";
 import { workShiftsInRange, timeOffInRange, workShiftTitle, timeOffTitle } from "@/lib/calendar/work-schedule";
-import { buildChildColorMap } from "@/lib/custody/colors";
+import { buildChildColorMap, buildParentColorMap } from "@/lib/custody/colors";
+import { buildMonthCellChips, buildMonthCellCustodyBars, type CustodyBlockLike } from "@/lib/calendar/month-cell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { RenderedMarkdown } from "@/components/ui/rendered-markdown";
@@ -79,6 +80,18 @@ const OTHER_CHIP_LABELS: Record<string, string> = {
   work_shift: "Work",
   time_off: "Time off",
 };
+// D-132: background/text classes for the month-grid inline chip, one per
+// DayItem `kind` (custody is excluded -- it gets the frame bar instead, see
+// buildMonthCellChips). Deliberately separate from dotClassName (which
+// stays a plain bg-* dot color used elsewhere) since a filled text chip
+// needs a much lighter background to keep small text legible.
+const CHIP_KIND_STYLES: Record<string, string> = {
+  event: "bg-primary/10 text-primary",
+  birthday: "bg-pink-100 text-pink-800 dark:bg-pink-950 dark:text-pink-300",
+  work_shift: "bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-300",
+  time_off: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
+};
+
 function humanizeChipLabel(raw: string): string {
   return (
     EVENT_TYPE_LABELS[raw] ??
@@ -132,6 +145,12 @@ interface DayItem {
   // re-materialization, so it routes to an exception instead of a direct
   // edit form. See app/api/calendar/custody/[id]/route.ts.
   custodyScheduleId?: string | null;
+  // D-132: only set for kind === "custody" -- carried alongside the
+  // human-readable title ("Cal with Richard") so the month-grid custody
+  // frame (buildMonthCellCustodyBars) can group/color by the underlying
+  // ids without re-parsing the title string.
+  childPersonId?: string;
+  responsiblePersonId?: string;
 }
 
 export default async function CalendarPage({
@@ -239,6 +258,17 @@ export default async function CalendarPage({
   const peopleById = new Map(people.map((p) => [p.id, p.nickname || p.full_name]));
   const childColors = buildChildColorMap(people.filter((p) => p.relationship_type === "child").map((p) => p.id));
   const defaultChildColor = { dot: "bg-primary", badge: "bg-muted text-foreground" };
+  // D-132: month-grid custody frame is colored by RESPONSIBLE PARENT, not
+  // by child -- "who has the kids today" is a parent-level question, and
+  // reusing the child dot palette here would make the frame look like the
+  // same signal as the existing per-child dots in the Custody filter's
+  // legend above. Scoped to self/co_parent (the two people custody blocks
+  // actually assign responsibility to today); any other relationship type
+  // acting as responsible_person_id falls back to defaultParentColor below.
+  const parentColors = buildParentColorMap(
+    people.filter((p) => p.relationship_type === "self" || p.relationship_type === "co_parent").map((p) => p.id)
+  );
+  const defaultParentColor = { bar: "bg-primary", border: "border-primary" };
 
   // D-128: a kid-linked event (has one or more child attendees) only
   // shows on the main calendar for a day this viewer actually has custody
@@ -300,6 +330,8 @@ export default async function CalendarPage({
       location: c.location,
       dotClassName: color.dot,
       custodyScheduleId: c.custody_schedule_id,
+      childPersonId: c.child_person_id,
+      responsiblePersonId: c.responsible_person_id,
     };
   });
 
@@ -518,6 +550,24 @@ export default async function CalendarPage({
         </div>
       )}
 
+      {/* D-132: the month-grid custody frame is color-coded by responsible
+          parent (not child), so it needs its own legend distinct from the
+          per-child dot legend above -- shown regardless of All/Custody
+          filter since the frame itself renders in both. Skipped entirely
+          for households with no custody blocks in view at all (e.g. no
+          co-parent on file), matching the same "only show what applies"
+          precedent as the per-child legend. */}
+      {custodyBlocks.length > 0 && parentColors.size > 0 && (
+        <div className="flex flex-wrap gap-3">
+          {[...parentColors.entries()].map(([parentId, color]) => (
+            <div key={parentId} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span className={cn("h-1.5 w-4 rounded-full", color.bar)} />
+              {peopleById.get(parentId) ?? "Parent"} has the kids
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Module 4 (scheduling_v2, D-120): read-only conflict banner --
           purely informational, no interactive controls beyond the existing
           per-event Edit links below. Never mutates an event; see the
@@ -642,6 +692,26 @@ export default async function CalendarPage({
                 // boundary, so none of them should read as "out of range".
                 const inMonth = range === "week" ? true : isSameMonth(day, monthDate);
                 const selected = isSameDay(day, selectedDay);
+                // D-132: month cell now shows real inline chips (up to 2
+                // lines of "time + title") instead of a plain 3-dot summary
+                // -- closer to a glance-able agenda per day. Custody blocks
+                // are pulled out of the chip list and rendered as a colored
+                // frame bar instead (buildMonthCellCustodyBars), since "who
+                // has the kids" reads better as a border around the day
+                // than another text row competing for the same 2-line slot.
+                const custodyBlocksForDay: CustodyBlockLike[] = dayItems
+                  .filter((item): item is typeof item & { childPersonId: string; responsiblePersonId: string } =>
+                    item.kind === "custody" && item.childPersonId != null && item.responsiblePersonId != null
+                  )
+                  .map((item) => ({
+                    id: item.id,
+                    childPersonId: item.childPersonId,
+                    responsiblePersonId: item.responsiblePersonId,
+                    startsAt: item.startsAt,
+                    endsAt: item.endsAt,
+                  }));
+                const custodyRows = buildMonthCellCustodyBars(day, custodyBlocksForDay);
+                const chips = buildMonthCellChips(dayItems, 2);
                 return (
                   <Link
                     key={key}
@@ -653,21 +723,49 @@ export default async function CalendarPage({
                     // backlog: "no auto-scroll").
                     href={`/calendar?month=${monthLabel}&day=${key}${viewQuery}${rangeQuery}#selected-day`}
                     className={cn(
-                      "flex flex-col items-center gap-0.5 rounded-md py-1.5 text-xs",
+                      "flex min-h-[64px] flex-col gap-0.5 rounded-md px-0.5 py-1 text-xs",
                       inMonth ? "text-foreground" : "text-muted-foreground/40",
                       selected && "bg-primary text-primary-foreground",
                       !selected && isToday(day) && "font-semibold text-primary"
                     )}
                   >
-                    <span>{format(day, "d")}</span>
-                    <span className="flex h-1.5 items-center gap-0.5">
-                      {dayItems.slice(0, 3).map((item, i) => (
+                    {custodyRows.length > 0 && (
+                      <div className="relative h-1" style={{ height: `${custodyRows.length * 4}px` }}>
+                        {custodyRows.map((row, rowIndex) => (
+                          <div key={row.childPersonId} className="absolute left-0 h-[3px] w-full" style={{ top: `${rowIndex * 4}px` }}>
+                            {row.segments.map((segment, segmentIndex) => (
+                              <div
+                                key={segmentIndex}
+                                className={cn(
+                                  "absolute h-full rounded-full",
+                                  selected ? "bg-primary-foreground" : (parentColors.get(segment.responsiblePersonId) ?? defaultParentColor).bar
+                                )}
+                                style={{ left: `${segment.startPercent}%`, width: `${segment.widthPercent}%` }}
+                              />
+                            ))}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <span className="text-center">{format(day, "d")}</span>
+                    <div className="flex flex-col gap-px overflow-hidden">
+                      {chips.visible.map((chip) => (
                         <span
-                          key={i}
-                          className={cn("size-1 rounded-full", selected ? "bg-primary-foreground" : item.dotClassName)}
-                        />
+                          key={chip.id}
+                          className={cn(
+                            "truncate rounded-sm px-0.5 text-left text-[9px] leading-tight",
+                            selected ? "bg-primary-foreground/20" : CHIP_KIND_STYLES[chip.kind]
+                          )}
+                        >
+                          {chip.label}
+                        </span>
                       ))}
-                    </span>
+                      {chips.overflowCount > 0 && (
+                        <span className={cn("text-center text-[9px]", selected ? "text-primary-foreground/80" : "text-muted-foreground")}>
+                          +{chips.overflowCount} more
+                        </span>
+                      )}
+                    </div>
                   </Link>
                 );
               })}
