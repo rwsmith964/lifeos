@@ -2765,3 +2765,55 @@ behavior. Logged as **QUEUE-033** below rather than fixed further now, since tig
 constraint or having the client send explicit nulls is non-blocking and low-reversal-cost
 (switching back to `Rolling cycle` in the UI still works either way, since the old cycle data is
 still intact).
+
+## D-127 | 2026-09-02 | Daily brief false custody-transition alerts (overlap query re-announcing stale handovers)
+
+**Problem:** User reported getting a "custody transition" line in the daily brief notification every
+single day at 8:30 AM and 4:30 PM, even on days when no handover was actually happening.
+
+**Root cause:** `generateDailyBrief` (`lib/brief/generate.ts`) fetches custody blocks for its
+today+tomorrow window via `listCustodyBlocksForHouseholdInRange`
+(`lib/db/repositories/calendar.ts`), which intentionally uses *overlap* semantics
+(`starts_at < windowEnd AND ends_at > windowStart`) so the calendar grid can render a multi-day
+custody block on every day it spans (D-033). Since D-125's `weekly_segments` recurrence model
+merges each parent's consecutive days into one continuous block (e.g. Fri 4:30 PM → Mon 8:30 AM for
+a weekend), that single block overlaps every day of the window. The brief mapped every returned
+custody block straight into its flat event list, printing each one's original `starts_at` as if a
+transition were happening on the currently-viewed day — so Saturday's and Sunday's briefs both
+re-announced Friday's already-past 4:30 PM handover, and every brief also carried the *next*
+upcoming handover's time, matching the exact 8:30/4:30 pattern reported. Confirmed this reaches a
+real notification: `generateDailyBrief` ends with `dispatchNotification(...)` across
+`["in_app", ...household.notification_channels]`, so the stale line was being emailed/pushed daily,
+not just shown in-app. Both the AI-generated and template-fallback brief paths consume the same
+`eventContexts`, so both inherited the bug.
+
+Contrasted with `listEventsInRange` (same file), which correctly uses starts-*within*-window
+semantics (`starts_at >= windowStart AND starts_at < windowEnd`) for ordinary calendar events — the
+brief needs that same semantic for custody blocks specifically, while every other caller of
+`listCustodyBlocksForHouseholdInRange` (calendar grid, custody-only view, `lib/opportunities/detect.ts`,
+`lib/planner/generate.ts`) correctly relies on the overlap/busy-range semantics and must not change.
+
+**Fix:** Added `lib/brief/custody-transitions.ts` with a pure, unit-tested
+`filterActualCustodyTransitions(custodyBlocks, windowStart, windowEnd)` predicate that keeps only
+blocks whose `starts_at` falls within `[windowStart, windowEnd)` — i.e. a handover that actually
+starts today or tomorrow. `generateDailyBrief` now filters `custodyBlocks` through this before
+folding them into `eventContexts`, instead of changing the shared repository query (which the other
+callers need to keep as overlap semantics). Added `lib/brief/custody-transitions.test.ts` (6 cases:
+stale multi-day span dropped, handover starting today kept, handover starting tomorrow kept,
+handover on/after window end dropped, handover before window start dropped, mixed list filtered
+correctly) as the characterization test for this bug per the governing test-first rule.
+
+**Verification:** `pnpm typecheck` — 0 errors. `pnpm lint` — 0 errors, 34 pre-existing warnings
+(unchanged, all in generated `android/app/build/**` assets, not source). `pnpm test` — 70 files /
+680 tests pass (674 previous + 6 new). `pnpm build` — succeeds, ~70 routes. Deployed to
+[lifeos-seven-rho.vercel.app](https://lifeos-seven-rho.vercel.app) and confirmed via direct SQL
+against the Smith Household's live `weekly_segments` custody schedules that a mid-span day (e.g. a
+Saturday inside the Fri 4:30 PM → Mon 8:30 AM block) no longer produces a custody line in the
+brief's event context, while the actual handover day still does.
+
+**Scope note:** This fix only addresses the false-alert bug (sub-request 1 of the user's 4-part
+request). Custody-aware calendar *visibility* (only showing a day on the responsible parent's own
+calendar when they have the kids), the generic child-activity infrastructure (day/time/location/
+mandatory-optional, opened but not populated with Emlyn's real schedule), and weekend-plan
+one-click scheduling with auto-computed drive/prep time blocks are tracked separately and were not
+part of this fix.
