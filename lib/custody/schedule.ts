@@ -162,6 +162,181 @@ export const CUSTODY_PRESET_LABELS: Record<CustodyPresetName, string> = {
   two_two_five_five: "2-2-5-5",
 };
 
+// ---------------------------------------------------------------------
+// Weekly day-of-week + handoff-time recurrence ('weekly_segments')
+// ---------------------------------------------------------------------
+//
+// The cycle engine above assigns exactly one responsible parent to each
+// *whole calendar day*. Some real custody agreements are bound to the
+// day of week with handoffs at a specific clock time, and can split a
+// single calendar day between two people (e.g. Friday: one parent until
+// 4:30pm, the other from 4:30pm) -- something a day-granularity cycle
+// cannot express (ends_at would have to reuse starts_at's date). This
+// second, independent recurrence type covers that case; the cycle engine
+// above is completely unchanged and remains the default. See migration
+// 20260902000001 and DECISIONS.md D-125.
+
+export interface CustodyWeeklySegmentDefinition {
+  dayOfWeek: number; // 0 (Sunday) .. 6 (Saturday), matches Date#getDay()
+  time: string; // "HH:MM", 24-hour
+  responsiblePersonId: string;
+}
+
+export interface ProjectedCustodyInterval {
+  startsAt: string; // "yyyy-MM-ddTHH:mm:00" naive local datetime
+  endsAt: string;
+  responsiblePersonId: string;
+  isException: boolean;
+}
+
+/** Minutes since Sunday 00:00 for a (dayOfWeek, "HH:MM") pair — the single circular sort/compare key every weekly-segment breakpoint is placed on. */
+function weekMinutesOf(dayOfWeek: number, time: string): number {
+  const [hourStr, minuteStr] = time.split(":");
+  return dayOfWeek * 24 * 60 + Number(hourStr) * 60 + Number(minuteStr);
+}
+
+/**
+ * Who the weekly pattern assigns at a given point in the week (ignoring
+ * exceptions), where `atWeekMinutes` is minutes-since-Sunday-midnight.
+ * `sorted` must be non-empty and sorted ascending by weekMinutesOf.
+ * Wraps circularly: a query before the week's earliest breakpoint
+ * resolves to the last breakpoint of the *previous* week — i.e. whichever
+ * segment sorts last, since the pattern repeats every week.
+ */
+function personAtWeekMinutes(sorted: CustodyWeeklySegmentDefinition[], atWeekMinutes: number): string {
+  let current = sorted[sorted.length - 1].responsiblePersonId;
+  for (const seg of sorted) {
+    if (weekMinutesOf(seg.dayOfWeek, seg.time) <= atWeekMinutes) {
+      current = seg.responsiblePersonId;
+    } else {
+      break;
+    }
+  }
+  return current;
+}
+
+function combineDateAndTime(date: string, time: string): string {
+  return `${date}T${time}:00`;
+}
+
+/**
+ * Projects a fixed weekly day-of-week/time pattern onto real dates — the
+ * 'weekly_segments' counterpart to projectCustodySchedule. Every interval
+ * carries its own start and end clock time (not just a date), so unlike
+ * the cycle model this can represent multiple handoffs within a single
+ * calendar day.
+ *
+ * Exceptions override the *entire* calendar day regardless of segments —
+ * identical whole-day semantics to the cycle model's exceptions (see
+ * QUESTIONS.md QUEUE-032). `segments` need not be exhaustive: only the
+ * breakpoints where responsibility actually changes are required, since
+ * `personAtWeekMinutes` fills in every day/time in between by carrying
+ * the most recent breakpoint forward (circularly across the week) — but
+ * the UI may also submit one breakpoint per literal day the user
+ * selected, which behaves identically.
+ */
+export function projectWeeklySegmentSchedule(
+  segments: CustodyWeeklySegmentDefinition[],
+  scheduleStartDate: string,
+  scheduleEndDate: string | null,
+  exceptionsByDate: Map<string, string>,
+  windowStart: Date,
+  windowEnd: Date
+): ProjectedCustodyInterval[] {
+  if (segments.length === 0) return [];
+  const sorted = [...segments].sort((a, b) => weekMinutesOf(a.dayOfWeek, a.time) - weekMinutesOf(b.dayOfWeek, b.time));
+
+  const effectiveStart = scheduleStartDate > format(windowStart, "yyyy-MM-dd") ? parseISO(scheduleStartDate) : windowStart;
+  const effectiveEndStr = scheduleEndDate ?? format(windowEnd, "yyyy-MM-dd");
+  const effectiveEnd = effectiveEndStr < format(windowEnd, "yyyy-MM-dd") ? parseISO(effectiveEndStr) : windowEnd;
+
+  const raw: ProjectedCustodyInterval[] = [];
+  for (let d = effectiveStart; d <= effectiveEnd; d = addDays(d, 1)) {
+    const dateStr = format(d, "yyyy-MM-dd");
+    const nextDateStr = format(addDays(d, 1), "yyyy-MM-dd");
+    const dow = d.getDay();
+    const exception = exceptionsByDate.get(dateStr);
+
+    if (exception) {
+      raw.push({
+        startsAt: combineDateAndTime(dateStr, "00:00"),
+        endsAt: combineDateAndTime(nextDateStr, "00:00"),
+        responsiblePersonId: exception,
+        isException: true,
+      });
+      continue;
+    }
+
+    // Breakpoints landing on this specific weekday, in time order, applied
+    // on top of whoever the pattern already assigns at this day's midnight.
+    const daySegments = sorted.filter((s) => s.dayOfWeek === dow);
+    let cursorTime = "00:00";
+    let cursorPerson = personAtWeekMinutes(sorted, dow * 24 * 60);
+    for (const seg of daySegments) {
+      if (seg.time !== cursorTime) {
+        raw.push({
+          startsAt: combineDateAndTime(dateStr, cursorTime),
+          endsAt: combineDateAndTime(dateStr, seg.time),
+          responsiblePersonId: cursorPerson,
+          isException: false,
+        });
+      }
+      cursorTime = seg.time;
+      cursorPerson = seg.responsiblePersonId;
+    }
+    raw.push({
+      startsAt: combineDateAndTime(dateStr, cursorTime),
+      endsAt: combineDateAndTime(nextDateStr, "00:00"),
+      responsiblePersonId: cursorPerson,
+      isException: false,
+    });
+  }
+
+  // Merge adjacent intervals for the same person (e.g. a run of several
+  // exception-free days between breakpoints) into a single span, same
+  // spirit as materialize.ts's mergeConsecutiveDays for the cycle model.
+  const merged: ProjectedCustodyInterval[] = [];
+  for (const interval of raw) {
+    const last = merged[merged.length - 1];
+    if (
+      last &&
+      last.endsAt === interval.startsAt &&
+      last.responsiblePersonId === interval.responsiblePersonId &&
+      last.isException === interval.isException
+    ) {
+      last.endsAt = interval.endsAt;
+    } else {
+      merged.push({ ...interval });
+    }
+  }
+  return merged;
+}
+
+const WEEKLY_SEGMENT_DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/** Human-readable breakpoint label for the detail-page summary, e.g. "Fri 4:30 PM" — the caller attaches the responsible person's name. */
+export function describeWeeklySegmentBreakpoint(segment: CustodyWeeklySegmentDefinition): string {
+  return `${WEEKLY_SEGMENT_DAY_LABELS[segment.dayOfWeek]} ${formatHandoverTime(segment.time)}`;
+}
+
+/**
+ * One-line summary of a whole weekly_segments pattern for list/detail
+ * views, e.g. "Mon 8:30 AM -> Mel, Fri 4:30 PM -> Richard" -- the
+ * 'weekly_segments' counterpart to describeCustodyHandoverTimes. Sorted
+ * by weekMinutesOf so breakpoints always read in week order regardless
+ * of storage/submission order. Takes a name lookup since this pure lib
+ * has no person-name data of its own.
+ */
+export function describeWeeklySegmentsPattern(
+  segments: CustodyWeeklySegmentDefinition[],
+  peopleNamesById: Map<string, string>
+): string {
+  return [...segments]
+    .sort((a, b) => weekMinutesOf(a.dayOfWeek, a.time) - weekMinutesOf(b.dayOfWeek, b.time))
+    .map((s) => `${describeWeeklySegmentBreakpoint(s)} → ${peopleNamesById.get(s.responsiblePersonId) ?? "Unknown"}`)
+    .join(", ");
+}
+
 /** A date range with no responsible parent assigned by the cycle or an exception — surfaced in the schedule editor so gaps aren't silently invisible. */
 export interface CustodyGap {
   startDate: string;

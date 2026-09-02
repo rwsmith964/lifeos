@@ -451,47 +451,140 @@ const custodyCycleAssignmentSchema = z.object({
   responsiblePersonId: uuid,
 });
 
-export const custodyScheduleInsertSchema = z
-  .object({
-    household_id: uuid,
-    child_person_id: uuid,
-    name: z.string().optional(),
-    cycle_length_days: z.number().int().min(1).max(90),
-    cycle_assignments: z.array(custodyCycleAssignmentSchema).min(1),
-    anchor_date: isoDate,
-    handover_time: z
-      .string()
-      .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "expected HH:MM 24-hour time")
-      .optional(),
-    handover_location: z.string().nullable().optional(),
-    // Optional per-dayIndex handover time override (see migration
-    // 20260830000001). Keys are stringified dayIndex, e.g. "5".
-    custom_handover_times: z
-      .record(z.string(), z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "expected HH:MM 24-hour time"))
-      .nullable()
-      .optional(),
-    start_date: isoDate,
-    end_date: isoDate.nullable().optional(),
-    notes: z.string().optional(),
-  })
-  .refine((v) => v.cycle_assignments.every((a) => a.dayIndex < v.cycle_length_days), {
-    message: "Every cycle day must be within the cycle length.",
-    path: ["cycle_assignments"],
-  })
-  .refine(
-    (v) =>
-      !v.custom_handover_times ||
-      Object.keys(v.custom_handover_times).every((key) => Number.isInteger(Number(key)) && Number(key) < v.cycle_length_days),
-    {
-      message: "Every handover-time override must be within the cycle length.",
-      path: ["custom_handover_times"],
-    }
-  )
-  .refine((v) => !v.end_date || v.end_date >= v.start_date, {
-    message: "End date can't be before the start date.",
-    path: ["end_date"],
-  });
+const handoverTimeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "expected HH:MM 24-hour time");
+
+// A day-of-week + clock-time breakpoint for the 'weekly_segments'
+// recurrence type — see migration 20260902000001 and
+// lib/custody/schedule.ts projectWeeklySegmentSchedule.
+const custodyWeeklySegmentSchema = z.object({
+  dayOfWeek: z.number().int().min(0).max(6),
+  time: handoverTimeSchema,
+  responsiblePersonId: uuid,
+});
+
+// A custody schedule is either a repeating N-day 'cycle' (the original
+// engine — one responsible parent per whole calendar day) or a fixed
+// 'weekly_segments' pattern (a list of day-of-week + time breakpoints,
+// which is what lets a single calendar day split between two people at
+// an exact handover time). The two recurrence types are mutually
+// exclusive by construction below: a 'cycle' schedule never carries
+// weekly_segments and a 'weekly_segments' schedule never carries the
+// cycle fields, matching the DB check constraint
+// custody_schedules_recurrence_fields_check.
+const custodyScheduleCycleSchema = z.object({
+  household_id: uuid,
+  child_person_id: uuid,
+  name: z.string().optional(),
+  recurrence_type: z.literal("cycle").optional(),
+  cycle_length_days: z.number().int().min(1).max(90),
+  cycle_assignments: z.array(custodyCycleAssignmentSchema).min(1),
+  anchor_date: isoDate,
+  handover_time: handoverTimeSchema.optional(),
+  handover_location: z.string().nullable().optional(),
+  // Optional per-dayIndex handover time override (see migration
+  // 20260830000001). Keys are stringified dayIndex, e.g. "5".
+  custom_handover_times: z.record(z.string(), handoverTimeSchema).nullable().optional(),
+  weekly_segments: z.null().optional(),
+  start_date: isoDate,
+  end_date: isoDate.nullable().optional(),
+  notes: z.string().optional(),
+});
+
+const custodyScheduleWeeklySegmentsSchema = z.object({
+  household_id: uuid,
+  child_person_id: uuid,
+  name: z.string().optional(),
+  recurrence_type: z.literal("weekly_segments"),
+  cycle_length_days: z.null().optional(),
+  cycle_assignments: z.null().optional(),
+  anchor_date: z.null().optional(),
+  handover_time: handoverTimeSchema.optional(),
+  handover_location: z.string().nullable().optional(),
+  custom_handover_times: z.null().optional(),
+  weekly_segments: z.array(custodyWeeklySegmentSchema).min(1),
+  start_date: isoDate,
+  end_date: isoDate.nullable().optional(),
+  notes: z.string().optional(),
+});
+
+// Shared refinements, applied identically to the create (with
+// household_id/child_person_id) and update (without — those are
+// immutable) variants below. Kept as plain functions rather than chained
+// on a shared base schema because z.ZodObject.omit() isn't available
+// once .refine() has already wrapped the schema in a ZodEffects. Each
+// generic is constrained to the concrete output shape it reads from, so
+// property access below is fully typed instead of falling back to
+// z.infer<T> (which loses field information across the generic
+// boundary — this was a fixed bug from an earlier attempt).
+interface CycleRuleShape {
+  cycle_assignments: { dayIndex: number; responsiblePersonId: string }[];
+  cycle_length_days: number;
+  custom_handover_times?: Record<string, string> | null;
+  start_date: string;
+  end_date?: string | null;
+}
+
+function refineCycleRules<T extends z.ZodType<CycleRuleShape>>(schema: T) {
+  return schema
+    .refine((v) => v.cycle_assignments.every((a) => a.dayIndex < v.cycle_length_days), {
+      message: "Every cycle day must be within the cycle length.",
+      path: ["cycle_assignments"],
+    })
+    .refine(
+      (v) =>
+        !v.custom_handover_times ||
+        Object.keys(v.custom_handover_times).every((key) => Number.isInteger(Number(key)) && Number(key) < v.cycle_length_days),
+      { message: "Every handover-time override must be within the cycle length.", path: ["custom_handover_times"] }
+    )
+    .refine((v) => !v.end_date || v.end_date >= v.start_date, {
+      message: "End date can't be before the start date.",
+      path: ["end_date"],
+    });
+}
+
+interface WeeklySegmentsRuleShape {
+  weekly_segments: { dayOfWeek: number; time: string; responsiblePersonId: string }[];
+  start_date: string;
+  end_date?: string | null;
+}
+
+function refineWeeklySegmentsRules<T extends z.ZodType<WeeklySegmentsRuleShape>>(schema: T) {
+  return schema
+    .refine(
+      (v) => {
+        const seen = new Set(v.weekly_segments.map((s) => `${s.dayOfWeek}-${s.time}`));
+        return seen.size === v.weekly_segments.length;
+      },
+      { message: "Two handoffs can't start at the same day and time.", path: ["weekly_segments"] }
+    )
+    .refine((v) => !v.end_date || v.end_date >= v.start_date, {
+      message: "End date can't be before the start date.",
+      path: ["end_date"],
+    });
+}
+
+function withDefaultRecurrenceType<T extends z.ZodType<{ recurrence_type?: string }>>(schema: T) {
+  return schema.transform((v) => ({
+    ...v,
+    recurrence_type: v.recurrence_type ?? "cycle",
+  }));
+}
+
+export const custodyScheduleInsertSchema = withDefaultRecurrenceType(
+  z.union([refineCycleRules(custodyScheduleCycleSchema), refineWeeklySegmentsRules(custodyScheduleWeeklySegmentsSchema)])
+);
 export type CustodyScheduleInsertInput = z.infer<typeof custodyScheduleInsertSchema>;
+
+// Whole-schedule edit (PATCH /api/calendar/custody/schedules/[id]) — same
+// shape as create, minus the immutable household_id/child_person_id. A
+// full replace of the recurring definition, re-materialized after saving.
+export const custodyScheduleUpdateSchema = withDefaultRecurrenceType(
+  z.union([
+    refineCycleRules(custodyScheduleCycleSchema.omit({ household_id: true, child_person_id: true })),
+    refineWeeklySegmentsRules(custodyScheduleWeeklySegmentsSchema.omit({ household_id: true, child_person_id: true })),
+  ])
+);
+export type CustodyScheduleUpdateInput = z.infer<typeof custodyScheduleUpdateSchema>;
 
 export const custodyScheduleExceptionInsertSchema = z.object({
   custody_schedule_id: uuid,

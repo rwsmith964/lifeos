@@ -770,20 +770,39 @@ export interface CustodyCycleAssignment {
   responsiblePersonId: string;
 }
 
+// A day-of-week + clock-time breakpoint for the 'weekly_segments'
+// recurrence type (migration 20260902000001). dayOfWeek is 0=Sunday..
+// 6=Saturday, matching date-fns getDay(). Between any two consecutive
+// breakpoints (sorted by dayOfWeek+time, wrapping across the week), the
+// earlier breakpoint's person has custody -- see
+// lib/custody/schedule.ts projectWeeklySegmentSchedule.
+export interface CustodyWeeklySegment {
+  dayOfWeek: number;
+  time: string; // "HH:MM"
+  responsiblePersonId: string;
+}
+
+export type CustodyRecurrenceType = "cycle" | "weekly_segments";
+
 export interface CustodyScheduleRow {
   id: string;
   household_id: string;
   child_person_id: string;
   name: string;
-  cycle_length_days: number;
-  cycle_assignments: CustodyCycleAssignment[];
-  anchor_date: string;
+  recurrence_type: CustodyRecurrenceType;
+  // 'cycle' recurrence fields -- null when recurrence_type is 'weekly_segments'.
+  cycle_length_days: number | null;
+  cycle_assignments: CustodyCycleAssignment[] | null;
+  anchor_date: string | null;
   handover_time: string;
   handover_location: string | null;
   // Optional per-cycle-dayIndex handover time override, keyed by dayIndex
   // as a string ("0", "1", ...) -> "HH:MM". null/absent dayIndex falls
-  // back to handover_time. See migration 20260830000001.
+  // back to handover_time. See migration 20260830000001. Only meaningful
+  // for 'cycle' schedules.
   custom_handover_times: Record<string, string> | null;
+  // 'weekly_segments' recurrence field -- null when recurrence_type is 'cycle'.
+  weekly_segments: CustodyWeeklySegment[] | null;
   start_date: string;
   end_date: string | null;
   notes: string;
@@ -795,9 +814,14 @@ export type CustodyScheduleInsert = Insert<
   CustodyScheduleRow,
   | "id"
   | "name"
+  | "recurrence_type"
+  | "cycle_length_days"
+  | "cycle_assignments"
+  | "anchor_date"
   | "handover_time"
   | "handover_location"
   | "custom_handover_times"
+  | "weekly_segments"
   | "end_date"
   | "notes"
   | "is_active"

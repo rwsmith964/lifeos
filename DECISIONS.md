@@ -2594,3 +2594,92 @@ each behind its own default-OFF flag. Producing `BUILD-REPORT.md` per brief §8 
 | Opportunities routed through the generic interface | Implemented — `opportunitiesContributor`, same underlying D-061/D-070 data/ranking as the direct path |
 | Household (Module 7) surfaced on the Brief | Implemented — `householdContributor`: dinner-gap + overdue/due-today chores, double-gated on `brief_registration_v2` AND `household_layer` |
 | AI-generated brief sections (today/heads up/people/suggestion) on the generic interface | Deferred — documented scope decision (QUEUE-031), remains on its existing direct-render path |
+
+## D-125 | 2026-09-02 | Custody: day-of-week/handoff-time recurrence (`weekly_segments`) + full schedule re-editing
+
+**What shipped:** two independent but related fixes to the custody scheduling tool.
+
+1. **Whole-schedule editing.** Previously an existing custody schedule could only be changed one
+   day at a time via exceptions (`app/(app)/calendar/custody/[id]/exception-form.tsx`); there was
+   no way to re-open and change the recurring pattern itself. Added
+   `PATCH /api/calendar/custody/schedules/[id]` — a full replace of the recurring definition,
+   validated by `custodyScheduleUpdateSchema` (same shape as create, minus the immutable
+   `household_id`/`child_person_id`), followed by `materializeCustodySchedule` re-running over the
+   schedule's future window. A new "Edit schedule" page
+   (`app/(app)/calendar/custody/[id]/edit/{page,edit-schedule-form}.tsx`) is reachable from the
+   schedule detail page and supports switching `recurrence_type` between `cycle` and
+   `weekly_segments` in either direction. The existing per-day exception tool is unchanged and
+   still the right tool for a single-day override (e.g. a holiday swap).
+
+2. **New `weekly_segments` recurrence type**, for arrangements bound to specific days of the week
+   with exact handoff times — e.g. "kids Tue/Wed/Thu with Mel; Fri midnight-4:30pm with Mel, then
+   4:30pm-midnight with me; Sat/Sun all day with me; Mon midnight-8:30am with me, then
+   8:30am-midnight with Mel." The existing `cycle` type (a repeating N-day sequence, one person per
+   whole calendar day) could express "day of week bound" schedules only when a full day is a single
+   assignment — it cannot split one calendar day between two people at an exact time, which is
+   exactly what this arrangement needs on Friday and Monday. `weekly_segments` stores an array of
+   `{dayOfWeek, time, responsiblePersonId}` breakpoints; between any two consecutive breakpoints
+   (sorted by day+time, wrapping across the week) the earlier breakpoint's person has custody
+   (`lib/custody/schedule.ts`: `projectWeeklySegmentSchedule`, `personAtWeekMinutes`,
+   `describeWeeklySegmentsPattern`). The `cycle` type is untouched and remains the right choice for
+   rolling, non-day-specific patterns (week-on/week-off, 2-2-3, etc.) — both types coexist, mutually
+   exclusive per row.
+
+**Migration:** `supabase/migrations/20260902000001_custody_weekly_segments.sql` — additive only.
+Added `recurrence_type` (default `'cycle'`), `weekly_segments jsonb` (nullable), relaxed
+`cycle_length_days`/`cycle_assignments`/`anchor_date` to nullable, and a check constraint
+(`custody_schedules_recurrence_fields_check`) enforcing that a row has exactly one recurrence
+shape populated. The two existing Smith Household schedules (`2e9f542f-...`, `59ea5ea0-...`)
+remain valid `cycle` rows, unmigrated and unaffected — this ships as an additional option, not a
+replacement.
+
+**Shared UI:** `app/(app)/calendar/custody/weekly-segments-editor.tsx` — used by both the create
+form's new 4th mode ("Day-of-week & handoffs", alongside the existing Common pattern / Weekly /
+Advanced cycle modes) and the new whole-schedule edit form, so the two never drift. Every weekday
+always gets an explicit breakpoint at 00:00 (who has the kids "all day" from midnight); the user
+can add additional same-day breakpoints for a later handoff (e.g. Friday 4:30 PM). This
+design choice — always-explicit midnight breakpoints rather than relying on the engine's circular
+carry-forward — means every day is unambiguous at input time and the edit form always round-trips
+existing data without guessing what an omitted day means. `findWeeklySegmentsGaps` flags any day
+missing its midnight assignment before submit, mirroring the cycle model's existing gap detection.
+
+**Exceptions still apply on top of `weekly_segments`** (QUEUE-032): a whole-day exception override
+was already a full-day override applied ahead of the schedule's own projection regardless of
+recurrence type, and that is unchanged here — an exception date wins over every breakpoint that
+would otherwise apply that day.
+
+**.ics export:** `app/api/calendar/custody/schedules/[id]/ics/route.ts` rewritten to branch on
+`recurrence_type` with explicit null-guards before the cycle-only `projectCustodySchedule` call
+(previously assumed cycle fields were always present), plus `lib/custody/ics.ts`'s new
+`buildTimedCustodyIcs`/`toIcsFloatingDateTime` so `weekly_segments` exports carry the actual
+handoff clock times instead of collapsing to all-day events.
+
+**Additive contract:** new nullable columns + new check constraint only; no existing rows changed
+shape. `custody_schedules_repo.update()` is a generic wrapper with no field-specific logic — nulling
+unused fields for the selected recurrence type is entirely the Zod schema's job
+(`custodyScheduleUpdateSchema`), which the generic repo function never needs to know about.
+Tenant scoping unchanged: the PATCH route re-checks `schedule.household_id !== household.id` before
+accepting an edit, same as DELETE.
+
+**Feature flag decision (QUEUE-032):** shipped unflagged, consistent with the rest of the
+already-unflagged custody feature — `lib/flags.ts`'s `FEATURE_FLAGS` registry covers only the 8
+Build Brief modules, not this pre-existing area.
+
+**Tests:** `lib/custody/schedule.test.ts` — 5 new tests for `projectWeeklySegmentSchedule`
+(single breakpoint covers whole week, multiple breakpoints split correctly, wrap-around from
+Saturday night into Sunday, exact-boundary handoff time, unsorted input still projects correctly)
+and 1 for `describeWeeklySegmentBreakpoint`; `lib/custody/ics.test.ts` — 5 new tests for
+`buildTimedCustodyIcs` (one VEVENT per interval with real clock times including a same-day split,
+DESCRIPTION only on an exception interval, "Unknown" fallback for a missing person id, stable
+re-import-safe UIDs across regenerations, empty-input calendar with no VEVENTs). Full pipeline
+green: `pnpm typecheck` (0 errors), `pnpm lint` (0 errors, only the pre-existing 34
+generated-Android-asset warnings), `pnpm test` (69 files / 674 tests, all pass), `pnpm build`
+(all ~70 routes generated, including the new `/calendar/custody/[id]/edit` route).
+
+**Branch/merge:** built on `custody-schedule-editing` branch (from `main` at commit `d2fc53f`).
+
+**Deferred:** no migration of the two existing Smith Household schedules to `weekly_segments` —
+they stay as-is on `cycle` (functionally equivalent for the current pattern) unless/until asked to
+convert. No changes made to `lib/brief/generate.ts` or `lib/opportunities/detect.ts` in this pass;
+both already read custody data only through the shared repository/projection functions, which
+handle both recurrence types uniformly, so no hidden cycle-only assumption was found there.
