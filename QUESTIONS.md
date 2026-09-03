@@ -329,9 +329,6 @@ the remaining modules.
 
 ## MEDIUM
 
-## Q-004 | shell layout / desktop-tablet | Priority: MEDIUM | Opened 2026-08-30
-**Question:** The whole app shell is intentionally a narrow ~448px mobile-width column, centered with large unused margins on tablet/desktop (confirmed by the D-049 audit — zero functional bugs, just an unused-space product question). Should LifeOS ever get a real multi-column desktop layout, or is "phone-shaped app centered on desktop" fine indefinitely? It's a legitimate, common pattern for personal apps used mostly on a phone, so there's no wrong answer here — just needs your call before investing in a desktop-specific layout.
-
 ## LOW
 
 ## Q-006 | Golf activity / stray location | Priority: LOW | Opened 2026-08-31
@@ -343,6 +340,10 @@ the remaining modules.
 ---
 
 ## Resolved
+
+## Q-004 | shell layout / desktop-tablet | Priority: MEDIUM | Resolved 2026-09-03
+**Question:** The whole app shell is intentionally a narrow ~448px mobile-width column, centered with large unused margins on tablet/desktop. Should LifeOS ever get a real multi-column desktop layout, or is "phone-shaped app centered on desktop" fine indefinitely?
+**Answer:** Build a real desktop layout (Option A). Shipped as D-101 (persistent sidebar at `lg`+, `max-w-6xl` content container, People/Calendar as multi-column grids, mobile unchanged); re-confirmed live in production by D-155 after Richard re-approved the same direction.
 
 ## Q-002 | weekend-planner / odfw | Priority: MEDIUM | Resolved 2026-08-21
 **Question:** Do you want a manual override field where you can paste in a fishing report you've read yourself, alongside the ODFW scraper?

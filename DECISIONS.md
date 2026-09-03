@@ -4181,3 +4181,21 @@ Every new RLS policy gets a `pglite` test in `supabase/tests/pglite/rls.test.ts`
 **Reversal cost:** N/A — no code change.
 
 **Git/deploy:** No commit needed (audit found nothing to fix). Updating KNOWN-ISSUES.md's D-053 process note to record that this audit was completed, in the same commit as this DECISIONS.md entry.
+## D-155: Reconciled the desktop-layout task — already shipped as D-101, docs were stale
+
+**Context:** Richard was re-asked whether LifeOS should get a real multi-column desktop layout (the open Q-004/D-049 product question), and answered "Build a real desktop layout." Before starting fresh implementation work, checked the repo and found the answer: this was already built and shipped on 2026-08-31 as **D-101** — a persistent left sidebar (nav, household name, notifications, sign-out) replaces the mobile header/bottom-nav at the `lg` breakpoint, page content gets a `max-w-6xl` container, and People/Calendar use multi-column grids — with every mobile class carrying an explicit `lg:` prefix so the sub-`lg` experience is byte-for-byte unchanged. Commit `306f9ad` (merged via `e885d3d`) is a confirmed ancestor of current `main`, deployed to production well before this session's D-151–D-154 work.
+
+**Re-verification (2026-09-03):** Rather than take the git history at face value, logged into production (`lifeos-seven-rho.vercel.app`) as a real test account at a 1440×900 desktop viewport and confirmed live: Brief page renders the persistent left sidebar with nav/household name/sign-out; Calendar renders the month grid side-by-side with the day-detail panel (`lg:grid-cols-[380px_1fr]`) instead of stacked. Then re-tested at a 390×844 mobile viewport and confirmed the original top header + fixed bottom tab bar + single-column layout render unchanged. No code change was needed — the feature genuinely already exists and works as designed.
+
+**Root cause of the mismatch:** Q-004 (opened 2026-08-30, KNOWN-ISSUES.md's D-049 entry) was never marked resolved after D-101 shipped the very next day, so both docs still read as if the product decision were unmade. That stale documentation is what made this look like new, unapproved work when Richard was asked again.
+
+**Action taken:** No application code touched. Updated KNOWN-ISSUES.md's D-049 line to record closure by D-101, and marked Q-004 Resolved in QUESTIONS.md, so neither document misrepresents this as open going forward.
+
+**Not done:** Did not build an alternate desktop treatment or extend the multi-column treatment to Gifts/Settings/Activities — D-101 explicitly scoped the grid/side-by-side treatment to Brief/People/Calendar only and Richard approved that mockup directly with no comparison needed; unscoped pages already get the shared sidebar + wide `max-w-6xl` container from the shell itself, just without a page-specific multi-column grid. Revisit only if Richard asks for those specific pages.
+
+**Verified:** Live production check only (see above); no typecheck/lint/test/build run since no code changed.
+
+**Reversal cost:** N/A — documentation-only change.
+
+**Git/deploy:** KNOWN-ISSUES.md and QUESTIONS.md updates committed directly to `main` (docs-only, same precedent as D-149/D-150/D-153); no build/deploy needed.
+
