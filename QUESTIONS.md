@@ -24,27 +24,11 @@ for Richard and must not be lost. New entries from this engagement use `QUEUE-##
 **Reversal cost:** Low
 **Blocking:** No
 
-### QUEUE-002
-**Module:** Module 1 / Relationship & Gift Engine
-**File(s):** `app/(app)/people/[id]/`, `lib/db/repositories/relationship-gift-engine.ts`
-**Question:** Module 1's backend (6 new tables + gift pipeline stages, all flagged off) is done,
-tested, and merged, but no person-detail-page UI surfaces any of it yet (profile details,
-wishlist, relationships, conversation log, moments, reciprocity ledger). Build the UI now before
-moving to Module 2, or keep going module-by-module on backends first and build UI for everything
-in a later pass?
-**Assumption made:** Keep moving — build Module 2's backend next per the brief's "never idle"
-mandate, since backend-first with the flag OFF is fully compliant with the additive contract
-(zero effect on the live app either way). UI for Module 1 (and any other module built
-backend-first) is tracked as a follow-up in BUILD-REPORT.md rather than blocking progress through
-the remaining modules.
-**Reversal cost:** Low
-**Blocking:** No
-
 ### QUEUE-003
 **Module:** Module 2 / Leisure Planner
 **File(s):** `app/(app)/activities/leisure-planner-actions.ts`, `lib/planner/score-breakdown-display.ts`, `lib/planner/gear-checklist.ts`
-**Question:** Same shape as QUEUE-002 — Module 2's backend (3 new tables + `opportunities.score_breakdown`, all flagged off) is done, tested, and merged, but no UI surfaces the viability config manager, gear checklist manager, outing log form, or opportunities breakdown display yet.
-**Assumption made:** Keep moving to Module 3 per the brief's "never idle" mandate — backend-first with the flag OFF is fully compliant with the additive contract. UI for Module 2 (alongside Module 1's) is tracked as a follow-up in BUILD-REPORT.md rather than blocking progress.
+**Question:** Same shape as QUEUE-002 (now resolved — see below) — Module 2's backend (3 new tables + `opportunities.score_breakdown`, all flagged off) is done, tested, and merged, but no UI surfaces the viability config manager, gear checklist manager, outing log form, or opportunities breakdown display yet.
+**Assumption made:** Keep moving to Module 3 per the brief's "never idle" mandate — backend-first with the flag OFF is fully compliant with the additive contract. UI for Module 2 is the next active item (QUEUE-003, in progress) now that Module 1's UI has shipped.
 **Reversal cost:** Low
 **Blocking:** No
 
@@ -337,6 +321,10 @@ the remaining modules.
 **Question:** The review queue only offered Approve-as-extracted or Reject. `correctDraftFields` (fix a misread field before approving) already existed in the backend but nothing called it — should the next pass add inline editing, and if so, per-record-type forms or a generic key/value editor? (This item originally also bundled a feature-flag-admin-UI question, now split out as open item QUEUE-047.)
 **Answer:** Shipped as **D-158**: a "Correct" button on every actionable draft card opens an edit mode with a record-type select and one input per extracted field (text/textarea/number/date/datetime/checkbox/select, chosen per field key via a new `inputSpecForField` lookup), pre-filled with the AI's original values. Save submits only changed fields (plus the record type if changed) through a new `correctIntakeDraftAction` calling the existing `correctDraftFields`. A generic key/value editor was effectively chosen over bespoke per-record-type forms — one field-metadata table drives every record type's form instead of eight separate layouts.
 
+## QUEUE-002 | Module 1 / Relationship & Gift Engine person-detail UI | Priority: MEDIUM | Resolved 2026-09-03
+**Question:** Module 1's backend (6 new tables + gift pipeline stages, all flagged off) was done, tested, and merged, but no person-detail-page UI surfaced any of it (profile details, wishlist, relationships, conversation log, moments, reciprocity ledger).
+**Answer:** Shipped as **D-159**: six new `<Card>` sections on the person-detail page (`app/(app)/people/[id]/page.tsx`), gated by `isFeatureEnabled(..., "relationship_gift_engine_v2")` without a route-level `notFound()` since it's one section among many on an existing page. New client-forms file `relationship-gift-engine-forms.tsx` (729 lines) covers all six sections following the sibling `person-forms.tsx` conventions exactly. A new `RECIPROCITY_DIRECTION_DISPLAY_LABELS` map keeps the ledger's direction field human-readable. Confirmed via direct SQL that the flag is already enabled for the household with real data, so the shipped UI is reachable in production immediately. `relation_label`'s free-text-vs-enum question is split out as new open item QUEUE-048.
+
 ## Q-004 | shell layout / desktop-tablet | Priority: MEDIUM | Resolved 2026-09-03
 **Question:** The whole app shell is intentionally a narrow ~448px mobile-width column, centered with large unused margins on tablet/desktop. Should LifeOS ever get a real multi-column desktop layout, or is "phone-shaped app centered on desktop" fine indefinitely?
 **Answer:** Build a real desktop layout (Option A). Shipped as D-101 (persistent sidebar at `lg`+, `max-w-6xl` content container, People/Calendar as multi-column grids, mobile unchanged); re-confirmed live in production by D-155 after Richard re-approved the same direction.
@@ -367,6 +355,14 @@ the remaining modules.
 **Question:** Split out of QUEUE-039 once its inline-correction half shipped as D-158 (see Resolved section) — this half is unrelated and still open. No flag-toggle UI exists anywhere in the app for any of the eight Module feature flags. Should Settings get an admin toggle panel for household owners?
 **Assumption made:** None yet — genuinely deferred, no autonomous guess made either way.
 **Reversal cost:** Low — a flag-toggle settings panel is additive and doesn't change any flag's current value.
+**Blocking:** No
+
+### QUEUE-048
+**Module:** Module 1 / Relationship & Gift Engine person-detail UI (D-159)
+**File(s):** `app/(app)/people/[id]/relationship-gift-engine-forms.tsx` (`AddRelationshipForm`), `lib/db/database.types.ts` (`PersonRelationshipRow.relation_label`).
+**Question:** `relation_label` on a person relationship is free text with a `<datalist>` of common suggestions (spouse/partner/child/co-parent/parent/sibling/extended family/friend/colleague) rather than a closed enum. Free text was the fastest way to ship without blocking on every possible label a household might use, but a closed set could matter later if reporting, filtering, or gift-suggestion logic ever wants to reason about relationship type structurally (e.g. "show gift ideas grouped by relationship").
+**Assumption made:** Shipped free text with suggestions, matching the underlying schema (`related_name`/`relation_label` are both required free-text columns per D-117, unchanged this session). Did not add an enum column or migrate existing data.
+**Reversal cost:** Low today (no real data yet to migrate) but grows over time — the longer relation_label stays free text, the more real household data would need to be normalized into any future closed set.
 **Blocking:** No
 
 ### QUEUE-040
