@@ -3260,3 +3260,55 @@ shipped, the planner will not detect the LA trip until Richard adds or edits a t
 whose dates actually span Sept 5-6 (now with the option to set "Los Angeles, CA" as the
 destination). This was left as real data for Richard to correct rather than guessed at or
 back-filled.
+
+## D-136 | 2026-09-02 | Universal Intake (Module 3) shipped a submission + review-queue UI; backend had none
+
+**Problem:** Module 3's backend (`app/api/intake/route.ts`, `lib/intake/parse.ts`,
+`lib/intake/confidence.ts`, `lib/intake/convert.ts`, `lib/intake/review-queue.ts`) was fully built
+and unit-tested in an earlier pass, but `grep -rln "/api/intake" app --include="*.tsx"` returned
+zero results — no page anywhere called the submission endpoint, and no page listed
+`intake_drafts` for review. The feature was invisible and unusable despite being "done." This
+directly serves the standing request for a photo/screenshot intake path (flight confirmations,
+flyers, etc.) as the first slice of that larger vision.
+
+**Shipped this pass:**
+- `app/(app)/intake/page.tsx` — new route, flag-gated on `universal_intake_v2` (`notFound()` if
+  disabled, direct-URL-only, same discoverability posture as `/execution` and `/ambient` per
+  QUEUE-024 — no nav link yet).
+- `app/(app)/intake/intake-capture-form.tsx` (client) — two submission modes: paste text, or
+  upload a photo/screenshot/PDF (read via `FileReader`, base64-encoded client-side, same pattern
+  as the existing custody-agreement upload in `new-schedule-form.tsx`). Posts directly to the
+  existing `POST /api/intake` route — no new parsing logic was written, this only exposes what
+  already existed.
+- `app/(app)/intake/intake-review-queue.tsx` (client) + `app/(app)/intake/actions.ts` (server
+  actions `approveIntakeDraftAction` / `rejectIntakeDraftAction`) — renders every actionable
+  `intake_drafts` row as a plain-language card (record type, source, extracted fields, a short
+  source excerpt) with Approve/Reject buttons wired to the already-tested
+  `lib/intake/review-queue.ts` functions. For `gift_idea` and `person_note` drafts (the two types
+  `convertDraftToRecord` requires a `resolvedPersonId` for), the card shows a person picker
+  (native `<select>`, same convention as `chores-card.tsx`) seeded with the AI's
+  `personNameMentioned` guess as a hint; Approve is disabled until a person is chosen.
+- `lib/intake/labels.ts` (new, unit-tested in `labels.test.ts`) — every enum value and
+  extracted-field key gets a human label here, satisfying the ground rule "don't show raw enum
+  values ... anywhere" for this module. ISO date/datetime fields are detected by key-name suffix
+  and formatted via `date-fns` rather than shown raw.
+- `lib/db/repositories/intake.ts` gained `listActionableDraftsForHousehold` (`pending` /
+  `needs_review` / `ready`, oldest first) and `listRecentResolvedDraftsForHousehold` (`converted`
+  / `rejected`, newest first, capped at 15) — additive, alongside the existing
+  `listReviewQueueForHousehold`/`listAllDraftsForHousehold`.
+- Enabled `universal_intake_v2` for the Smith Household directly via SQL (no in-app flag-toggle
+  UI exists for any of the eight Module flags — confirmed by grep, none has one) so the shipped
+  page is actually usable, not just deployed-but-off.
+
+**Explicitly not built this pass (see QUEUE-039):** inline correction of extracted-field values
+before approving (`correctDraftFields` exists in the backend and is untouched by this UI — a
+reviewer can only Approve as-extracted or Reject, not fix a misread field); nav-menu
+discoverability; voice/email/ICS submission entry points (the API already supports them, but no
+UI offers those source types — only text and photo/screenshot/PDF, per the "minimal" scope of
+this pass and the user's own emphasis on screenshots).
+
+**Verification:** `pnpm typecheck` — 0 errors. `pnpm lint` — 0 errors (34 pre-existing warnings in
+a generated Android artifact, untouched). New test file `lib/intake/labels.test.ts` (8 tests).
+Full suite: **77 test files / 751 tests passing** (up from the D-135 baseline of 76/743 — the +8
+are the new tests, zero regressions). `pnpm build` — succeeds, `/intake` present in the route
+manifest.
