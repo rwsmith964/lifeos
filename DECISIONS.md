@@ -3850,3 +3850,81 @@ arbitrary string keys, so `google_place_id` is additive with zero schema change.
 **Git/deploy:** branch `feature/d144-nearby-place-suggestions`, committed, merged `--no-ff` into `main`,
 pushed. Deployed to production via `vercel --prod --yes`, aliased to
 [lifeos-seven-rho.vercel.app](https://lifeos-seven-rho.vercel.app).
+
+## D-145: Close a security-advisor gap on `child_activity_household_id` (anon-executable RLS helper)
+
+**Trigger:** During the post-D-144 backlog sweep, the Supabase connector became available for the
+first time this session, so I ran its security advisor (`get_advisors`) against the production
+project as a routine check (per the standing "good cyber security implementations" directive). It
+flagged `public.child_activity_household_id(uuid)` — a RLS-policy helper function added by the
+Sept 2 `child_activities` migration (D-129) — as callable by the unauthenticated `anon` role via
+`/rest/v1/rpc/child_activity_household_id` (`anon_security_definer_function_executable`, WARN).
+
+**Root cause:** This function is the direct sibling of `activity_household_id(uuid)`, which D-108
+already hardened (revoked from `anon`/`public`, granted only to `authenticated`/`service_role`) —
+but `child_activity_household_id` was created three days after D-108's hardening pass in a later,
+unrelated migration, so it still carried its default execute grants. It exists solely to resolve a
+`child_activities` row's `household_id` inside `child_activity_attendance`'s four RLS policies; no
+app code calls it directly (confirmed via `rg child_activity_household_id app lib`), and `anon` has
+no legitimate reason to call it at all.
+
+**What shipped:**
+
+- `supabase/migrations/20260903000001_harden_child_activity_household_id.sql` — revokes the function's
+  implicit PUBLIC execute grant, re-grants to `authenticated`/`service_role` only.
+- `supabase/migrations/20260903000002_harden_child_activity_household_id_fix_anon_grant.sql` —
+  corrective follow-up: the first migration's `revoke ... from public` alone left `anon` still able
+  to call the function, because (confirmed via `pg_proc.proacl`) this project's Supabase default
+  privileges grant EXECUTE to `anon`/`authenticated`/`service_role` directly on every new `public`
+  schema function, not just through the implicit PUBLIC grant that D-108's targets carried. This is
+  the exact same shape of oversight D-108 itself made and self-corrected
+  (`harden_security_definer_functions_fix_public_grant`, applied 2026-08-31) — revoking from `anon`
+  explicitly closed it. Verified via `pg_proc.proacl` after the fix: only
+  `postgres`/`authenticated`/`service_role` remain.
+- `supabase/migrations/20260831000001b_harden_security_definer_functions_fix_public_grant.sql` —
+  backfilled into the repo. D-108's own corrective migration (`20260831182628`) had been applied
+  directly to production in a prior session but its local `.sql` file was never committed, leaving
+  repo/DB migration history out of parity. Recovered verbatim from
+  `supabase_migrations.schema_migrations.statements` via the Supabase connector so a fresh
+  environment's migration history now matches what's actually applied to production. This file is a
+  parity backfill only — Supabase tracks applied migrations by version already present in
+  `supabase_migrations.schema_migrations`, so it will not be (and does not need to be) re-applied.
+- Both real fixes were applied directly to the production database via the Supabase connector's
+  `apply_migration` (tracked in `supabase_migrations.schema_migrations`, matching the local files).
+
+**Verification:** Supabase security advisor re-run after the fix confirms
+`child_activity_household_id` no longer appears under `anon_security_definer_function_executable`.
+`pnpm exec tsc --noEmit` — 0 errors. `pnpm lint` — 0 errors (same 34 pre-existing Android-build-asset
+warnings). Full suite: **82 test files / 786 tests passing**, unchanged — this was a pure
+grant/revoke change with no application-code or schema-shape impact, so no new test was needed (the
+existing `supabase/tests/pglite/rls.test.ts` RLS suite already exercises `child_activity_attendance`'s
+policies functionally; grant-level access is not something `pglite` models, matching how D-108's own
+grant fix carried no dedicated test either). `pnpm build` — succeeds.
+
+**Also checked and found clean this pass:** `pnpm audit --prod` — no known vulnerabilities. The
+remaining Supabase advisor items were reviewed and are accepted-as-is, matching D-108's own
+established precedent:
+- `authenticated_security_definer_function_executable` (WARN, ~14 functions) — these are the same
+  RLS-helper functions D-108 already reasoned about; `authenticated` legitimately needs EXECUTE on
+  them for RLS policy evaluation and several direct post-login RPC calls. No change.
+- `get_household_invite_preview` / `get_childcare_request_preview` / `respond_to_childcare_request`
+  remaining anon-executable — intentional by design (D-108's own comment): these back emailed
+  invite-link and childcare-request-link flows for logged-out recipients, gated by an unguessable
+  token, not a session.
+- `rls_enabled_no_policy` on `auth_login_attempts` (INFO) — intentional by design (D-108's own
+  comment in `20260831000002_login_rate_limiting.sql`): zero grants/policies is the correct posture
+  for a pre-auth rate-limit table that must never be readable/writable by request-time user sessions.
+- `auth_leaked_password_protection` (WARN) — Supabase Auth's "check new passwords against
+  HaveIBeenPwned" toggle lives in Auth configuration (dashboard/Management API), not reachable
+  through any tool the Supabase connector exposes (`list_tables`, `execute_sql`, `apply_migration`,
+  etc. only reach the Postgres database, not Auth project settings). Logged as **QUEUE-044** —
+  low-effort, non-blocking, needs Richard's own dashboard access (Authentication → Policies →
+  Password Security → enable "Leaked password protection", ~1 minute).
+- Performance advisors (106 INFO-level items: unindexed FKs, unused indexes, `auth_rls_initplan`,
+  multiple permissive policies) — none are WARN/ERROR; these are normal accretion for an
+  actively-developed schema and out of scope for a security-focused pass. Not actioned.
+
+**Git/deploy:** branch `fix/d145-harden-child-activity-rpc`, committed, merged `--no-ff` into `main`,
+pushed. No Vercel redeploy needed — this change is entirely database-side (RPC grants), not
+application code; production already reflects the fixed grants since they were applied directly
+against the live Supabase project.
