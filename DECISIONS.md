@@ -4158,3 +4158,26 @@ Every new RLS policy gets a `pglite` test in `supabase/tests/pglite/rls.test.ts`
 **Reversal cost:** None — pure documentation, no schema/code/behavior change either way.
 
 **Git/deploy:** committed directly to `main` (docs-only, same precedent as D-149/D-150), no build/deploy needed since no application code changed.
+
+## D-154: Audit of every service-role Supabase query for household scoping (closes the D-053 process note)
+
+**Request:** D-053's process note in KNOWN-ISSUES.md called for "a deliberate audit pass over every `createSupabaseServiceRoleClient()` call site in the repo... to confirm each one explicitly filters by household/person where it should, rather than assuming 'it ran fine in testing' is sufficient" — since RLS doesn't apply to the service-role client and this exact gap already caused one real cross-household data leak (D-053: an unscoped `giftSuggestionsRepo.list()` call surfaced the seeded demo household's "Carol Smith" gift data in Richard's real brief).
+
+**Method:** `grep -rl "createSupabaseServiceRoleClient"` across the repo (excluding tests) found 13 call sites: 4 request-scoped server actions/pages (`app/(app)/actions.ts`, `app/(app)/calendar/actions.ts`, `app/(app)/page.tsx`, `app/actions.ts`), 5 cron routes (`brief`, `calendar-sync`, `gift-scan`, `opportunities`, `weekend-plan`), `lib/ai/client.ts`, `lib/db/client-service-role.ts` itself, and 3 local dev scripts that mirror the cron jobs. Traced every downstream query each one makes (repository calls and any raw `.eq(...)` query-builder callbacks) to confirm each is scoped by `household_id` directly, or by a `person_id`/`calendar_event_id`/etc. that was itself already resolved from a household-scoped lookup earlier in the same call chain.
+
+**Findings:**
+- The 4 request-scoped server actions/pages all resolve `household.id`/`selfPerson.id` from `requireHouseholdContext()` (the authenticated session) before ever touching the service-role client — the service-role client only gets access to what the session already scoped, so it can't broaden the blast radius.
+- All 5 cron routes iterate `householdsRepo.list(client)` and pass each household's own `id` explicitly into a per-household generator (`generateDailyBrief`, `scanHouseholdForGiftOccasions`, `detectOpportunitiesForHousehold`, `generateWeekendPlan`, `syncCalendarFeed`/`pullFromSyncAccount`/`pushToSyncAccount`) — one household's failure doesn't touch another's data or abort the loop.
+- Inside those generators, the two spots D-053 already found and fixed (`lib/brief/generate.ts`'s gift-reminder query, `lib/gifts/scan.ts`'s order-by-reminder dedup query) are confirmed still using the corrected, explicitly-scoped helpers (`listSuggestionsDueForOrder`, `listActiveSuggestionsForHousehold`). No other unscoped query was found in either file, or in `lib/opportunities/detect.ts`, `lib/planner/generate.ts`, `lib/calendar/feed-sync.ts`, or `lib/calendar/two-way-sync.ts` — every `Repo.list(client, (q) => ...)` callback in these files filters by `household_id` directly or by an ID already resolved from a household-scoped lookup (e.g. `findHouseholdOwnerUser` in both `detect.ts` and `generate.ts` filters people by `.eq("household_id", householdId).eq("relationship_type", "self")` before ever touching `user_id`).
+- `lib/ai/client.ts`'s service-role usage (`sumAiSpendToday`) is scoped by the caller-supplied `householdId`.
+- The 3 local dev scripts (`scripts/run-*-job.ts`) are thin CLI wrappers around the same cron-route logic already audited above — no additional query surface.
+
+**Result:** No new cross-household leak found. The audit confirms D-053 was the only gap of this kind, and it was fully closed at the time. This is a verification pass, not a code change — no files were modified.
+
+**Not done:** Did not extend the audit to raw Supabase queries made from the browser with the RLS-protected authenticated client (`createSupabaseServerClient()`/`createSupabaseBrowserClient()`) — those are covered by RLS policies themselves, which is a different (and already-tested) protection layer, not the gap D-053's note was about.
+
+**Verified:** Read-only code audit; no typecheck/lint/test/build impact since nothing changed.
+
+**Reversal cost:** N/A — no code change.
+
+**Git/deploy:** No commit needed (audit found nothing to fix). Updating KNOWN-ISSUES.md's D-053 process note to record that this audit was completed, in the same commit as this DECISIONS.md entry.
