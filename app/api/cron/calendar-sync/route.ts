@@ -21,15 +21,10 @@ import { householdsRepo } from "@/lib/db/repositories/households";
 import { listCalendarFeedsForHousehold } from "@/lib/db/repositories/calendar";
 import { listCalendarSyncAccountsForHousehold } from "@/lib/db/repositories/scheduling";
 import { isFeatureEnabled } from "@/lib/flags";
-
-function isAuthorized(request: Request): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return true;
-  return request.headers.get("authorization") === `Bearer ${secret}`;
-}
+import { isCronAuthorized } from "@/lib/http/cron-auth";
 
 export async function GET(request: Request) {
-  if (!isAuthorized(request)) {
+  if (!isCronAuthorized(request)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 

@@ -21,15 +21,10 @@ import { createSupabaseServiceRoleClient } from "@/lib/db/client-service-role";
 import { householdsRepo } from "@/lib/db/repositories/households";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
 import { usersRepo } from "@/lib/db/repositories/households";
-
-function isAuthorized(request: Request): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return true; // no secret configured — allow (e.g. local dev)
-  return request.headers.get("authorization") === `Bearer ${secret}`;
-}
+import { isCronAuthorized } from "@/lib/http/cron-auth";
 
 export async function GET(request: Request) {
-  if (!isAuthorized(request)) {
+  if (!isCronAuthorized(request)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
