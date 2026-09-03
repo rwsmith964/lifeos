@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { addDays, format } from "date-fns";
 import { ArrowLeft, Mail, Pencil, Phone } from "lucide-react";
 import { requireHouseholdContext } from "@/lib/auth/session";
+import { isFeatureEnabled } from "@/lib/flags";
 import { peopleRepo } from "@/lib/db/repositories/people";
 import {
   listInterestsForPerson,
@@ -20,6 +21,23 @@ import {
 } from "@/lib/db/repositories/calendar";
 import { evaluateCadence } from "@/lib/contact/cadence";
 import { nearestUpcomingOccasionForPerson, occasionTypeDisplayLabel } from "@/lib/gifts/occasions";
+import {
+  getProfileDetailsForPerson,
+  listConversationLogForPerson,
+  listMomentsForPerson,
+  listRelationshipsForPerson,
+  listReciprocityEntriesForPerson,
+  listWishlistItemsForPerson,
+} from "@/lib/db/repositories/relationship-gift-engine";
+import type {
+  ConversationLogEntryRow,
+  GiftReciprocityEntryRow,
+  MomentRow as MomentRowType,
+  PersonProfileDetailsRow,
+  PersonRelationshipRow,
+  PersonRow,
+  PersonWishlistItemRow,
+} from "@/lib/db/database.types";
 import { estimateAgeYears } from "@/lib/ai/prompts/gift-suggestion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -44,6 +62,19 @@ import {
   LogInteractionButton,
   RecordGiftForm,
 } from "./person-forms";
+import {
+  AddConversationLogEntryForm,
+  AddMomentForm,
+  AddReciprocityEntryForm,
+  AddRelationshipForm,
+  AddWishlistItemForm,
+  ConversationLogRow,
+  MomentRow,
+  ProfileDetailsForm,
+  ReciprocityEntryRow,
+  RelationshipRow,
+  WishlistItemRow,
+} from "./relationship-gift-engine-forms";
 
 export default async function PersonDetailPage({ params }: PageProps<"/people/[id]">) {
   const { id } = await params;
@@ -51,6 +82,9 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
 
   const person = await peopleRepo.getById(supabase, id);
   if (!person || person.household_id !== household.id) notFound();
+
+  // Module 1: Relationship & Gift Engine (D-117/D-158, relationship_gift_engine_v2).
+  const engineEnabled = await isFeatureEnabled(supabase, household.id, "relationship_gift_engine_v2");
 
   const now = new Date();
   const isChild = person.relationship_type === "child";
@@ -101,6 +135,30 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
   const attendanceByActivity = isChild
     ? await listAttendanceForActivities(supabase, childActivities.map((a) => a.id))
     : new Map();
+
+  let profileDetails: PersonProfileDetailsRow | null = null;
+  let wishlistItems: PersonWishlistItemRow[] = [];
+  let relationships: PersonRelationshipRow[] = [];
+  let conversationLog: ConversationLogEntryRow[] = [];
+  let personMoments: MomentRowType[] = [];
+  let reciprocityEntries: GiftReciprocityEntryRow[] = [];
+  let allHouseholdPeople: PersonRow[] = [];
+  if (engineEnabled) {
+    [profileDetails, wishlistItems, relationships, conversationLog, personMoments, reciprocityEntries, allHouseholdPeople] =
+      await Promise.all([
+        getProfileDetailsForPerson(supabase, id),
+        listWishlistItemsForPerson(supabase, id),
+        listRelationshipsForPerson(supabase, id),
+        listConversationLogForPerson(supabase, id),
+        listMomentsForPerson(supabase, household.id, id),
+        listReciprocityEntriesForPerson(supabase, id),
+        listPeopleForHousehold(supabase, household.id),
+      ]);
+  }
+
+  // Moments list participant names by id -- resolve once against the full
+  // household roster rather than a per-row lookup.
+  const householdPeopleById = new Map(allHouseholdPeople.map((p) => [p.id, p.full_name]));
 
   // Only show time off that hasn't fully passed yet -- past entries stay
   // in the table (informational history, same as gift history below) but
@@ -450,6 +508,118 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
           <RecordGiftForm personId={id} />
         </CardContent>
       </Card>
+
+      {engineEnabled && (
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">Profile details</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ProfileDetailsForm personId={id} details={profileDetails} />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">Wishlist</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              {wishlistItems.length > 0 && (
+                <div className="flex flex-col gap-1">
+                  {wishlistItems.map((item) => (
+                    <WishlistItemRow key={item.id} personId={id} item={item} />
+                  ))}
+                </div>
+              )}
+              <AddWishlistItemForm personId={id} />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">Relationships</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              <p className="text-muted-foreground text-xs">
+                Other people in {person.full_name}&apos;s life -- family, friends, coworkers -- whether or not
+                they&apos;re a person record of their own in LifeOS.
+              </p>
+              {relationships.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  {relationships.map((relationship) => (
+                    <RelationshipRow key={relationship.id} personId={id} relationship={relationship} />
+                  ))}
+                </div>
+              )}
+              <AddRelationshipForm personId={id} householdPeople={allHouseholdPeople} />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">Conversation log</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              <p className="text-muted-foreground text-xs">
+                Things {person.full_name} has mentioned that are worth remembering -- an offhand comment about
+                wanting to try something, a preference, an upcoming plan.
+              </p>
+              {conversationLog.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  {conversationLog.map((entry) => (
+                    <ConversationLogRow key={entry.id} personId={id} entry={entry} />
+                  ))}
+                </div>
+              )}
+              <AddConversationLogEntryForm personId={id} />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">Shared moments</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              {personMoments.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  {personMoments.map((moment) => (
+                    <MomentRow
+                      key={moment.id}
+                      moment={moment}
+                      participantNames={moment.participant_person_ids
+                        .filter((pid) => pid !== id)
+                        .map((pid) => householdPeopleById.get(pid))
+                        .filter((name): name is string => !!name)}
+                    />
+                  ))}
+                </div>
+              )}
+              <AddMomentForm personId={id} householdPeople={allHouseholdPeople} />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">Gift reciprocity ledger</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              <p className="text-muted-foreground text-xs">
+                Track gifts and favors given and received -- including promises still outstanding -- so nothing
+                falls through the cracks.
+              </p>
+              {reciprocityEntries.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  {reciprocityEntries.map((entry) => (
+                    <ReciprocityEntryRow key={entry.id} personId={id} entry={entry} />
+                  ))}
+                </div>
+              )}
+              <AddReciprocityEntryForm personId={id} />
+            </CardContent>
+          </Card>
+        </>
+      )}
 
       {person.notes && (
         <Card>
