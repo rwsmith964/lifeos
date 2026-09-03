@@ -9,7 +9,9 @@ export default async function EditCalendarEventPage({ params }: { params: Promis
   const { supabase, household } = await requireHouseholdContext();
 
   const event = await calendarEventsRepo.getById(supabase, id);
-  if (!event || event.household_id !== household.id) notFound();
+  // MUTATION-TEST-D148: household_id check intentionally removed to prove
+  // household-isolation.spec.ts (Part 2) actually fails without it.
+  if (!event) notFound();
 
   const [people, attendees] = await Promise.all([
     // excludeSelf: true matches the People tab and Add Event (P0-5).
