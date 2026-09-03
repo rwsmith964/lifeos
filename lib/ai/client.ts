@@ -7,6 +7,7 @@ import { householdsRepo } from "../db/repositories/households";
 import { aiUsageLogRepo, sumAiSpendToday } from "../db/repositories/system";
 import { createSupabaseServiceRoleClient } from "../db/client-service-role";
 import { AI_MODEL, estimateCostCents } from "./pricing";
+import { buildAiTestFixtureResponse, isAiTestFixtureModeEnabled } from "./test-fixtures";
 
 export class AiUnavailableError extends Error {
   constructor(message = "ANTHROPIC_API_KEY is not configured") {
@@ -73,6 +74,14 @@ export interface AiCallResult {
  * ("degrade gracefully in production") and Section 11.3 directly.
  */
 export async function callAi(dbClient: SupabaseClient, params: AiCallParams): Promise<AiCallResult> {
+  // D-148: AI_TEST_MODE is set ONLY by the Playwright E2E CI job (never in
+  // dev or production — see .github/workflows/verify.yml). It short-
+  // circuits ONLY the anthropic.messages.create() network call below
+  // (guarded again right at that call site); isAiConfigured() above still
+  // requires a truthy (placeholder) ANTHROPIC_API_KEY, and the household
+  // lookup, budget ceiling check, and ai_usage_log write all still run for
+  // real against the E2E job's real ephemeral Supabase instance, so those
+  // code paths stay covered by the same specs.
   const anthropic = getAnthropicClient();
   if (!anthropic) throw new AiUnavailableError();
 
@@ -95,41 +104,57 @@ export async function callAi(dbClient: SupabaseClient, params: AiCallParams): Pr
     );
   }
 
-  let response: Anthropic.Message;
-  try {
-    // Additive: only build a multi-block content array when an attachment
-    // was actually passed. Every pre-existing caller has no `attachment`
-    // field at all, so `content` stays the plain string it always was.
-    const content: Anthropic.MessageParam["content"] = params.attachment
-      ? [
-          params.attachment.mediaType === "application/pdf"
-            ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: params.attachment.base64Data } }
-            : {
-                type: "image",
-                source: { type: "base64", media_type: params.attachment.mediaType, data: params.attachment.base64Data },
-              },
-          { type: "text", text: params.userPrompt },
-        ]
-      : params.userPrompt;
-    response = await anthropic.messages.create({
-      model: AI_MODEL,
-      max_tokens: params.maxTokens ?? 2048,
-      system: params.systemPrompt,
-      messages: [{ role: "user", content }],
-    });
-  } catch (error) {
-    if (error instanceof Anthropic.AuthenticationError) {
-      throw new AiUnavailableError(`Anthropic API rejected the configured key: ${error.message}`);
+  let text: string;
+  let inputTokens: number;
+  let outputTokens: number;
+
+  if (isAiTestFixtureModeEnabled()) {
+    const fixture = buildAiTestFixtureResponse(params);
+    text = fixture.text;
+    inputTokens = fixture.inputTokens;
+    outputTokens = fixture.outputTokens;
+  } else {
+    let response: Anthropic.Message;
+    try {
+      // Additive: only build a multi-block content array when an attachment
+      // was actually passed. Every pre-existing caller has no `attachment`
+      // field at all, so `content` stays the plain string it always was.
+      const content: Anthropic.MessageParam["content"] = params.attachment
+        ? [
+            params.attachment.mediaType === "application/pdf"
+              ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: params.attachment.base64Data } }
+              : {
+                  type: "image",
+                  source: { type: "base64", media_type: params.attachment.mediaType, data: params.attachment.base64Data },
+                },
+            { type: "text", text: params.userPrompt },
+          ]
+        : params.userPrompt;
+      response = await anthropic.messages.create({
+        model: AI_MODEL,
+        max_tokens: params.maxTokens ?? 2048,
+        system: params.systemPrompt,
+        messages: [{ role: "user", content }],
+      });
+    } catch (error) {
+      if (error instanceof Anthropic.AuthenticationError) {
+        throw new AiUnavailableError(`Anthropic API rejected the configured key: ${error.message}`);
+      }
+      // Rate limits, 5xx, connection errors, bad requests: surface as-is.
+      // Callers that only handle the two error types above will let this
+      // propagate, which is correct — an APIError is a real failure, not a
+      // "gracefully unavailable" state.
+      throw error;
     }
-    // Rate limits, 5xx, connection errors, bad requests: surface as-is.
-    // Callers that only handle the two error types above will let this
-    // propagate, which is correct — an APIError is a real failure, not a
-    // "gracefully unavailable" state.
-    throw error;
+
+    inputTokens = response.usage.input_tokens;
+    outputTokens = response.usage.output_tokens;
+    text = response.content
+      .filter((block): block is Anthropic.TextBlock => block.type === "text")
+      .map((block) => block.text)
+      .join("\n");
   }
 
-  const inputTokens = response.usage.input_tokens;
-  const outputTokens = response.usage.output_tokens;
   const costCents = estimateCostCents(inputTokens, outputTokens);
 
   await aiUsageLogRepo.create(serviceRoleClient, {
@@ -140,11 +165,6 @@ export async function callAi(dbClient: SupabaseClient, params: AiCallParams): Pr
     output_tokens: outputTokens,
     estimated_cost_cents: costCents,
   });
-
-  const text = response.content
-    .filter((block): block is Anthropic.TextBlock => block.type === "text")
-    .map((block) => block.text)
-    .join("\n");
 
   return { text, model: AI_MODEL, inputTokens, outputTokens, costCents };
 }

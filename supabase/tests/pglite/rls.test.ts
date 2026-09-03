@@ -67,9 +67,9 @@ describe("RLS end-to-end (PGlite, real migrations + real seed data)", () => {
       expect((rows.rows as { id: string }[]).map((r) => r.id)).toEqual([SEEDED_HOUSEHOLD]);
     });
 
-    it("sees all 13 people in their household (12 seeded + the child fixture)", async () => {
+    it("sees all 14 people in their household (13 seeded + the child fixture)", async () => {
       const rows = await asUser(db, RICHARD_USER, () => db.query("select count(*)::int as n from people;"));
-      expect((rows.rows[0] as { n: number }).n).toBe(13);
+      expect((rows.rows[0] as { n: number }).n).toBe(14);
     });
 
     it("cannot see the outsider household's people even when scoped by id", async () => {
@@ -150,7 +150,7 @@ describe("RLS end-to-end (PGlite, real migrations + real seed data)", () => {
   describe("gift spoiler-safety (D-007)", () => {
     it("a child-role member of the household still sees people, but not gifts", async () => {
       const people = await asUser(db, CHILD_USER, () => db.query("select count(*)::int as n from people;"));
-      expect((people.rows[0] as { n: number }).n).toBe(13);
+      expect((people.rows[0] as { n: number }).n).toBe(14);
       const gifts = await asUser(db, CHILD_USER, () => db.query("select count(*)::int as n from gifts;"));
       expect((gifts.rows[0] as { n: number }).n).toBe(0);
     });
