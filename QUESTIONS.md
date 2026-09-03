@@ -424,3 +424,32 @@ per-email lockout (D-108) already mitigates brute-force guessing independently o
 **Resolution needed:** Richard enables it directly: Supabase dashboard → Authentication → Policies
 → Password Security → toggle "Leaked password protection" on. About 1 minute, no code/deploy
 required.
+
+### QUEUE-045
+**Module:** Database performance / RLS policy layer (all modules — cross-cutting)
+**File(s):** none changed — this is a scoping note, not a fix. Would touch RLS policy definitions
+across `supabase/migrations/` for roughly 18 tables (`auth_rls_initplan`) and 20 tables
+(`multiple_permissive_policies`), per the Supabase performance advisor.
+**Question:** The performance advisor flags two categories of RLS inefficiency, both INFO/WARN
+(not errors, not currently causing any known slowness at this app's traffic level):
+1. `auth_rls_initplan` (18 policies) — several RLS policies call `auth.uid()`/`auth.jwt()` directly
+   instead of `(select auth.uid())`, which prevents Postgres from caching the value once per query
+   instead of re-evaluating it per row. Well-documented, mechanically safe Supabase pattern —
+   wrapping the call in a subquery does not change policy semantics or results, only query plan
+   caching.
+2. `multiple_permissive_policies` (20 tables) — some tables have more than one permissive policy
+   for the same role/action, which Postgres must OR together per row instead of evaluating one
+   policy. Consolidating these is also generally safe but requires literally combining policy
+   conditions, which is a more invasive rewrite than a mechanical subquery wrap.
+   Given RLS is this app's household-data trust boundary (per the project's own framing) and both
+   fixes span most of the schema's tables, I chose not to execute a blanket ~38-policy rewrite
+   unprompted even though the *pattern* is low-risk — the *scope* (touching nearly every table's
+   access-control definition at once) is the kind of thing worth a deliberate pass with full
+   before/after RLS-suite verification per table, not a single autonomous sweep.
+**Assumption made:** Left as-is. No functional bug exists today; this is a pure query-plan
+optimization with no user-visible effect at current scale.
+**Reversal cost:** N/A — nothing changed.
+**Blocking:** No. Worth revisiting either (a) if the RLS pglite suite (`supabase/tests/pglite/`)
+is expanded to assert row-level results per table first, giving strong regression coverage before
+a batch rewrite, or (b) if real production load ever makes RLS evaluation cost measurable (neither
+is true today — this is a pre-launch app).
