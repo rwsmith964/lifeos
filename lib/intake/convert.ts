@@ -14,16 +14,19 @@
 // can build a verified confirmation message instead of trusting the
 // extraction's own claim.
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { peopleRepo } from "../db/repositories/people";
+import { peopleRepo, listPeopleForHousehold } from "../db/repositories/people";
 import { giftsRepo } from "../db/repositories/gifts";
 import { calendarEventsRepo } from "../db/repositories/calendar";
 import { momentsRepo } from "../db/repositories/relationship-gift-engine";
 import { recipesRepo } from "../db/repositories/household";
+import { usersRepo } from "../db/repositories/households";
+import { intakeDraftsRepo } from "../db/repositories/intake";
 import type { HouseholdRow, IntakeDraftRow, PersonRow } from "../db/database.types";
 import { withActionLog } from "../trust/action-log";
 import { verifyRecordPersisted, buildVerifiedConfirmationMessage } from "../trust/verified-completion";
 import { isFeatureEnabled } from "../flags";
 import type { ExtractedField } from "./confidence";
+import { computeTripCascade, summarizeChildcareCoverage } from "./trip-cascade";
 
 export interface ConvertContext {
   supabase: SupabaseClient;
@@ -37,6 +40,12 @@ export interface ConvertContext {
    * conversion concern.
    */
   resolvedPersonId?: string | null;
+  /**
+   * The reviewing user's own auth id -- only needed by the "flight" case
+   * to look up their home address (users.home_lat/home_lng) for the trip
+   * cascade's drive-time estimate. Every other case ignores this.
+   */
+  userId?: string | null;
 }
 
 export const NON_CONVERTIBLE_TYPES = ["task", "ambiguous"] as const;
@@ -277,6 +286,116 @@ export async function convertDraftToRecord(ctx: ConvertContext, draft: IntakeDra
         table: "recipes",
         recordId: recipe.id,
         confirmationMessage: buildVerifiedConfirmationMessage(verification, (row) => `saved the recipe "${row.title}"`),
+      };
+    }
+
+    case "flight": {
+      const departureAirport = requireString(fields, "flightDepartureAirport");
+      const departureAtISO = requireString(fields, "flightDepartureAtISO");
+      const departureAt = new Date(departureAtISO);
+      if (Number.isNaN(departureAt.getTime())) {
+        throw new Error("Flight draft has an unreadable departure time");
+      }
+      const airline = fieldValue(fields, "flightAirline");
+      const flightNumber = fieldValue(fields, "flightNumber");
+      const arrivalAirport = fieldValue(fields, "flightArrivalAirport");
+      const arrivalAtRaw = fieldValue(fields, "flightArrivalAtISO");
+      const arrivalAt =
+        typeof arrivalAtRaw === "string" && arrivalAtRaw && !Number.isNaN(new Date(arrivalAtRaw).getTime())
+          ? new Date(arrivalAtRaw)
+          : null;
+      // No arrival time on file (common -- boarding passes often omit it):
+      // default to a 3-hour block so the flight shows as more than an
+      // instant on the calendar, without pretending to know the real
+      // flight duration.
+      const endsAt = arrivalAt ?? new Date(departureAt.getTime() + 3 * 60 * 60 * 1000);
+
+      const titleParts = [
+        typeof airline === "string" && airline ? airline : null,
+        typeof flightNumber === "string" && flightNumber ? flightNumber : null,
+      ].filter(Boolean);
+      const destination = typeof arrivalAirport === "string" && arrivalAirport ? arrivalAirport : null;
+      const title = titleParts.length
+        ? `${titleParts.join(" ")}${destination ? ` to ${destination}` : ""}`
+        : `Flight${destination ? ` to ${destination}` : ` from ${departureAirport}`}`;
+
+      const event = await withActionLog(supabase, {
+        householdId: household.id,
+        feature: "intake_convert",
+        describe: (row: Awaited<ReturnType<typeof calendarEventsRepo.create>>) => `Created calendar event "${row.title}" from an intake draft`,
+        tableName: "calendar_events",
+        recordIdOf: (row) => row.id,
+        undoable: true,
+      }, () =>
+        calendarEventsRepo.create(supabase, {
+          household_id: household.id,
+          created_by_person_id: selfPerson.id,
+          title,
+          starts_at: departureAt.toISOString(),
+          ends_at: endsAt.toISOString(),
+          all_day: false,
+          event_type: "travel",
+        })
+      );
+
+      const verification = await verifyRecordPersisted(supabase, calendarEventsRepo.getById, event.id, { title, all_day: false });
+      let confirmationMessage = buildVerifiedConfirmationMessage(verification, (row) => `added "${row.title}" to the calendar`);
+
+      // Best-effort trip cascade + childcare cross-reference -- neither
+      // failing here should undo the flight event itself, which is
+      // already verified and on the calendar. See lib/intake/trip-cascade.ts.
+      try {
+        const home = ctx.userId ? await usersRepo.getById(supabase, ctx.userId) : null;
+        const cascade = await computeTripCascade(
+          { departureAirport, departureAt },
+          home?.home_lat != null && home?.home_lng != null ? { lat: home.home_lat, lng: home.home_lng } : null
+        );
+
+        for (const derived of cascade.events) {
+          await intakeDraftsRepo.create(supabase, {
+            household_id: household.id,
+            created_by_person_id: selfPerson.id,
+            source_type: "text",
+            parser_used: "generic",
+            detected_record_type: "calendar_event",
+            extracted_fields: {
+              eventTitle: { value: derived.title, confidence: derived.confidence },
+              eventStartsAtISO: { value: derived.startsAt.toISOString(), confidence: derived.confidence },
+              eventEndsAtISO: { value: derived.endsAt.toISOString(), confidence: derived.confidence },
+              eventAllDay: { value: false, confidence: derived.confidence },
+              eventType: { value: "travel", confidence: derived.confidence },
+            },
+            overall_confidence: derived.confidence,
+            source_excerpt: derived.note,
+            status: "needs_review",
+          });
+        }
+
+        const people = await listPeopleForHousehold(supabase, household.id);
+        const peopleById = new Map(people.map((p) => [p.id, p]));
+        const childcare = await summarizeChildcareCoverage(
+          supabase,
+          household.id,
+          departureAt,
+          arrivalAt ?? departureAt,
+          peopleById
+        );
+
+        const cascadeNote = cascade.events.length
+          ? ` Added ${cascade.events.length} draft reminder${cascade.events.length === 1 ? "" : "s"} (packing, drive time, security cutoff) to the review queue.`
+          : "";
+        const childcareNote = childcare.hasAcceptedCoverage
+          ? ` ${childcare.summaries.join(" ")}`
+          : " No confirmed childcare coverage found for this trip yet.";
+        confirmationMessage = `${confirmationMessage}.${cascadeNote}${childcareNote}`;
+      } catch (cascadeError) {
+        console.error("Trip cascade computation failed (flight event still saved):", cascadeError);
+      }
+
+      return {
+        table: "calendar_events",
+        recordId: event.id,
+        confirmationMessage,
       };
     }
 

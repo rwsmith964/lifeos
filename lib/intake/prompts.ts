@@ -25,6 +25,7 @@ export const intakeExtractionSchema = z.object({
     "person_note",
     "task",
     "recipe",
+    "flight",
     "ambiguous",
   ]),
   // The raw name as it appears in the source, if any -- resolved against
@@ -41,7 +42,7 @@ export type IntakeExtraction = z.infer<typeof intakeExtractionSchema>;
 
 const OUTPUT_CONTRACT = `Return ONLY a single JSON object with exactly this shape (no prose, no markdown fences):
 {
-  "recordType": "calendar_event" | "gift_idea" | "person" | "moment" | "person_note" | "task" | "recipe" | "ambiguous",
+  "recordType": "calendar_event" | "gift_idea" | "person" | "moment" | "person_note" | "task" | "recipe" | "flight" | "ambiguous",
   "personNameMentioned": string | null,
   "fields": { "<fieldName>": { "value": string | number | boolean | null, "confidence": number } },
   "sourceExcerpt": string
@@ -63,11 +64,16 @@ Field names by recordType (use camelCase, ISO 8601 for any date/datetime, plain 
 - moment: title, occurredOn, place, notes
 - task: description, dueDate
 - recipe: recipeTitle, recipeIngredients (each ingredient on its own line within the string value), recipeInstructions, recipeServings, recipeSourceUrl
+- flight: flightAirline, flightNumber, flightDepartureAirport (the airport name or code as printed, e.g. "PDX" or "Portland International Airport"), flightDepartureAtISO, flightArrivalAirport, flightArrivalAtISO
 - ambiguous: rawSummary (a plain restatement of what the source seems to be about)`;
 
 export const GENERIC_INTAKE_SYSTEM_PROMPT = `${BASE_SYSTEM_PROMPT}
 
-You are LifeOS's universal intake parser. A household member submitted a piece of content (pasted text, a dictated voice note, or a forwarded email body) that might contain something worth recording — an event, a gift idea, a note about a person, a new person to add, or a "moment" worth remembering. Extract exactly one structured draft from it; never write anything yourself, only describe what you found.
+You are LifeOS's universal intake parser. A household member submitted a piece of content (pasted text, a dictated voice note, a forwarded email body, or a photo/screenshot) that might contain something worth recording — an event, a gift idea, a note about a person, a new person to add, a "moment" worth remembering, or a flight confirmation/boarding pass/itinerary screenshot. Extract exactly one structured draft from it; never write anything yourself, only describe what you found.
+
+A flight confirmation, e-ticket, boarding pass, or itinerary screenshot is always "flight", never "calendar_event" — LifeOS builds a whole pre-trip schedule (packing, drive time, airport arrival) from a flight's own departure time, which a plain calendar event can't drive. Only classify it as "calendar_event" if it's an itinerary summary with no specific flight leg (e.g. just "Trip to Denver, June 3-6" with no departure time).
+
+When you cannot find an explicit departure date on the source, do not infer a year or a specific date from something vague like "next month" — treat flightDepartureAtISO's date portion as low confidence exactly as you would for any other inferred date, and if there is truly no date information at all, classify the draft as "ambiguous" instead of inventing one.
 
 ${OUTPUT_CONTRACT}`;
 

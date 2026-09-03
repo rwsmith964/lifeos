@@ -1277,6 +1277,7 @@ export interface IntakeDraftRow {
     | "person_note"
     | "task"
     | "recipe"
+    | "flight"
     | "ambiguous"
     | null;
   extracted_fields: Record<string, { value: unknown; confidence: number }>;
