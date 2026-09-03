@@ -101,10 +101,19 @@ jobs:
 
       - name: Export local Supabase connection env vars
         run: |
+          # `supabase status -o env` wraps every value in literal double
+          # quotes (KEY="value"). That's fine for `source`/`export`, but
+          # $GITHUB_ENV takes the text after `=` verbatim as the value, so
+          # appending it directly leaves the quote characters IN the env
+          # var (e.g. NEXT_PUBLIC_SUPABASE_URL becomes the 25-char string
+          # `"http://127.0.0.1:54321"`, quotes included) -- `next start`
+          # then fails with "Invalid supabaseUrl". Strip one layer of
+          # surrounding double quotes per line before appending.
           supabase status -o env \
             --override-name api.url=NEXT_PUBLIC_SUPABASE_URL \
             --override-name auth.anon_key=NEXT_PUBLIC_SUPABASE_ANON_KEY \
             --override-name auth.service_role_key=SUPABASE_SERVICE_ROLE_KEY \
+            | sed -E 's/^([A-Za-z_][A-Za-z0-9_]*)="(.*)"$/\1=\2/' \
             >> "$GITHUB_ENV"
 
       - name: Reset database and re-apply migrations + supabase/seed.sql
