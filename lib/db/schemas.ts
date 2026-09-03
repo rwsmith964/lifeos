@@ -911,6 +911,13 @@ export const intakeRecordTypeSchema = z.enum([
   "moment",
   "person_note",
   "task",
+  // 'recipe' and 'flight' were both added to the intake_drafts DB check
+  // constraint (module7's migration and R-1/D-142's migration,
+  // respectively) after this schema was first written; adding them here
+  // now so this otherwise-unused validation schema doesn't silently
+  // reject either type if something starts calling it.
+  "recipe",
+  "flight",
   "ambiguous",
 ]);
 export const intakeDraftStatusSchema = z.enum(["pending", "needs_review", "ready", "converted", "rejected"]);

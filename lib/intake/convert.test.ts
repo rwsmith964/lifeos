@@ -154,3 +154,145 @@ describe("convertDraftToRecord (recipe branch, Module 7)", () => {
     await expect(convertDraftToRecord(ctx, draft)).rejects.toThrow();
   });
 });
+
+// R-1 (D-142): characterization tests for the "flight" branch --
+// itinerary-aware trip planning (TSA cutoff / drive time / pack-by
+// cascade, plus a childcare cross-reference), see lib/intake/trip-cascade.ts.
+function flightDraft(overrides: Partial<IntakeDraftRow> = {}): IntakeDraftRow {
+  return {
+    id: "draft-2",
+    household_id: "household-1",
+    created_by_person_id: "person-1",
+    source_type: "screenshot",
+    parser_used: "generic",
+    detected_record_type: "flight",
+    extracted_fields: {
+      flightAirline: field("Delta"),
+      flightNumber: field("DL123"),
+      flightDepartureAirport: field("PDX"),
+      flightDepartureAtISO: field("2026-09-15T08:00:00.000Z"),
+      flightArrivalAirport: field("DEN"),
+      flightArrivalAtISO: field("2026-09-15T11:00:00.000Z"),
+    },
+    overall_confidence: 0.9,
+    source_excerpt: "boarding pass screenshot",
+    status: "ready",
+    review_note: null,
+    converted_table: null,
+    converted_record_id: null,
+    parsed_at: "2026-09-01T00:00:00.000Z",
+    created_at: "2026-09-01T00:00:00.000Z",
+    updated_at: "2026-09-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+describe("convertDraftToRecord (flight branch, R-1/D-142)", () => {
+  it("creates the flight as a travel calendar event and derives a pack/security-cutoff cascade with no home address on file", async () => {
+    const { client, calls } = createFakeSupabaseClient({
+      feature_flags: { rows: [{ enabled: true }] },
+      calendar_events: {
+        onInsert: (values) => ({ id: "event-1", ...values }),
+        rows: [{ id: "event-1", title: "Delta DL123 to DEN", all_day: false }],
+      },
+      action_log: {},
+      intake_drafts: {},
+      people: { rows: [] },
+      childcare_requests: { rows: [] },
+    });
+
+    // ctx.userId omitted -- no home address to look up, so the cascade
+    // must degrade gracefully (no "leave for the airport" event, no
+    // network calls) rather than throwing.
+    const ctx: ConvertContext = { supabase: client as never, household: baseHousehold(), selfPerson: baseSelfPerson() };
+    const outcome = await convertDraftToRecord(ctx, flightDraft());
+
+    expect(outcome.table).toBe("calendar_events");
+    expect(outcome.recordId).toBe("event-1");
+    expect(outcome.confirmationMessage).toContain("Delta DL123 to DEN");
+    expect(outcome.confirmationMessage).toContain("draft reminder");
+    expect(outcome.confirmationMessage).toContain("No confirmed childcare coverage");
+
+    const eventInsert = calls.find((c: FakeCall) => c.table === "calendar_events" && c.op === "insert");
+    expect(eventInsert).toBeTruthy();
+    const insertedEvent = eventInsert!.values as Record<string, unknown>;
+    expect(insertedEvent.event_type).toBe("travel");
+    expect(insertedEvent.starts_at).toBe("2026-09-15T08:00:00.000Z");
+    expect(insertedEvent.ends_at).toBe("2026-09-15T11:00:00.000Z");
+    expect(insertedEvent.all_day).toBe(false);
+
+    // No home address -> no drive-time estimate -> only the security
+    // cutoff and pack-reminder drafts, not a "leave for the airport" one.
+    const draftInserts = calls.filter((c: FakeCall) => c.table === "intake_drafts" && c.op === "insert");
+    expect(draftInserts).toHaveLength(2);
+    const titles = draftInserts.map((c) => (c.values as Record<string, unknown>).extracted_fields as Record<string, ExtractedField>).map((f) => f.eventTitle.value);
+    expect(titles).toContain("Arrive at PDX (security cutoff)");
+    expect(titles).toContain("Pack for the trip");
+    expect(titles.some((t) => String(t).startsWith("Leave for"))).toBe(false);
+  });
+
+  it("surfaces accepted childcare coverage overlapping the trip window in the confirmation message", async () => {
+    const { client } = createFakeSupabaseClient({
+      feature_flags: { rows: [{ enabled: true }] },
+      calendar_events: {
+        onInsert: (values) => ({ id: "event-2", ...values }),
+        rows: [{ id: "event-2", title: "Delta DL123 to DEN", all_day: false }],
+      },
+      action_log: {},
+      intake_drafts: {},
+      people: {
+        rows: [
+          { id: "provider-1", full_name: "Grandma Smith", nickname: "Grandma" },
+          { id: "child-1", full_name: "Cal Smith", nickname: "Cal" },
+        ],
+      },
+      childcare_requests: {
+        rows: [
+          {
+            id: "cc-1",
+            household_id: "household-1",
+            requested_by_person_id: "person-1",
+            provider_person_id: "provider-1",
+            child_person_ids: ["child-1"],
+            care_date: "2026-09-15",
+            care_start_time: "08:00",
+            care_end_time: "20:00",
+            event_title: null,
+            custom_note: null,
+            status: "accepted",
+            token: "tok",
+            drive_minutes_to_provider: null,
+            drive_time_source: null,
+            responded_at: "2026-09-02T00:00:00.000Z",
+            created_at: "2026-09-01T00:00:00.000Z",
+            updated_at: "2026-09-01T00:00:00.000Z",
+            expires_at: "2026-09-10T00:00:00.000Z",
+          },
+        ],
+      },
+    });
+
+    const ctx: ConvertContext = { supabase: client as never, household: baseHousehold(), selfPerson: baseSelfPerson() };
+    const outcome = await convertDraftToRecord(ctx, flightDraft());
+
+    expect(outcome.confirmationMessage).toContain("Grandma covers Cal");
+    expect(outcome.confirmationMessage).not.toContain("No confirmed childcare coverage");
+  });
+
+  it("throws when the draft is missing a required field (flightDepartureAtISO)", async () => {
+    const { client } = createFakeSupabaseClient({
+      feature_flags: { rows: [{ enabled: true }] },
+      calendar_events: { onInsert: (values) => ({ id: "event-3", ...values }) },
+      action_log: {},
+    });
+
+    const ctx: ConvertContext = { supabase: client as never, household: baseHousehold(), selfPerson: baseSelfPerson() };
+    const draft = flightDraft({
+      extracted_fields: {
+        flightDepartureAirport: field("PDX"),
+      },
+    });
+
+    await expect(convertDraftToRecord(ctx, draft)).rejects.toThrow();
+  });
+});

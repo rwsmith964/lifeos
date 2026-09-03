@@ -15,6 +15,7 @@ export const RECORD_TYPE_LABELS: Record<IntakeRecordType, string> = {
   person_note: "Note about someone",
   task: "Task (can't auto-add yet)",
   recipe: "Recipe",
+  flight: "Flight",
   ambiguous: "Not sure what this is",
 };
 
@@ -61,6 +62,12 @@ const FIELD_LABELS: Record<string, string> = {
   recipeServings: "Servings",
   recipeSourceUrl: "Source link",
   personNameMentioned: "Name mentioned",
+  flightAirline: "Airline",
+  flightNumber: "Flight number",
+  flightDepartureAirport: "Departure airport",
+  flightDepartureAtISO: "Departs",
+  flightArrivalAirport: "Arrival airport",
+  flightArrivalAtISO: "Arrives",
 };
 
 function humanizeKey(key: string): string {

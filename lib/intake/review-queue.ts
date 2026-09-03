@@ -41,14 +41,15 @@ export async function approveDraft(
   household: HouseholdRow,
   selfPerson: PersonRow,
   draftId: string,
-  resolvedPersonId?: string | null
+  resolvedPersonId?: string | null,
+  userId?: string | null
 ): Promise<ConversionOutcome> {
   await requireIntakeEnabled(supabase, household.id);
   const draft = await loadOwnedDraft(supabase, household, draftId);
   if (draft.status === "converted") throw new Error("Draft has already been converted");
   if (draft.status === "rejected") throw new Error("A rejected draft can't be approved -- create a new one instead");
 
-  const outcome = await convertDraftToRecord({ supabase, household, selfPerson, resolvedPersonId }, draft);
+  const outcome = await convertDraftToRecord({ supabase, household, selfPerson, resolvedPersonId, userId }, draft);
 
   await intakeDraftsRepo.update(supabase, draft.id, {
     status: "converted",
