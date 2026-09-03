@@ -3,7 +3,7 @@
 // unit-tested, like leadtime.ts — DB access lives in the caller
 // (lib/gifts/suggest.ts).
 import { addDays, differenceInCalendarDays, isAfter, isBefore, isLeapYear, startOfDay } from "date-fns";
-import type { GiftReaction, OccasionType, PersonRow } from "../db/database.types";
+import type { GiftReaction, OccasionType, PersonRow, ReciprocityDirection } from "../db/database.types";
 
 export interface MonthDay {
   month: number; // 1-12
@@ -37,6 +37,18 @@ export const GIFT_REACTION_DISPLAY_LABELS: Record<GiftReaction, string> = {
   neutral: "Neutral",
   missed: "Missed",
 };
+
+/** Module 1 (relationship_gift_engine_v2, D-117): human-readable label for a
+ * ReciprocityDirection on the gift reciprocity ledger -- never render the raw
+ * snake_case enum value (given_to_them/received_from_them) itself. */
+export const RECIPROCITY_DIRECTION_DISPLAY_LABELS: Record<ReciprocityDirection, string> = {
+  given_to_them: "Given to them",
+  received_from_them: "Received from them",
+};
+
+export function reciprocityDirectionDisplayLabel(direction: ReciprocityDirection): string {
+  return RECIPROCITY_DIRECTION_DISPLAY_LABELS[direction] ?? direction;
+}
 
 export function giftReactionDisplayLabel(reaction: GiftReaction): string {
   return GIFT_REACTION_DISPLAY_LABELS[reaction] ?? reaction;
