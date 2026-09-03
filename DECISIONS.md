@@ -3807,3 +3807,46 @@ matching 7:49pm PDT on Sept 2 — asserting `getZonedNow("America/Los_Angeles")`
 **Git/deploy:** branch `fix/d143-timezone-date-boundary`, pushed, merged `--no-ff` into `main`. Deployed
 to production via `vercel --prod --yes`, aliased to
 [lifeos-seven-rho.vercel.app](https://lifeos-seven-rho.vercel.app).
+
+## D-144: Golf/POI "Find nearby" locations for activities (QUEUE-043)
+
+**Trigger:** QUEUE-043 asked Richard which places/POI provider to use before this could be built. He
+supplied a Google Places API (New) key.
+
+**What shipped:**
+
+- `lib/external/places.ts` — new adapter around Google Places API (New) Text Search
+  (`places:searchText`). Text Search (not Nearby Search) because `user_activities.activity_type` is
+  free text chosen by the household ("Golf", "Rock climbing", "Fishing", ...), and Nearby Search only
+  accepts Google's fixed place-type enum — Text Search takes the activity type (or any edited query)
+  directly with no type-mapping table to maintain. Same graceful-degrade shape as the other
+  `lib/external` adapters (`geocode.ts`, `usgs.ts`): no `GOOGLE_PLACES_API_KEY` configured ->
+  `available: false`, never throws; manual location entry keeps working either way.
+- `app/(app)/activities/actions.ts`: `suggestNearbyLocationsAction(activityId, query)` — biases the
+  search around the signed-in user's own `home_lat`/`home_lng` (Settings > home address, D-060), since
+  that's the only per-person location LifeOS already stores. Returns a friendly error (not a thrown
+  exception) when home address isn't set or the key isn't configured. `addActivityLocationAction` gained
+  an optional `googlePlaceId` form field, stored in the existing `activity_locations.external_ids` bag
+  (same shape `usgs_gauge`/`noaa_station` already use) so a suggestion's Google Place ID survives being
+  added.
+- `app/(app)/activities/activity-locations-section.tsx` — added a "Find nearby" search box above the
+  existing manual-entry form (pre-filled with the activity's own type as the default query). Results show
+  name/address/rating with a one-click "Add" that reuses the same `addActivityLocationAction` the manual
+  form already calls — one code path for both origins of a location.
+- `.env.example` documents `GOOGLE_PLACES_API_KEY` (optional; first 5,000 Text Search calls/month free at
+  time of writing).
+
+**Verification:** `pnpm exec tsc --noEmit` — 0 errors. `pnpm lint` — 0 errors (same 34 pre-existing
+Android-build-asset warnings as prior entries). Full suite: **82 test files / 786 tests passing** (up
+from 81/780 — added `lib/external/places.test.ts`, 6 tests: not-configured short-circuit, blank-query
+short-circuit, successful response mapping, empty-results case, HTTP-failure handling, and thrown-fetch
+handling). `pnpm build` — succeeds. Live-verified against the real Google Places API from the sandbox
+with a text search for "golf course" near Portland, OR — returned real, correctly-located courses
+(Heron Lakes, Glendoveer, Eastmoreland).
+
+**Not changed:** No new database migration — `activity_locations.external_ids` already supported
+arbitrary string keys, so `google_place_id` is additive with zero schema change.
+
+**Git/deploy:** branch `feature/d144-nearby-place-suggestions`, committed, merged `--no-ff` into `main`,
+pushed. Deployed to production via `vercel --prod --yes`, aliased to
+[lifeos-seven-rho.vercel.app](https://lifeos-seven-rho.vercel.app).

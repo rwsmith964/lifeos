@@ -54,7 +54,11 @@ export default async function EditActivityPage({ params }: { params: Promise<{ i
         pendingLabel="Saving…"
         defaults={defaults}
       />
-      <ActivityLocationsSection activityId={id} additionalLocations={additionalLocations} />
+      <ActivityLocationsSection
+        activityId={id}
+        additionalLocations={additionalLocations}
+        activityTypeHint={activity.activity_type}
+      />
     </div>
   );
 }
