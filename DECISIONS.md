@@ -3466,3 +3466,104 @@ from 78/758 at D-138 — 2 new repository tests + 3 new RLS describe-block tests
 household-member read, outsider isolation, and child-role insert rejection on both new tables,
 zero regressions). `pnpm build` — succeeds, `/packing`, `/packing/new`, `/packing/[id]`, and
 `/api/packing-lists` all present in the route manifest.
+
+## D-140: Brain-dump per-profile review flow (roadmap R-4)
+
+**Context:** Richard's original ask (roadmap **R-4**): after a brain dump mentions several people
+or activities, the tool should open each newly-created profile one at a time so the user can
+correct and fill in gaps before saving. The brain-dump flow already extracted and created records
+for known action types (interests, gifts, calendar events, notes, time off) but had no way to
+*create* a new person or activity from free text at all, and no sequencing for reviewing
+newly-created entities separately from the rest.
+
+**Design decisions (per the "most reasonable assumption" rule — no new blocking QUEUE item):**
+
+- **Separate item types over routing through `intake_drafts`:** the roadmap doc flagged this as
+  the key open question (route brain-dump through D-136's intake pipeline, or build brain-dump-
+  specific handling). Chose the latter: added `create_person`/`create_activity` as two more
+  `brainDumpItemSchema` item types, handled the same way every existing brain-dump item type is —
+  parsed, reviewed inline in `brain-dump-client.tsx`, executed via `lib/ai/capture-actions.ts` on
+  save. Rerouting through `intake_drafts` would have meant a second write path for the same
+  record types `peopleRepo`/`userActivitiesRepo` already own, more moving parts for no behavioral
+  gain the user asked for.
+- **`activityNotes` folded into the person's `notes` field, not a new column:** `user_activities`
+  has no free-text notes column (confirmed reading `UserActivityInsert`/`UserActivityRow` in
+  `database.types.ts`), and R-4 is scoped as UI/flow work, not a data-model change. When
+  `activityNotes` is present, `capture-actions.ts`'s `create_activity` case reads the target
+  person's current notes and appends `${activityType}: ${activityNotes}`, the same append pattern
+  already used by `append_person_note`. Avoids an additive migration for a single optional
+  free-text field.
+- **`create_activity`'s person selector defaults to self, matching `add_time_off`'s "Me (default)"
+  pattern** — `personId` is optional there (an activity can target an existing household member or
+  default to the person doing the brain dump), whereas `create_person` hides the person selector
+  entirely since there's no existing person to select — the whole point of the item is creating one.
+- **`personRelationshipTypeGuess` excludes "self" as a selectable option** even though it's a valid
+  `RelationshipType` enum value and the AI could in principle guess it — brain dump can't create a
+  second self person for the household. `fromApiItem` remaps an AI-guessed `"self"` down to
+  `"other"` rather than feeding the dropdown a value it doesn't render.
+- **`captureActionSchema` in `lib/ai/prompts/capture.ts` kept structurally in sync** (same type
+  enum + 5 new nullable fields added) purely so `CaptureAction` stays a type-compatible superset
+  that `executeAction`'s switch can narrow on — confirmed via the file's own comment that this
+  prompt/schema pair has been unused at runtime since D-078 (Quick Capture reuses brain-dump's
+  parser). One-line consequence worth flagging: because of that D-078 reuse, `create_person`/
+  `create_activity` are also reachable via Quick Capture automatically — an acceptable, unreviewed
+  side effect, not a blocker.
+- **"One profile at a time" implemented as a pull-out stepper, not a gate on the whole flow:** only
+  `create_person`/`create_activity` items are sequenced (Back/Next, one visible at a time, in a
+  highlighted panel above the rest); every other action type (interests, gifts, calendar events,
+  notes, time off) still renders as the existing flat multi-card list simultaneously below it —
+  the roadmap's ask was specifically about walking through *newly-created profiles*, not gating
+  the entire review screen behind a wizard. A profile item drops out of the stepper (and the index
+  clamps down) once saved or discarded; a saved one rejoins the flat list below, dimmed, exactly
+  like every other saved item — nothing silently disappears from the screen.
+
+**What shipped:**
+
+- `lib/ai/prompts/brain-dump.ts` — added rules 11/12 to `BRAIN_DUMP_SYSTEM_PROMPT` describing when
+  to emit `create_person`/`create_activity`; added both to the JSON-shape docs and
+  `brainDumpItemSchema`'s type enum, plus 5 new nullable fields: `personName`,
+  `personRelationshipTypeGuess`, `personNotes`, `activityType`, `activityNotes`.
+- `lib/ai/prompts/capture.ts` — mirrored the same type enum + 5 fields on `captureActionSchema` for
+  type-narrowing only (see design decisions above).
+- `lib/ai/capture-actions.ts` — imported `userActivitiesRepo`. `case "create_person"`: requires
+  `personName` (throws "Missing person name" otherwise), creates via `peopleRepo.create` with
+  `relationship_type: personRelationshipTypeGuess ?? "friend"`, `notes: personNotes ?? ""`.
+  `case "create_activity"`: requires `activityType` (throws "Missing activity type"), resolves
+  `personId ?? selfPerson.id`, creates via `userActivitiesRepo.create` with `enjoyment_rank: 5`,
+  `typical_duration_minutes: 60` defaults, folds `activityNotes` into the target person's notes if
+  present. Added `case "user_activities"` to `verifyExecuted`.
+- `app/api/brain-dump/parse/route.ts` — added the 5 new fields to the `restore()`-wrapped
+  real-name token restoration.
+- `app/(app)/brain-dump/brain-dump-client.tsx` — `ACTION_TYPES`/`TYPE_LABELS` extended;
+  `PROFILE_ITEM_TYPES` set and `PERSON_RELATIONSHIP_OPTIONS` (excludes "self") added;
+  `EditableItem`/`ParsedApiItem` interfaces, `fromApiItem`, `isItemValid`, `toExecutePayload` all
+  extended for the 5 new fields; new field-render blocks in `BrainDumpItemCard` for both types
+  (name/relationship/notes for `create_person`; activity type/notes for `create_activity`, reusing
+  the existing "Who" person selector); new `profileStepIndex` state plus `unresolvedProfileItems`/
+  `otherItems`/`currentProfileItem` derived values in `BrainDumpClient`, and a Back/Next stepper
+  panel rendered above the regular item list.
+- `lib/ai/capture-actions.test.ts` — fixed 4 pre-existing test literals (`create_calendar_event`,
+  `record_gift` ×2, `append_person_note`) to include the 5 new nullable fields; added 4 new
+  characterization tests covering `create_person` success/missing-name-throws and `create_activity`
+  success-with-notes-folded/defaults-to-self-person.
+
+**Not built:** no new Supabase migration — both new item types write through the existing `people`
+and `user_activities` tables via their existing repositories, already covered by household-scoped
+RLS. No changes to `app/api/brain-dump/execute/route.ts` (its generic
+`brainDumpItemSchema.omit({summary:true}).safeParse` passthrough already covers new types once the
+schema itself was updated) or to `app/api/capture/route.ts`'s `PERSON_REQUIRED_TYPES`/
+`clarifyingQuestionFor` (neither new type requires an existing personId to be resolved before
+execution). `app/(app)/activities/activity-form.tsx` (the manual activity create/edit form)
+deliberately left unchanged — it has no notes field today, consistent with `activityNotes` living
+on the person record rather than becoming a new activity column.
+
+**Verification:** `pnpm exec tsc --noEmit` — 0 errors. `pnpm lint` — 0 errors (34 pre-existing
+unrelated warnings from generated Android build assets only, same set as D-138/D-139). Full suite:
+**79 test files / 767 tests passing** (up from 79/763 at D-139 — 4 new characterization tests, zero
+regressions). `pnpm build` — succeeds, `/brain-dump` and its supporting API routes present in the
+route manifest.
+
+**Git/deploy:** branch `feature/d140-brain-dump-create-person-activity`, merged `--no-ff` into
+`main` at `576836f`. Deployed to production via `vercel --prod --yes`, aliased to
+[lifeos-seven-rho.vercel.app](https://lifeos-seven-rho.vercel.app), `/api/health` returns 200
+live.
