@@ -3567,3 +3567,86 @@ route manifest.
 `main` at `576836f`. Deployed to production via `vercel --prod --yes`, aliased to
 [lifeos-seven-rho.vercel.app](https://lifeos-seven-rho.vercel.app), `/api/health` returns 200
 live.
+
+## D-141: Structured onboarding questionnaire (roadmap R-3)
+
+**What Richard described / roadmap ask:** `/onboarding` existed only as a light first-run form
+(household name + the account owner's own name) before dropping the user straight on the
+dashboard with an otherwise-empty household. R-3 asked for a detailed questionnaire — household
+composition, each person's basics, work schedules, recurring commitments, key relationships/
+interests — defined as "likely a multi-step wizard, one screen per household member," reusing the
+existing `peopleRepo`/`workSchedulesRepo`/`personInterestsRepo` functions with no new tables, and
+tying in with R-6's demographic suggestion bubbles (D-137) as a building block.
+
+**Design decisions:**
+
+- **Client-side step machine, not URL-routed steps.** `OnboardingWizard` holds `step` +
+  `people: OnboardingPerson[]` + `personIndex` in React state and swaps which sub-component renders,
+  rather than a `/onboarding/step/[n]` route per step. Simpler for a short, linear, one-time flow
+  with no need for deep-linking into the middle of it, and avoids re-deriving wizard state from the
+  URL on every step.
+- **Household-creation step now returns instead of redirecting.** `createHouseholdAction` used to
+  `redirect("/")` on success; it now returns `{selfPersonId, selfFullName}` so the wizard can treat
+  "self" exactly like any other household member for the later per-person steps, instead of the
+  account owner being the one person who never gets asked about their own schedule or interests
+  during onboarding. Also added a birthdate + birth-year-known field for self, which the old form
+  never collected at all (every other person-creation path in the app already asks for it).
+- **No new person-creation, work-schedule, child-activity, or interest logic — reused everything.**
+  "Add household members" submits to the existing `POST /api/people` Route Handler (same endpoint
+  `/people/new` already uses — D-031: Route Handler, not Server Action, for record creation +
+  client-side navigation). The per-person detail screen imports `AddWorkScheduleForm`,
+  `AddChildActivityForm`, `AddInterestForm`, and `SuggestedInterestBubbles` (D-137) directly from
+  `app/(app)/people/[id]/person-forms.tsx` — the same precedent `app/(app)/settings/my-schedule.tsx`
+  already established for reusing these exact components from a different route. Zero parallel
+  onboarding-only copies of any create/write logic.
+- **Everything in steps 2+ is optional.** Back/Next are always enabled on the add-members and
+  per-person screens; there's no validation gate forcing the user to add a work schedule, activity,
+  or interest before continuing. A household that only has step 1 filled in still works exactly as
+  well as it did before this change — this is strictly additive richness, not a new required gate
+  before reaching the dashboard.
+- **One screen per person, not one screen per field type.** Rather than a "add all work schedules"
+  step followed by a separate "add all interests" step across every person, each person gets one
+  combined screen (recurring schedule/activity + interests together), matching the roadmap's "one
+  screen per household member" framing and reducing total step count for a family of several people.
+- **Children get `AddChildActivityForm` instead of `AddWorkScheduleForm`** on their person-detail
+  screen, gated on `relationshipType === "child"` — a work shift picker made no sense for a child,
+  and `child_activities` (D-129) is exactly the "recurring commitment" concept the roadmap asked
+  for on that side.
+
+**What shipped:**
+
+- `app/onboarding/actions.ts` — `createHouseholdAction` no longer redirects on success; returns
+  `{error: null, selfPersonId, selfFullName}`. Added a birthdate field (with the same
+  not-in-the-future validation `/api/people` already enforces) and `birth_year_known` to the self
+  person it creates.
+- `app/onboarding/onboarding-form.tsx` — added the birthdate + birth-year-known inputs; takes an
+  `onCreated` callback instead of relying on a server redirect, so the parent wizard can continue.
+- `app/onboarding/types.ts` (new) — `OnboardingPerson` type shared by every wizard step.
+- `app/onboarding/add-members-step.tsx` (new) — "who else is in your household" form (name,
+  relationship, birthdate) submitting to `/api/people` via the existing `useFormPost` hook; shows
+  already-added members as badges; "Continue" to move on.
+- `app/onboarding/person-detail-step.tsx` (new) — one screen per person: work schedule or child
+  activity form, then interest bubbles + free-text interest form, then Back/Next (labelled "Finish"
+  on the last person).
+- `app/onboarding/onboarding-wizard.tsx` (new) — top-level step machine: household → members →
+  person (looped over `people`) → done (summary + "Go to dashboard").
+- `app/onboarding/page.tsx` — renders `OnboardingWizard` instead of the old single-step
+  `OnboardingForm`; server-side redirect guards (no user → `/login`, already has a household → `/`)
+  unchanged.
+
+**Not built:** no new Supabase migration, no new repository functions, no new Route Handlers — every
+write in this feature goes through code that already existed and is already exercised by
+`/people/[id]`, `/people/new`, and Settings > My schedule. No automated test file added for the
+wizard itself (it's a thin client-side orchestration layer over already-tested repos/actions/
+components; the underlying `peopleRepo`/`workSchedulesRepo`/`childActivitiesRepo`/
+`personInterestsRepo` writes and the `/api/people` route remain covered by existing tests).
+
+**Verification:** `pnpm exec tsc --noEmit` — 0 errors. `pnpm lint` — 0 errors (34 pre-existing
+unrelated warnings from generated Android build assets only, same set as D-138/D-139/D-140). Full
+suite: **79 test files / 767 tests passing** (unchanged from D-140 — no test-affecting logic
+changed). `pnpm build` — succeeds, `/onboarding` present in the route manifest.
+
+**Git/deploy:** branch `feature/d141-onboarding-questionnaire`, merged `--no-ff` into `main` at
+`a5cc4ef`. Deployed to production via `vercel --prod --yes`, aliased to
+[lifeos-seven-rho.vercel.app](https://lifeos-seven-rho.vercel.app); `/api/health` returns 200 live,
+`/onboarding` returns a 307 redirect to `/login` for a logged-out request as expected.
