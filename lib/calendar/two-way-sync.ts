@@ -7,7 +7,7 @@
 // two directions have genuinely different write targets and failure modes,
 // even though they share the underlying parse/format primitives.
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { CalendarEventInsert, CalendarSyncAccountRow } from "../db/database.types";
+import type { CalendarEventInsert, CalendarEventRow, CalendarSyncAccountRow } from "../db/database.types";
 import {
   listEventsSyncedToAccount,
   listUnsyncedLocalEventsForHousehold,
@@ -198,4 +198,40 @@ function describeError(error: unknown): string {
   if (error instanceof ProviderNotReadyError) return error.message;
   if (error instanceof Error) return error.message || "Unknown calendar sync error.";
   return "Unknown calendar sync error.";
+}
+
+/**
+ * QUEUE-018: best-effort propagation of a local event delete to whatever
+ * CalDAV account it was previously pushed to. Deleting `calendar_events`
+ * rows has never had a hook for "also do this side effect on delete" --
+ * calling this once at the existing delete call site (deleteCalendarEventAction)
+ * is additive and doesn't change the delete flow's shape.
+ *
+ * Never throws. An orphaned remote copy (the pre-existing v1 behavior, and
+ * still the outcome on any failure here) is a strictly safer failure mode
+ * than blocking or corrupting a local delete over a remote-calendar error,
+ * so every failure path below is swallowed after being attempted once.
+ */
+export async function propagateDeleteToRemote(
+  client: SupabaseClient,
+  event: Pick<CalendarEventRow, "synced_to_account_id" | "external_caldav_href" | "external_caldav_etag">
+): Promise<void> {
+  if (!event.synced_to_account_id || !event.external_caldav_href) return;
+  let account: CalendarSyncAccountRow | null;
+  try {
+    account = await calendarSyncAccountsRepo.getById(client, event.synced_to_account_id);
+  } catch {
+    return;
+  }
+  if (!account) return;
+  const adapter = adapterForAccount(account);
+  if (!adapter.isReady(account)) return;
+  try {
+    await adapter.deleteRemoteEvent(account, {
+      href: event.external_caldav_href,
+      etag: event.external_caldav_etag,
+    });
+  } catch {
+    // Best-effort -- see doc comment above.
+  }
 }
