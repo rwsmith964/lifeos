@@ -362,3 +362,11 @@ the remaining modules.
 **Assumption made:** Shipped the detection-and-nudge layer now (real, working improvement over "recommends golf while you're in LA") without waiting on the data correction or building the full itinerary cascade, since both are substantial enough to need Richard's input/data entry rather than an autonomous guess. Left the stale time-off row untouched rather than guessing new dates or a destination for Richard's real vacation record.
 **Reversal cost:** Low — the time-off data fix is Richard editing one existing record (or adding a new one) in the app UI, no engineering work. The travel-time/TSA/childcare cascade and packing wizard are net-new, additive features that can be layered on top of the "traveling" status this fix introduced without touching it.
 **Blocking:** No
+
+### QUEUE-039
+**Module:** Universal Intake UI (D-136)
+**File(s):** `app/(app)/intake/intake-review-queue.tsx`, `lib/intake/review-queue.ts` (`correctDraftFields`, unused by any UI).
+**Question:** The review queue only offers Approve-as-extracted or Reject. `correctDraftFields` (fix a misread field before approving) already exists in the backend but nothing calls it — should the next pass add inline editing, and if so, per-record-type forms or a generic key/value editor? Also: no flag-toggle UI exists anywhere in the app for any of the eight Module feature flags (`ambient_display`, `brief_registration_v2`, `execution_draft_only`, `household_layer`, `universal_intake_v2`, and the three with no household row at all) — every enable/disable this session and prior sessions has been a direct SQL write. Should Settings get an admin toggle panel for household owners?
+**Assumption made:** Shipped Approve/Reject only (matches the existing Module 6 `/execution` review-queue's own scope, which also has no inline-correct UI) rather than building a correction form speculatively. Enabled `universal_intake_v2` for the Smith Household directly via SQL so the shipped UI is actually reachable, same mechanism as every other flag toggle to date.
+**Reversal cost:** Low — inline correction is additive on top of the existing card component; a flag-toggle settings panel is additive and doesn't change any flag's current value.
+**Blocking:** No
