@@ -3,24 +3,29 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { OnboardingForm } from "./onboarding-form";
+import { HomeAddressStep } from "./home-address-step";
 import { AddMembersStep } from "./add-members-step";
 import { PersonDetailStep } from "./person-detail-step";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import type { OnboardingPerson } from "./types";
 
-type WizardStep = "household" | "members" | "person" | "done";
+type WizardStep = "household" | "address" | "members" | "person" | "done";
 
 // D-141: structured onboarding questionnaire (R-3). Client-side step
-// machine over three phases that each write through existing repository
+// machine over four phases that each write through existing repository
 // functions as they go (no drafts/no new tables — see roadmap):
 //   1. "household"  — household name + self (existing flow, D-055's
 //      createHouseholdWithOwner + peopleRepo.create), now returns instead
 //      of redirecting so the wizard can continue.
-//   2. "members"    — add any other household members via /api/people.
-//   3. "person"     — one screen per person (self, then each added member)
+//   2. "address"    — D-152: optional home address, same geocode-on-save
+//      path as Settings. Skippable — unlike D-050's Settings-only field,
+//      this is the first chance every new household gets to set it, so the
+//      Brief page's D-151 empty-state prompt has less to ever fire for.
+//   3. "members"    — add any other household members via /api/people.
+//   4. "person"     — one screen per person (self, then each added member)
 //      for work schedule / recurring activities + interests.
-//   4. "done"       — summary, then on to the dashboard.
+//   5. "done"       — summary, then on to the dashboard.
 // Every household still ends up with at least a self person even if the
 // user abandons after step 1 — nothing here is more "required" than the
 // single-step flow it replaces, it just offers more before dropping them
@@ -31,10 +36,14 @@ export function OnboardingWizard({ defaultName }: { defaultName: string }) {
   const [people, setPeople] = useState<OnboardingPerson[]>([]);
   const [personIndex, setPersonIndex] = useState(0);
 
-  const totalSteps = useMemo(() => 2 + people.length, [people.length]);
+  const totalSteps = useMemo(() => 3 + people.length, [people.length]);
 
   function handleHouseholdCreated(self: { id: string; fullName: string }) {
     setPeople([{ id: self.id, fullName: self.fullName, relationshipType: "self", birthdate: null, birthYearKnown: true }]);
+    setStep("address");
+  }
+
+  function handleAddressDone() {
     setStep("members");
   }
 
@@ -72,10 +81,19 @@ export function OnboardingWizard({ defaultName }: { defaultName: string }) {
     );
   }
 
-  if (step === "members") {
+  if (step === "address") {
     return (
       <>
         <p className="text-xs text-muted-foreground">Step 2 of {totalSteps}</p>
+        <HomeAddressStep onDone={handleAddressDone} />
+      </>
+    );
+  }
+
+  if (step === "members") {
+    return (
+      <>
+        <p className="text-xs text-muted-foreground">Step 3 of {totalSteps}</p>
         <AddMembersStep members={people.slice(1)} onAdd={handleMemberAdded} onContinue={handleContinueFromMembers} />
       </>
     );
@@ -90,7 +108,7 @@ export function OnboardingWizard({ defaultName }: { defaultName: string }) {
     return (
       <>
         <p className="text-xs text-muted-foreground">
-          Step {3 + personIndex} of {totalSteps}
+          Step {4 + personIndex} of {totalSteps}
         </p>
         <PersonDetailStep
           person={person}

@@ -4130,3 +4130,17 @@ Every new RLS policy gets a `pglite` test in `supabase/tests/pglite/rls.test.ts`
 **Reversal cost:** Low — one file, additive JSX branch, no schema/migration/data change.
 
 **Git/deploy:** branch `fix/d151-brief-weather-empty-state`, committed, merged `--no-ff` into `main`, pushed.
+
+## D-152: Onboarding now asks for a home address (skippable) — the other half of D-151
+
+**Problem:** D-151 fixed the Brief page's weather section to show an explanation when the viewer has no home address on file, instead of silently rendering nothing. But it deliberately left the actual gap open: the onboarding wizard (`app/onboarding/onboarding-wizard.tsx`, D-141) never asks for a home address at all. A brand-new household only discovers the Settings field exists by noticing the D-151 prompt or stumbling into Settings — every new user was guaranteed to hit the "no weather, here's why" empty state at least once before they could ever see real weather.
+
+**Fix:** Added a new, skippable "address" step to the onboarding wizard, between household creation and adding other members. `app/onboarding/home-address-step.tsx` is a new client component (Save-and-continue / Skip for now) backed by a new server action, `setOnboardingHomeAddressAction` in `app/onboarding/actions.ts`, which mirrors the existing Settings home-address save path exactly: same `geocodeAddress()` call (`lib/external/geocode.ts`), same `userInsertSchema` validation, same error copy for "not found" vs. transient lookup failure. An empty submit (Save with nothing typed) is treated the same as Skip rather than surfaced as a validation error, since the field was never required. `onboarding-wizard.tsx`'s step machine, step numbering ("Step N of totalSteps"), and `totalSteps` calculation were updated to include the new step (3 + people.length, was 2 + people.length).
+
+**Not done:** No change to the Settings form itself (`app/(app)/settings/settings-form.tsx` / `actions.ts`) — that remains the single source of truth for editing home address after onboarding; the new onboarding action only ever runs once, at signup. No change to D-151's Brief-page empty state either — it still exists and still fires correctly for any household that skips this new step, which is the intended fallback for exactly that case.
+
+**Verified:** `pnpm typecheck` (0 errors), `pnpm lint` (0 errors, same 34 pre-existing unrelated warnings in generated Android build assets, plus one new `react/no-unescaped-entities` catch on this change that was fixed before commit), `pnpm test` (793/793 passing, unchanged — no existing test covers the onboarding wizard's step machine so none needed updating), `pnpm build` (succeeds, `/onboarding` present in the route manifest). No real Supabase instance available in the sandbox to click through the live flow end-to-end; verification here is code-level (mirrors the already-live, already-verified Settings save path almost line for line) plus the four checks above, not a live-session click-through.
+
+**Reversal cost:** Low — one new component, one new server action, and a step-machine edit that only touches step ordering/numbering. Removing the step means reverting `onboarding-wizard.tsx`'s three touched spots and deleting the two new files; no schema or migration change either way (writes through the same `users.home_address`/`home_lat`/`home_lng` columns D-050/D-151 already use).
+
+**Git/deploy:** branch `feat/d152-onboarding-home-address`, committed, merged `--no-ff` into `main`, pushed.
