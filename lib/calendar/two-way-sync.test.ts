@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createFakeSupabaseClient, type FakeCall } from "../test-support/fake-supabase";
 import type { CalendarSyncAccountRow } from "../db/database.types";
-import { pullFromSyncAccount, pushToSyncAccount } from "./two-way-sync";
+import { pullFromSyncAccount, propagateDeleteToRemote, pushToSyncAccount } from "./two-way-sync";
 
 vi.mock("./sync-providers", () => ({
   adapterForAccount: vi.fn(),
@@ -213,5 +213,81 @@ describe("pushToSyncAccount", () => {
 
     const eventUpdates = calls.filter((c: FakeCall) => c.table === "calendar_events" && c.op === "update");
     expect(eventUpdates).toHaveLength(1);
+  });
+});
+
+// QUEUE-018: local-delete -> remote-delete propagation.
+describe("propagateDeleteToRemote", () => {
+  beforeEach(() => {
+    vi.mocked(adapterForAccount).mockReset();
+  });
+
+  it("does nothing when the event was never synced anywhere", async () => {
+    const { client } = createFakeSupabaseClient({ calendar_sync_accounts: {} });
+    await propagateDeleteToRemote(client as never, {
+      synced_to_account_id: null,
+      external_caldav_href: null,
+      external_caldav_etag: null,
+    });
+    expect(adapterForAccount).not.toHaveBeenCalled();
+  });
+
+  it("calls the adapter's deleteRemoteEvent with the stored href/etag when the account is ready", async () => {
+    const deleteRemoteEvent = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(adapterForAccount).mockReturnValue({
+      provider: "apple_icloud",
+      isReady: vi.fn().mockReturnValue(true),
+      listRemoteEvents: vi.fn(),
+      pushEvent: vi.fn(),
+      deleteRemoteEvent,
+    });
+
+    const { client } = createFakeSupabaseClient({
+      calendar_sync_accounts: { rows: [baseAccount({ id: "account-1" })] },
+    });
+
+    await propagateDeleteToRemote(client as never, {
+      synced_to_account_id: "account-1",
+      external_caldav_href: "/cal/evt-1.ics",
+      external_caldav_etag: '"etag-1"',
+    });
+
+    expect(deleteRemoteEvent).toHaveBeenCalledTimes(1);
+    expect(deleteRemoteEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "account-1" }),
+      { href: "/cal/evt-1.ics", etag: '"etag-1"' }
+    );
+  });
+
+  it("swallows an adapter error instead of throwing", async () => {
+    vi.mocked(adapterForAccount).mockReturnValue({
+      provider: "apple_icloud",
+      isReady: vi.fn().mockReturnValue(true),
+      listRemoteEvents: vi.fn(),
+      pushEvent: vi.fn(),
+      deleteRemoteEvent: vi.fn().mockRejectedValue(new Error("HTTP 404")),
+    });
+
+    const { client } = createFakeSupabaseClient({
+      calendar_sync_accounts: { rows: [baseAccount({ id: "account-1" })] },
+    });
+
+    await expect(
+      propagateDeleteToRemote(client as never, {
+        synced_to_account_id: "account-1",
+        external_caldav_href: "/cal/evt-1.ics",
+        external_caldav_etag: null,
+      })
+    ).resolves.toBeUndefined();
+  });
+
+  it("does nothing when the referenced sync account no longer exists", async () => {
+    const { client } = createFakeSupabaseClient({ calendar_sync_accounts: { rows: [] } });
+    await propagateDeleteToRemote(client as never, {
+      synced_to_account_id: "missing-account",
+      external_caldav_href: "/cal/evt-1.ics",
+      external_caldav_etag: null,
+    });
+    expect(adapterForAccount).not.toHaveBeenCalled();
   });
 });

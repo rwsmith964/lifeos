@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { getZonedNow } from "@/lib/timezones";
 import { calendarEventsRepo, custodyBlocksRepo, eventAttendeesRepo } from "@/lib/db/repositories/calendar";
+import { propagateDeleteToRemote } from "@/lib/calendar/two-way-sync";
 import { timeOffEntriesRepo } from "@/lib/db/repositories/work-schedule";
 import { createSupabaseServiceRoleClient } from "@/lib/db/client-service-role";
 import { generateWeekendPlan } from "@/lib/planner/generate";
@@ -38,7 +39,14 @@ export async function getCalendarEventSnapshotAction(eventId: string): Promise<C
 export async function deleteCalendarEventAction(eventId: string): Promise<DeleteActionState> {
   const { supabase } = await requireHouseholdContext();
   try {
+    // QUEUE-018: fetch the row's sync-tracking fields before it's gone, so a
+    // previously-pushed remote copy can be cleaned up too. Best-effort and
+    // never throws -- see propagateDeleteToRemote's doc comment.
+    const existing = await calendarEventsRepo.getById(supabase, eventId);
     await calendarEventsRepo.remove(supabase, eventId);
+    if (existing) {
+      await propagateDeleteToRemote(supabase, existing);
+    }
   } catch (error) {
     return { error: friendlyMutationError(error, { fallback: "Couldn't delete this event — please try again." }) };
   }
@@ -53,7 +61,18 @@ export async function deleteCalendarEventAction(eventId: string): Promise<Delete
 export async function restoreCalendarEventAction(snapshot: CalendarEventUndoSnapshot): Promise<DeleteActionState> {
   const { supabase } = await requireHouseholdContext();
   try {
-    const restored = await calendarEventsRepo.create(supabase, snapshot.event);
+    // QUEUE-018: the snapshot may carry sync-tracking fields from before the
+    // delete (and, if the event had a remote copy, that copy was just
+    // deleted by propagateDeleteToRemote above). Restoring with those fields
+    // intact would make pushToSyncAccount treat this "new" row as
+    // already-synced and never re-push it -- clear them so the restored
+    // event is picked up fresh on the next two-way sync cycle instead.
+    const restored = await calendarEventsRepo.create(supabase, {
+      ...snapshot.event,
+      synced_to_account_id: null,
+      external_caldav_href: null,
+      external_caldav_etag: null,
+    });
     if (snapshot.attendeePersonIds.length > 0) {
       await eventAttendeesRepo.createMany(
         supabase,
