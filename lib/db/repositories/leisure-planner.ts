@@ -88,6 +88,22 @@ export async function listGearChecklistItemsForType(
   );
 }
 
+/** Every type-level default gear item declared for the household, across all
+ * activity types -- for the Activities page's "default gear checklists"
+ * management section, which groups them by activity_type_key client-side. */
+export async function listAllTypeGearChecklistDefaultsForHousehold(
+  client: SupabaseClient,
+  householdId: string
+): Promise<GearChecklistItemRow[]> {
+  return gearChecklistItemsRepo.list(client, (q) =>
+    q
+      .eq("household_id", householdId)
+      .not("activity_type_key", "is", null)
+      .order("activity_type_key", { ascending: true })
+      .order("sort_order", { ascending: true })
+  );
+}
+
 /** Outing logs for one activity, most recent first -- an activity-detail "outing history" list. */
 export async function listOutingLogsForActivity(
   client: SupabaseClient,

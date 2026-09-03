@@ -6,12 +6,23 @@ import { listActivitiesWithLocations } from "@/lib/db/repositories/activities";
 import { listTripIdeasForHousehold } from "@/lib/db/repositories/trip-ideas";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
 import { seasonWindowLabel } from "@/lib/planner/month-names";
+import { isFeatureEnabled } from "@/lib/flags";
+import {
+  listAllTypeGearChecklistDefaultsForHousehold,
+  listViabilityConfigsForHousehold,
+} from "@/lib/db/repositories/leisure-planner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DeactivateActivityButton } from "./deactivate-button";
 import { MarkDoneButton } from "./mark-done-button";
 import { TripIdeasSection } from "./trip-ideas-section";
+import {
+  AddTypeGearChecklistItemForm,
+  AddViabilityConfigForm,
+  TypeGearChecklistItemRow,
+  ViabilityConfigRow,
+} from "./leisure-planner-forms";
 
 export default async function ActivitiesPage() {
   const { supabase, household } = await requireHouseholdContext();
@@ -20,6 +31,22 @@ export default async function ActivitiesPage() {
     listTripIdeasForHousehold(supabase, household.id),
     listPeopleForHousehold(supabase, household.id),
   ]);
+
+  const plannerEnabled = await isFeatureEnabled(supabase, household.id, "leisure_planner_v2");
+  const [viabilityConfigs, typeGearDefaults] = plannerEnabled
+    ? await Promise.all([
+        listViabilityConfigsForHousehold(supabase, household.id),
+        listAllTypeGearChecklistDefaultsForHousehold(supabase, household.id),
+      ])
+    : [[], []];
+  const activityTypeSuggestions = Array.from(new Set(activities.map((a) => a.activity_type.toLowerCase())));
+  const typeGearDefaultsByType = new Map<string, typeof typeGearDefaults>();
+  for (const item of typeGearDefaults) {
+    const key = item.activity_type_key ?? "";
+    const existing = typeGearDefaultsByType.get(key) ?? [];
+    existing.push(item);
+    typeGearDefaultsByType.set(key, existing);
+  }
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -98,6 +125,48 @@ export default async function ActivitiesPage() {
               </CardContent>
             </Card>
           ))}
+        </div>
+      )}
+
+      {plannerEnabled && (
+        <div className="mt-4 flex flex-col gap-4 border-t pt-4">
+          <div>
+            <h2 className="text-sm font-medium">Activity type settings</h2>
+            <p className="text-xs text-muted-foreground">
+              Viability inputs and default gear per activity type — used by the weekend planner.
+            </p>
+          </div>
+          <div className="flex flex-col gap-2">
+            <h3 className="text-xs font-medium text-muted-foreground">Viability configs</h3>
+            {viabilityConfigs.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No viability configs yet.</p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {viabilityConfigs.map((config) => (
+                  <ViabilityConfigRow key={config.id} config={config} />
+                ))}
+              </div>
+            )}
+            <AddViabilityConfigForm activityTypeSuggestions={activityTypeSuggestions} />
+          </div>
+          <div className="flex flex-col gap-2">
+            <h3 className="text-xs font-medium text-muted-foreground">Default gear checklists</h3>
+            {typeGearDefaultsByType.size === 0 ? (
+              <p className="text-sm text-muted-foreground">No default gear items yet.</p>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {Array.from(typeGearDefaultsByType.entries()).map(([type, items]) => (
+                  <div key={type} className="flex flex-col gap-1">
+                    <p className="text-xs font-medium">{type.length > 0 ? type[0].toUpperCase() + type.slice(1) : type}</p>
+                    {items.map((item) => (
+                      <TypeGearChecklistItemRow key={item.id} item={item} />
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+            <AddTypeGearChecklistItemForm activityTypeSuggestions={activityTypeSuggestions} />
+          </div>
         </div>
       )}
 
