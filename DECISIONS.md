@@ -3944,3 +3944,23 @@ against the live Supabase project.
 **Not done (deliberately, per the work order splitting this into Part 1 of 5):** CI workflow, Playwright E2E specs, and the cross-household-sharing design document are separate parts of the same work order and are not part of this decision.
 
 **Git/deploy:** branch `fix/d146-cron-auth-fail-closed`, committed, merged `--no-ff` into `main`, pushed.
+
+## D-147: Added CI (`.github/workflows/verify.yml`) — the repo had no automated verification at all
+
+**Problem:** every gate in the standing workflow (typecheck → lint → test → build) was run manually, by hand, on whatever machine happened to be doing the work. Nothing in the repo verified a push or PR automatically — a broken build or a failing test could land on `main` and nobody (and nothing) would notice until the next manual pass happened to run the full suite. `ios-build.yml` already existed but only covers the Capacitor iOS simulator build, not the core web app's own typecheck/lint/test/build gates.
+
+**Fix:** added `.github/workflows/verify.yml`:
+- Triggers on push to `main`, every pull request, and `workflow_dispatch` (manual re-run).
+- `ubuntu-latest`, Node 22 via `corepack enable` + `actions/setup-node@v4` (`cache: pnpm`), then `pnpm install --frozen-lockfile`.
+- Four steps in order — typecheck, lint, test, build — with `if: ${{ !cancelled() }}` on the last three, so a failing typecheck still lets lint/test/build run and report their own status rather than the job stopping at the first red gate (useful for seeing the *full* set of what's broken in one CI run, not one gate at a time across several pushes).
+- Job-level env vars `ANTHROPIC_API_KEY` / `CRON_SECRET` set to placeholder strings, with `REQUIRE_ANTHROPIC_KEY=1` / `REQUIRE_CRON_SECRET=1` — both `scripts/check-*.mjs` guards (D-032, D-146) only check that the var is *set*, never make a network call with it, so a placeholder is sufficient and no real secret needs to exist in CI.
+- `concurrency: { group: verify-${{ github.ref }}, cancel-in-progress: true }` so a rapid string of pushes to the same branch/PR doesn't queue up redundant runs.
+- No database service container: `supabase/tests/pglite/**/*.test.ts` (already wired into `vitest.config.ts`, exercised by `pnpm test`) runs against an in-process `pglite` instance, not a real Postgres/Supabase project.
+
+**Verified locally before relying on it in CI:** confirmed `pnpm build` (production mode, `NODE_ENV=production`) succeeds with only `ANTHROPIC_API_KEY`/`CRON_SECRET`/`REQUIRE_*` placeholders set and **no** Supabase env vars at all — every call to `getSupabaseUrl()`/`getSupabaseAnonKey()`/`getSupabaseServiceRoleKey()` (`lib/db/env.ts`) happens inside a client-factory function invoked at request time, not at module-eval or static-generation time, and every route in this app renders dynamically (`ƒ`), so nothing during `next build` itself ever calls them. This means CI's build step needs no Supabase secrets configured to pass — confirmed by temporarily removing `.env.local` and re-running `pnpm build` with only the CI-equivalent env vars set, which succeeded identically to the normal build.
+
+`pnpm typecheck && pnpm lint && pnpm test (793/793) && pnpm build` all pass locally with this change (the change itself is CI-config-only — no application code touched).
+
+**Not done (deliberately, per the work order splitting this into Part 2 of 5):** Playwright E2E tests (Part 3) are not yet wired into this workflow — the work order's Part 3 explicitly calls for extending `verify.yml` once those specs exist, rather than adding an empty/placeholder E2E job now.
+
+**Git/deploy:** branch `feature/d147-ci-workflow`, committed, merged `--no-ff` into `main`, pushed.

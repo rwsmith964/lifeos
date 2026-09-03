@@ -1,0 +1,63 @@
+name: Verify
+
+# Runs the same four gates a human is expected to run before committing
+# (typecheck, lint, test, build — see the standing workflow in AGENTS.md /
+# DECISIONS.md) on every push to main and every PR, so a broken gate is
+# caught in review instead of discovered after merge. D-146 added the first
+# two required env vars below; see that decision for why REQUIRE_* is set
+# to "1" here specifically.
+
+on:
+  push:
+    branches: [main]
+  pull_request: {}
+  workflow_dispatch: {}
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      # Placeholders only — neither REQUIRE_* guard makes a network call,
+      # it only checks that the var is *set* (scripts/check-ai-config.mjs,
+      # scripts/check-cron-config.mjs), so no real secret is needed in CI.
+      # Do not put a real key here.
+      ANTHROPIC_API_KEY: placeholder-ci-value
+      CRON_SECRET: placeholder-ci-value
+      REQUIRE_ANTHROPIC_KEY: "1"
+      REQUIRE_CRON_SECRET: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # supabase/tests/pglite/**/*.test.ts (vitest.config.ts) runs against
+      # an in-process pglite instance, not a real Postgres/Supabase project
+      # — no service container or DB setup step is needed for `pnpm test`
+      # to exercise the RLS test suite here.
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        if: ${{ !cancelled() }}
+        run: pnpm lint
+
+      - name: Test
+        if: ${{ !cancelled() }}
+        run: pnpm test
+
+      - name: Build
+        if: ${{ !cancelled() }}
+        run: pnpm build
