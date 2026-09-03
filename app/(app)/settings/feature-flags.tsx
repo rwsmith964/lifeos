@@ -28,6 +28,7 @@ const FLAG_TITLES: Record<FeatureFlagKey, string> = {
   execution_draft_only: "Assistant execution (draft-only)",
   household_layer: "Household layer (meals, groceries, chores)",
   brief_registration_v2: "Brief contributor registration",
+  packing_checklist_v2: "Packing checklist wizard",
 };
 
 export function FeatureFlags({ states, canManage }: FeatureFlagsProps) {

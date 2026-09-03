@@ -1032,3 +1032,52 @@ export const calendarSyncAccountConnectSchema = z.object({
   caldav_calendar_href: z.string().trim().max(2000).optional(),
   sync_direction: calendarSyncDirectionSchema.optional(),
 });
+
+// packing_lists / packing_list_items (D-139, packing_checklist_v2) --------
+
+export const tripTypeSchema = z.enum([
+  "beach",
+  "city",
+  "camping",
+  "ski_snow",
+  "road_trip",
+  "visiting_family",
+  "international",
+  "business",
+  "other",
+]);
+
+export const packingListInsertSchema = z
+  .object({
+    household_id: uuid,
+    created_by_person_id: uuid.nullable().optional(),
+    title: z.string().trim().min(1, "Give this trip a name."),
+    trip_type: tripTypeSchema.optional(),
+    start_date: isoDate.nullable().optional(),
+    end_date: isoDate.nullable().optional(),
+    destination: z.string().trim().nullable().optional(),
+    traveler_person_ids: z.array(uuid).optional(),
+    planned_activities: z.string().trim().nullable().optional(),
+    status: z.enum(["active", "archived"]).optional(),
+  })
+  .refine((v) => !v.start_date || !v.end_date || v.end_date >= v.start_date, {
+    message: "End date can't be before the start date.",
+    path: ["end_date"],
+  });
+
+export const packingListItemInsertSchema = z.object({
+  household_id: uuid,
+  packing_list_id: uuid,
+  label: z.string().trim().min(1, "Give this item a name."),
+  category: z.string().trim().nullable().optional(),
+  checked: z.boolean().optional(),
+  sort_order: z.number().int().optional(),
+  source: z.enum(["ai", "manual"]).optional(),
+});
+
+export const packingListItemUpdateSchema = z.object({
+  label: z.string().trim().min(1).optional(),
+  category: z.string().trim().nullable().optional(),
+  checked: z.boolean().optional(),
+  sort_order: z.number().int().optional(),
+});

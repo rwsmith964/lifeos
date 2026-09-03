@@ -3405,3 +3405,64 @@ warnings only, same set as D-137). Existing `lib/flags.test.ts` (5 tests) alread
 action file (`household-invite-actions.ts`, `calendar-feed-actions.ts`) has a dedicated test file
 either, so this stays consistent with that existing pattern. Full suite: **78 test files / 758
 tests passing** (unchanged from D-137 — no new tests, zero regressions). `pnpm build` — succeeds.
+
+## D-139: Packing checklist wizard (roadmap R-2)
+
+**Context:** Richard's original ask: "a feature where you can build in travel packing checklists
+where it asks questions about what type of trip and what activities you will be doing and
+formulates a list based on that." Scoped as roadmap item **R-2** in
+`ROADMAP-PROACTIVE-ASSISTANT.md`. The existing `gear_checklist_items` table (Module 2, D-118) is
+scoped to a single local activity instance (e.g. "bring waders for this fishing outing"), not a
+multi-day trip — this ships a new, separate concept behind its own flag rather than overloading
+that table.
+
+**What shipped:**
+
+- `supabase/migrations/20260902000006_packing_lists.sql` (new) — two additive tables,
+  `packing_lists` (title, trip_type enum, optional start/end date + destination, `traveler_person_ids
+  uuid[]`, free-text `planned_activities`, active/archived status) and `packing_list_items`
+  (denormalized `household_id`, label, category, checked, sort_order, ai/manual `source`). Same
+  owner/adult-write, household-member-read RLS split as `gear_checklist_items`. Applied to the live
+  Supabase project (`moblcysnsaxohnslubym`) via `apply_migration` — `get_advisors` shows no new
+  security findings introduced by these tables.
+- `lib/flags.ts` — new `packing_checklist_v2` flag; `app/(app)/settings/feature-flags.tsx` — added
+  its title so it surfaces in the D-138 Settings toggle panel.
+- `lib/db/repositories/packing.ts` + `lib/db/schemas.ts` — `packingListsRepo`/`packingListItemsRepo`
+  via `createRepository`, plus `packingListInsertSchema` (refined so `end_date >= start_date`) and
+  item insert/update schemas.
+- `lib/ai/prompts/packing-checklist.ts` + `lib/packing/generate.ts` — the standard 3-file AI-feature
+  split: a system/user prompt keyed on trip type, dates, destination, traveler ages/relationship
+  types, and planned activities; `generatePackingChecklist()` returns a discriminated
+  `generated | ai_unavailable | budget_exceeded | parse_failed` result, persists generated items via
+  the repo, and logs usage through `callAi()`'s own service-role client (D-034 pattern).
+- `app/(app)/packing/actions.ts` — Server Actions (`generateChecklistAction`,
+  `toggleItemCheckedAction`, `addManualItemAction`, `removeItemAction`,
+  `archivePackingListAction`/`reactivatePackingListAction`/`deletePackingListAction`), all
+  flag-gated via `requirePackingEnabled()`, all throw on failure to pair with
+  `useAsyncToastAction` (D-137/D-138 pattern).
+- `app/api/packing-lists/route.ts` — plain POST route handler (not a Server Action) for
+  *creating* a new list, per the D-031 rule: record creation + page navigation goes through
+  `useFormPost`, not `<form action={...}>`, because Server Actions bound under the authenticated
+  `app/(app)/layout.tsx` silently redirect to `/login` in production.
+- `app/(app)/packing/page.tsx` (list), `app/(app)/packing/new/page.tsx` +
+  `packing-list-form.tsx` (wizard: title, trip type, dates, destination, traveler checkboxes,
+  planned activities — redirects to the new list on success), `app/(app)/packing/[id]/page.tsx` +
+  `packing-list-detail.tsx` (generate-checklist button when empty; checkbox-toggle items with
+  `ConfirmDeleteButton` removal; manual add-item form; archive/reactivate toggle; whole-list delete
+  redirecting to `/packing`). All three pages are flag-gated (`notFound()` when
+  `packing_checklist_v2` is off) and direct-URL-only, same precedent as `/intake`/`/execution`/
+  `/ambient` — no nav link added.
+
+**Scope explicitly not built:** no automatic trip-context seeding from `time_off_entries` (D-135's
+travel-awareness fields) into the wizard — considered, but travel dates/destination there are
+lightweight nudge-copy inputs, not structured enough to pre-fill a packing wizard confidently, and
+Richard can always re-type them in under a minute; not logged as a QUEUE item since it's a
+non-blocking nice-to-have, not an ambiguity. No drag-to-reorder on items (sort_order exists on the
+schema for future use, but items render unchecked-first / sort_order and that's sufficient for v1).
+
+**Verification:** `pnpm exec tsc --noEmit` — 0 errors. `pnpm lint` — 0 errors (34 pre-existing
+unrelated warnings only, same set as D-138). Full suite: **79 test files / 763 tests passing** (up
+from 78/758 at D-138 — 2 new repository tests + 3 new RLS describe-block tests covering
+household-member read, outsider isolation, and child-role insert rejection on both new tables,
+zero regressions). `pnpm build` — succeeds, `/packing`, `/packing/new`, `/packing/[id]`, and
+`/api/packing-lists` all present in the route manifest.
