@@ -74,26 +74,26 @@ test.describe("Gift suggestions", () => {
     // --- Save ---
     await alpha.getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByRole("status").getByText("Saved to shortlist.")).toBeVisible({ timeout: 10_000 });
-    // The toast fires right after `action()` resolves (the mutation is
-    // already committed at that point -- see useAsyncToastAction), but
-    // the badge flip additionally depends on the *separate*
-    // `router.refresh()` RSC round-trip completing and re-rendering with
-    // the new status. Confirmed via a live CI run (33728088223) that 10s
-    // isn't consistently enough for that refresh alone even though the
-    // toast itself reliably appears within 10s -- give the refresh its
-    // own generous budget, matching this file's other 20s waits (e.g. the
-    // post-generate redirect above) rather than reusing the toast's.
-    await expect(alpha.getByText("Saved", { exact: true })).toBeVisible({ timeout: 20_000 });
-    await expect(alpha.getByRole("button", { name: "Mark ordered", exact: true })).toBeVisible({ timeout: 20_000 });
-
-    await page.reload();
-    await expect(
-      cardWithTitleFor(page, "Emma Smith", "Fixture Gift Alpha").getByText("Saved", { exact: true })
-    ).toBeVisible({
-      timeout: 10_000,
-    });
+    // P1-12 (app/(app)/gifts/page.tsx): /gifts only ever queries
+    // status === "suggested" -- once a suggestion is saved it moves OFF
+    // this list entirely and onto the dedicated Saved gifts page, the
+    // same way Dismiss already removes a card. It does not flip to a
+    // "Saved" badge in place here; two earlier CI runs (33728088223,
+    // 33729007411) mis-diagnosed the resulting `toBeVisible` timeout as
+    // router.refresh() taking longer than budgeted, when the real cause
+    // is that the assertion was looking for the badge on the wrong page.
+    // `alpha` is re-evaluated live by Playwright, so this polls until the
+    // post-refresh render actually drops the card.
+    await expect(alpha).toBeHidden({ timeout: 20_000 });
 
     await page.goto("/gifts/saved");
+    const savedAlpha = cardWithTitleFor(page, "Emma Smith", "Fixture Gift Alpha");
+    await expect(savedAlpha).toBeVisible({ timeout: 10_000 });
+    await expect(savedAlpha.getByText("Saved", { exact: true })).toBeVisible();
+    await expect(savedAlpha.getByRole("button", { name: "Mark ordered", exact: true })).toBeVisible();
+
+    // Persists across a reload, not just optimistic client state.
+    await page.reload();
     await expect(cardWithTitleFor(page, "Emma Smith", "Fixture Gift Alpha")).toBeVisible({ timeout: 10_000 });
 
     // --- Dismiss + Undo ---
