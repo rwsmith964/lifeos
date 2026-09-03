@@ -81,7 +81,7 @@ on conflict (id) do nothing;
 
 insert into person_interests (person_id, interest, category, strength, source, noted_at)
 values
-  ('e2000000-0000-0000-0000-000000000002', 'CANARY-JONES-9f21 collecting stickers', 'hobby', 'strong', 'manual', now())
+  ('e2000000-0000-0000-0000-000000000002', 'CANARY-JONES-9f21 collecting stickers', 'hobby', 'passionate', 'manual', now())
 on conflict do nothing;
 
 commit;
