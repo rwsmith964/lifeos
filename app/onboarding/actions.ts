@@ -7,6 +7,13 @@ import { peopleRepo } from "@/lib/db/repositories/people";
 
 export interface OnboardingState {
   error: string | null;
+  // D-141: the household-creation step used to redirect straight to "/" —
+  // now it hands the newly-created self person back to the client wizard
+  // instead, so the questionnaire's later steps (work schedule, interests)
+  // can run for "self" the same way they run for every other household
+  // member, before the user ever lands on the dashboard.
+  selfPersonId?: string;
+  selfFullName?: string;
 }
 
 export async function createHouseholdAction(
@@ -25,12 +32,19 @@ export async function createHouseholdAction(
     return { error: "Both fields are required." };
   }
 
+  const birthdate = String(formData.get("birthdate") ?? "").trim();
+  if (birthdate && birthdate > new Date().toISOString().slice(0, 10)) {
+    return { error: "Birthdate can't be in the future." };
+  }
+
   const household = await createHouseholdWithOwner(supabase, user.id, householdName);
-  await peopleRepo.create(supabase, {
+  const self = await peopleRepo.create(supabase, {
     household_id: household.id,
     user_id: user.id,
     full_name: fullName,
     relationship_type: "self",
+    birthdate: birthdate || null,
+    birth_year_known: formData.get("birthYearKnown") === "on",
     // D-091: carry the auth email onto the self person record so email
     // notifications (Settings > Notification delivery) have somewhere to
     // go for the account owner, same as any other household member.
@@ -40,5 +54,5 @@ export async function createHouseholdAction(
     show_work_schedule_on_calendar: true,
   });
 
-  redirect("/");
+  return { error: null, selfPersonId: self.id, selfFullName: self.full_name };
 }
