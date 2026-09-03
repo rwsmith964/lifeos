@@ -138,3 +138,9 @@ See D-148 in DECISIONS.md for full detail on the E2E suite, including the requir
 ## D-149: Cross-household sharing is design-only — no code shipped
 
 The cross-household sharing design in DECISIONS.md (D-149) is a blueprint, not an implementation. Today's actual cross-household surface remains exactly what shipped before this pass: the schema-only `household_links` table plus `is_linked_household_member`, consumed only by the `calendar_events` `shared_with_coparent` visibility tier. There is no `household_link_consents`, no availability-probe RPC, no per-category invite path, and no "Linked households" settings UI — none of that exists in the running app. Do not assume any D-149 capability is live until a future D-1XX entry documents its actual implementation and a matching pglite RLS test suite.
+
+## Fixed and verified this pass (D-151 — Brief page's weather section no longer disappears silently)
+
+D-150's market-readiness notes flagged that the Brief page's weather section rendered nothing at all, with no explanation, when the D-050 home-address gate was unmet — unlike weekend-plan generation, which already had a good empty-state message pointing to Settings. Fixed: the Brief page now shows "Add your home address under Settings to see today's weather here." (linking to `/settings`) in the same slot the weather row would occupy, specifically when the viewer has no home address on file. See D-151 in DECISIONS.md.
+
+**Still open, not fixed this pass:** the onboarding wizard (`app/onboarding/onboarding-wizard.tsx`, D-141) still never asks for a home address at all — a brand-new user only discovers the Settings field exists if they notice the new Brief-page prompt or stumble into Settings on their own. Adding an address step to onboarding is a larger, separate change than this fix and remains open.
