@@ -104,14 +104,6 @@ the remaining modules.
 **Reversal cost:** Low
 **Blocking:** No
 
-### QUEUE-011
-**Module:** Module 3 / Universal Intake + Trust Layer
-**File(s):** `lib/intake/review-queue.ts`, `lib/trust/weekly-digest.ts`, `app/(app)/`
-**Question:** Same shape as QUEUE-002/QUEUE-003 — Module 3's backend (drafts table, action log, review-queue approve/reject/correct functions, verified-completion wiring into Quick Capture, weekly digest builder) is done, tested, and merged, but no page/UI surfaces the review queue, the action log/undo, or the weekly digest yet.
-**Assumption made:** Keep moving to Module 4 per the brief's "never idle" mandate — backend-first with the flag OFF is fully compliant with the additive contract (zero effect on the live app either way). UI for Modules 1, 2, and 3 is tracked together as a follow-up in BUILD-REPORT.md rather than blocking progress through the remaining modules.
-**Reversal cost:** Low
-**Blocking:** No
-
 ### QUEUE-012
 **Module:** Module 3 / Universal Intake + Trust Layer
 **File(s):** `supabase/migrations/20260901000004_module3_intake_trust_layer.sql`, `lib/intake/parse.ts`
@@ -336,6 +328,10 @@ the remaining modules.
 ## QUEUE-018 | Module 4 / Scheduling Intelligence | Priority: MEDIUM | Resolved 2026-09-03
 **Question:** When a LifeOS-native event that was previously pushed to a CalDAV account is later deleted locally, should the remote copy be deleted too?
 **Answer:** Yes. Shipped as **D-156**: `propagateDeleteToRemote()` in `lib/calendar/two-way-sync.ts`, called from `deleteCalendarEventAction()` after the local delete, using the adapter's existing `deleteRemoteEvent()`. Best-effort/never-throws, matching pull/push sync's failure posture. `restoreCalendarEventAction()` (Undo) was also fixed to clear the sync-tracking fields on a recreated row so Undo doesn't leave an event permanently un-pushed.
+
+## QUEUE-011 | Module 3 / Universal Intake + Trust Layer | Priority: MEDIUM | Resolved 2026-09-03
+**Question:** Module 3's backend (drafts table, action log, review-queue approve/reject/correct functions, verified-completion wiring into Quick Capture, weekly digest builder) was done, tested, and merged, but no page/UI surfaced the review queue, the action log/undo, or the weekly digest.
+**Answer:** Review queue Approve/Reject UI shipped earlier as **D-136** (correction UI deferred separately as QUEUE-039, still open). The remainder — action-log/undo and the weekly-digest view — shipped as **D-157**: a new `/settings/activity` route (matching the digest notification's own `linkPath`) rendering "This week" (via the existing `buildWeeklyDigest`) and "All activity (last 30 days)" with a generic `reverseAction()` undo (owner/adult only, gated the same way as every other destructive action), plus a Settings-page link so the route is reachable from the nav.
 
 ## Q-004 | shell layout / desktop-tablet | Priority: MEDIUM | Resolved 2026-09-03
 **Question:** The whole app shell is intentionally a narrow ~448px mobile-width column, centered with large unused margins on tablet/desktop. Should LifeOS ever get a real multi-column desktop layout, or is "phone-shaped app centered on desktop" fine indefinitely?
