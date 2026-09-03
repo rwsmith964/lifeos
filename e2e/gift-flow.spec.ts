@@ -1,6 +1,26 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
 import { signIn, SMITH_CREDENTIALS } from "./helpers/auth";
-import { cardWithTitle } from "./helpers/fields";
+
+// The fixture always returns the SAME three titles (Alpha/Beta/Gamma) for
+// every person -- see AI_TEST_MODE's buildGiftSuggestionFixtureJson. The
+// two tests below generate for different people (Emma, Callan) in the same
+// signed-in session, and /gifts renders every household member's active
+// suggestions on one page grouped under a per-person <h2>. A bare
+// `cardWithTitle(page, ...)` (as used elsewhere for single-subject pages
+// like brain-dump/calendar) is therefore ambiguous here: if an earlier
+// test in this file left its same-titled card on the page (e.g. beta
+// un-dismissed back to "suggested" at the end of the save/dismiss test),
+// a person-agnostic lookup resolves to more than one element. Scope every
+// lookup to the specific person's <section> instead.
+function personSection(page: Page, personName: string): Locator {
+  return page.locator("section").filter({ has: page.getByRole("heading", { level: 2, name: personName, exact: true }) });
+}
+
+function cardWithTitleFor(page: Page, personName: string, titleText: string): Locator {
+  return personSection(page, personName).locator('[data-slot="card"]').filter({
+    has: page.locator('[data-slot="card-title"]', { hasText: titleText }),
+  });
+}
 
 // D-148, specs 3 & 5: gift suggestion generation, save/dismiss/undo, and
 // the "never show a past-tense order-by date" rule (lib/gifts/leadtime.ts
@@ -46,28 +66,35 @@ test.describe("Gift suggestions", () => {
     await signIn(page, SMITH_CREDENTIALS);
     await generateFixtureSuggestions(page, EMMA_PERSON_ID);
 
-    const alpha = cardWithTitle(page, "Fixture Gift Alpha");
-    const beta = cardWithTitle(page, "Fixture Gift Beta");
+    const alpha = cardWithTitleFor(page, "Emma Smith", "Fixture Gift Alpha");
+    const beta = cardWithTitleFor(page, "Emma Smith", "Fixture Gift Beta");
     await expect(alpha).toBeVisible({ timeout: 10_000 });
     await expect(beta).toBeVisible();
 
     // --- Save ---
     await alpha.getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByRole("status").getByText("Saved to shortlist.")).toBeVisible({ timeout: 10_000 });
-    await expect(alpha.getByText("Saved", { exact: true })).toBeVisible();
-    await expect(alpha.getByRole("button", { name: "Mark ordered", exact: true })).toBeVisible();
+    // The badge flip from "suggested" buttons to the "Saved" badge depends
+    // on useAsyncToastAction's router.refresh() round-trip completing, not
+    // just on the (already-visible) toast -- give it the same generous
+    // budget as every other post-mutation assertion in this file instead
+    // of the 5s default, which is a real source of CI flakiness.
+    await expect(alpha.getByText("Saved", { exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(alpha.getByRole("button", { name: "Mark ordered", exact: true })).toBeVisible({ timeout: 10_000 });
 
     await page.reload();
-    await expect(cardWithTitle(page, "Fixture Gift Alpha").getByText("Saved", { exact: true })).toBeVisible({
+    await expect(
+      cardWithTitleFor(page, "Emma Smith", "Fixture Gift Alpha").getByText("Saved", { exact: true })
+    ).toBeVisible({
       timeout: 10_000,
     });
 
     await page.goto("/gifts/saved");
-    await expect(cardWithTitle(page, "Fixture Gift Alpha")).toBeVisible({ timeout: 10_000 });
+    await expect(cardWithTitleFor(page, "Emma Smith", "Fixture Gift Alpha")).toBeVisible({ timeout: 10_000 });
 
     // --- Dismiss + Undo ---
     await page.goto("/gifts");
-    const betaAfterReload = cardWithTitle(page, "Fixture Gift Beta");
+    const betaAfterReload = cardWithTitleFor(page, "Emma Smith", "Fixture Gift Beta");
     await betaAfterReload.getByRole("button", { name: "Dismiss", exact: true }).click();
     const dismissToast = page.getByRole("status").filter({ hasText: "Dismissed." });
     await expect(dismissToast).toBeVisible({ timeout: 10_000 });
@@ -76,7 +103,7 @@ test.describe("Gift suggestions", () => {
     await expect(page.getByRole("status")).not.toContainText("Dismissed.", { timeout: 10_000 });
 
     await page.reload();
-    const betaRestored = cardWithTitle(page, "Fixture Gift Beta");
+    const betaRestored = cardWithTitleFor(page, "Emma Smith", "Fixture Gift Beta");
     await expect(betaRestored).toBeVisible({ timeout: 10_000 });
     await expect(betaRestored.getByRole("button", { name: "Save", exact: true })).toBeVisible();
     await expect(betaRestored.getByRole("button", { name: "Dismiss", exact: true })).toBeVisible();
@@ -89,9 +116,9 @@ test.describe("Gift suggestions", () => {
     const orderByText = (card: import("@playwright/test").Locator) =>
       card.locator("p").filter({ hasText: /left to order|Needed now/ });
 
-    const alpha = cardWithTitle(page, "Fixture Gift Alpha"); // furniture, past due
-    const beta = cardWithTitle(page, "Fixture Gift Beta"); // standard, future
-    const gamma = cardWithTitle(page, "Fixture Gift Gamma"); // digital, future
+    const alpha = cardWithTitleFor(page, "Callan Smith", "Fixture Gift Alpha"); // furniture, past due
+    const beta = cardWithTitleFor(page, "Callan Smith", "Fixture Gift Beta"); // standard, future
+    const gamma = cardWithTitleFor(page, "Callan Smith", "Fixture Gift Gamma"); // digital, future
 
     await expect(alpha).toBeVisible({ timeout: 10_000 });
     await expect(orderByText(alpha)).toHaveText("Needed now");

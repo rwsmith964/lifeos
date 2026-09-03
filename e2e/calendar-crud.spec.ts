@@ -36,8 +36,14 @@ test.describe("Calendar event create/edit/delete", () => {
     await page.getByRole("button", { name: "Save event", exact: true }).click();
 
     // The form posts to /api/calendar/events and redirects back to the
-    // calendar view (anchored on that day) on success.
-    await page.waitForURL(/\/calendar/, { timeout: 15_000 });
+    // calendar view (anchored on that day) on success. IMPORTANT: the
+    // starting URL here is /calendar/new?date=... , which itself already
+    // contains the substring "/calendar" -- a bare /\/calendar/ pattern
+    // matches the CURRENT url and waitForURL returns immediately without
+    // waiting for the redirect at all, so the reload right after this used
+    // to reload /calendar/new (no agenda list there) instead of the actual
+    // calendar page. Match on the exact post-redirect pathname instead.
+    await page.waitForURL((url) => url.pathname === "/calendar", { timeout: 15_000 });
 
     // Reload and confirm the event is really in the database, not just
     // held in client state.
@@ -53,7 +59,11 @@ test.describe("Calendar event create/edit/delete", () => {
     const updatedTitle = `${title} (edited)`;
     await page.locator("#title").fill(updatedTitle);
     await page.getByRole("button", { name: "Save changes", exact: true }).click();
-    await page.waitForURL(/\/calendar/, { timeout: 15_000 });
+    // Same trap as the create-step wait above: the pre-click URL is
+    // /calendar/<id>/edit, which also contains "/calendar", so a bare
+    // /\/calendar/ pattern would resolve immediately without waiting for
+    // the actual post-save redirect.
+    await page.waitForURL((url) => url.pathname === "/calendar", { timeout: 15_000 });
 
     await page.reload();
     row = dayCardWithTitle(page, updatedTitle);

@@ -67,6 +67,14 @@ test.describe("Two-household data isolation", () => {
     await expect(page.getByText(CANARY).first()).toBeVisible();
 
     await page.goto(`/calendar?month=${year}-${month}&day=${eventDate.toISOString().slice(0, 10)}`);
-    await expect(page.getByText(`${CANARY} Family Event`)).toBeVisible();
+    // The calendar page legitimately renders the same event title twice
+    // here -- a truncated chip in the month grid AND the full title in
+    // the selected-day agenda card below it (same dual-view pattern as
+    // the month-grid-chip / day-agenda split used elsewhere on this
+    // page). Positive-control assertion only (proving the Jones household
+    // sees its own data) -- `.first()` matches the same pattern already
+    // used just above for "Jordan Jones" and the CANARY person note; it
+    // does not touch the negative isolation checks in Parts 1 and 2.
+    await expect(page.getByText(`${CANARY} Family Event`).first()).toBeVisible();
   });
 });
