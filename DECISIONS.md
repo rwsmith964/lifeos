@@ -3312,3 +3312,49 @@ a generated Android artifact, untouched). New test file `lib/intake/labels.test.
 Full suite: **77 test files / 751 tests passing** (up from the D-135 baseline of 76/743 — the +8
 are the new tests, zero regressions). `pnpm build` — succeeds, `/intake` present in the route
 manifest.
+
+## D-137 | 2026-09-02 | Demographic-based interest suggestion bubbles on the person profile
+
+**Problem:** Richard's own example: his son likes Spiderman and Paw Patrol, but he didn't think
+to add them as interests. He asked for the tool to look at a person's demographic profile and
+suggest popular-for-that-demographic interests as clickable bubbles, so gift/activity suggestions
+downstream (`lib/gifts/suggest.ts`, weekend planner) aren't limited to whatever the household
+happened to remember to type in.
+
+**What the schema actually has:** `PersonRow` (`lib/db/database.types.ts`) has `birthdate` +
+`birth_year_known` and `relationship_type`, but **no gender field at all** — confirmed by reading
+the full row definition. So "age, gender, general demographics" became "age + relationship_type"
+in what got built; see QUEUE-040 for the gender question this raises rather than guessing at a
+field that doesn't exist.
+
+**Shipped:**
+- `lib/people/demographic-interests.ts` (new, unit-tested) — a static, curated suggestion list
+  bucketed into 8 age ranges (infant/toddler through senior), each with ~6-11 interest+category
+  pairs (e.g. young_child includes Spiderman, Paw Patrol, Minecraft, Legos, Pokémon). Age comes
+  from the existing `estimateAgeYears` helper (`lib/ai/prompts/gift-suggestion.ts`) — reused, not
+  reimplemented, so age math has one source of truth across gift suggestions and this feature.
+  When age is unknown (no birthdate on file yet, common for a newly-added person), falls back to
+  a `relationship_type` bucket (child → young_child suggestions, every adult relationship type →
+  general adult suggestions) so a brand-new record still gets something useful instead of an
+  empty widget.
+- `SuggestedInterestBubbles` (`person-forms.tsx`) — renders on the person page's Interests card,
+  above the existing "type an interest" form. Filters out anything already on the person's
+  interest list (case-insensitive), shows 6 at a time with a "+N more" expand. Clicking a bubble
+  calls the new `addSuggestedInterestAction` (upserts as a `casual` interest, same
+  `(person_id, interest)` upsert path as the typed-in form — factored both entry points through
+  one shared `upsertInterest` so they can't drift) and the bubble disappears once the interest is
+  saved (server revalidation refreshes the page's interest list, which re-filters the bubbles).
+  Uses `useAsyncToastAction` for the loading/success/error feedback per the "every async action
+  needs visible feedback" ground rule — same hook this session's Module 3 UI used.
+
+**Scope explicitly not built this pass:** no gender-based suggestion splitting (no such field
+exists — see QUEUE-040); no AI-generated or trending suggestions (the list is a static, curated
+starting set, not fetched or generated, so it never hallucinates and costs nothing to render); no
+similar bubble treatment yet for activities, though the same pattern (curated-list-by-demographic
+→ clickable bubble → existing upsert action) would extend directly to `child_activities` if
+wanted later.
+
+**Verification:** `pnpm typecheck` — 0 errors. `pnpm lint` — 0 errors (34 pre-existing unrelated
+warnings only). New test file `lib/people/demographic-interests.test.ts` (7 tests). Full suite:
+**78 test files / 758 tests passing** (up from D-136's 77/751 — the +7 are the new tests, zero
+regressions). `pnpm build` — succeeds.
