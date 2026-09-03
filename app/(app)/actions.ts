@@ -3,6 +3,7 @@
 import { format } from "date-fns";
 import { revalidatePath } from "next/cache";
 import { requireHouseholdContext } from "@/lib/auth/session";
+import { getZonedNow } from "@/lib/timezones";
 import { generateDailyBrief } from "@/lib/brief/generate";
 import { createSupabaseServiceRoleClient } from "@/lib/db/client-service-role";
 import { briefsRepo, getBriefForPersonAndDate } from "@/lib/db/repositories/system";
@@ -26,8 +27,11 @@ export interface RegenerateBriefState {
  * service-role client doesn't broaden what it can touch.
  */
 export async function regenerateBriefAction(): Promise<RegenerateBriefState> {
-  const { household, selfPerson } = await requireHouseholdContext();
-  const todayDateStr = format(new Date(), "yyyy-MM-dd");
+  const { household, selfPerson, timezone } = await requireHouseholdContext();
+  // D-143: household-local today, not a bare `new Date()` -- see
+  // lib/timezones.ts's getZonedNow for why.
+  const today = getZonedNow(timezone);
+  const todayDateStr = format(today, "yyyy-MM-dd");
 
   try {
     const serviceRoleClient = createSupabaseServiceRoleClient();
@@ -35,7 +39,7 @@ export async function regenerateBriefAction(): Promise<RegenerateBriefState> {
     if (existing) {
       await briefsRepo.remove(serviceRoleClient, existing.id);
     }
-    await generateDailyBrief(serviceRoleClient, household.id, selfPerson.id, new Date());
+    await generateDailyBrief(serviceRoleClient, household.id, selfPerson.id, today);
   } catch (error) {
     return { error: friendlyMutationError(error, { fallback: "Couldn't regenerate the brief — please try again." }) };
   }

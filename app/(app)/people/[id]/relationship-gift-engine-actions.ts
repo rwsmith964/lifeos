@@ -8,6 +8,7 @@
 // never straight to a table from here.
 import { revalidatePath } from "next/cache";
 import { requireHouseholdContext } from "@/lib/auth/session";
+import { getZonedNow } from "@/lib/timezones";
 import {
   conversationLogEntriesRepo,
   giftReciprocityEntriesRepo,
@@ -303,12 +304,14 @@ export async function addReciprocityEntryAction(
 
 /** Marks an outstanding promise fulfilled (undo: fulfillReciprocityEntryAction is idempotent-safe to re-call with an earlier date). */
 export async function fulfillReciprocityEntryAction(personId: string, entryId: string): Promise<SimpleFormState> {
-  const { supabase, household } = await requireHouseholdContext();
+  const { supabase, household, timezone } = await requireHouseholdContext();
   const flagError = await requireEngineEnabled(supabase, household.id);
   if (flagError) return { error: flagError };
   try {
+    // D-143: household-local today, not a bare `new Date()` -- see
+    // lib/timezones.ts's getZonedNow for why.
     await giftReciprocityEntriesRepo.update(supabase, entryId, {
-      fulfilled_at: new Date().toISOString().slice(0, 10),
+      fulfilled_at: getZonedNow(timezone).toISOString().slice(0, 10),
     });
   } catch (error) {
     return { error: friendlyMutationError(error, { fallback: "Couldn't update that — please try again." }) };

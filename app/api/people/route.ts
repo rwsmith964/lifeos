@@ -2,16 +2,19 @@
 // Action; see lib/hooks/use-form-post.ts and DECISIONS.md D-031.
 import { NextResponse } from "next/server";
 import { requireHouseholdContext } from "@/lib/auth/session";
+import { getZonedNow } from "@/lib/timezones";
 import { peopleRepo } from "@/lib/db/repositories/people";
 import { personInsertSchema } from "@/lib/db/schemas";
 import { friendlyMutationError } from "@/lib/db/errors";
 
 export async function POST(request: Request) {
-  const { supabase, household } = await requireHouseholdContext();
+  const { supabase, household, timezone } = await requireHouseholdContext();
   const formData = await request.formData();
 
   const birthdate = String(formData.get("birthdate") ?? "");
-  if (birthdate && birthdate > new Date().toISOString().slice(0, 10)) {
+  // D-143: household-local today, not a bare `new Date()` -- see
+  // lib/timezones.ts's getZonedNow for why.
+  if (birthdate && birthdate > getZonedNow(timezone).toISOString().slice(0, 10)) {
     return NextResponse.json({ error: "Birthdate can't be in the future." }, { status: 400 });
   }
 

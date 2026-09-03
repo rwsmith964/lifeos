@@ -15,6 +15,7 @@
 // full precision without touching this file.
 import { NextResponse } from "next/server";
 import { formatInTimeZone } from "date-fns-tz";
+import { getZonedNow } from "@/lib/timezones";
 import { generateDailyBrief } from "@/lib/brief/generate";
 import { createSupabaseServiceRoleClient } from "@/lib/db/client-service-role";
 import { householdsRepo } from "@/lib/db/repositories/households";
@@ -50,7 +51,12 @@ export async function GET(request: Request) {
     if (currentHourMinute.slice(0, 2) !== household.brief_time.slice(0, 2)) continue;
 
     try {
-      await generateDailyBrief(client, household.id, self.id, now);
+      // D-143: pass the household-local "today" (not the raw UTC `now`
+      // instant) so the brief is generated/stored for the day it's
+      // actually this household's local calendar date -- generateDailyBrief
+      // derives its date-only key (todayDateStr) straight off whatever Date
+      // it's given, with no timezone awareness of its own.
+      await generateDailyBrief(client, household.id, self.id, getZonedNow(timezone));
       generated++;
     } catch (error) {
       errors.push(`${household.id}: ${error instanceof Error ? error.message : String(error)}`);

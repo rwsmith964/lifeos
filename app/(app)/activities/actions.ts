@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { format } from "date-fns";
 import { requireHouseholdContext } from "@/lib/auth/session";
+import { getZonedNow } from "@/lib/timezones";
 import { userActivitiesRepo, activityLocationsRepo } from "@/lib/db/repositories/activities";
 import { tripIdeasRepo } from "@/lib/db/repositories/trip-ideas";
 import { activityLocationInsertSchema } from "@/lib/db/schemas";
@@ -30,8 +31,10 @@ export async function deactivateActivityAction(activityId: string): Promise<Simp
 // see app/(app)/opportunities/actions.ts). Always today's date; edit the
 // activity directly for a different date.
 export async function markActivityDoneTodayAction(activityId: string): Promise<SimpleFormState> {
-  const { supabase } = await requireHouseholdContext();
-  const today = format(new Date(), "yyyy-MM-dd");
+  const { supabase, timezone } = await requireHouseholdContext();
+  // D-143: household-local today, not a bare `new Date()` -- see
+  // lib/timezones.ts's getZonedNow for why.
+  const today = format(getZonedNow(timezone), "yyyy-MM-dd");
   try {
     await userActivitiesRepo.update(supabase, activityId, { last_done_at: today });
   } catch (error) {

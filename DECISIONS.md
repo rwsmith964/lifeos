@@ -3745,3 +3745,65 @@ missing-required-field throw). `pnpm build` — succeeds.
 at `9ea8783`. Deployed to production via `vercel --prod --yes`, aliased to
 [lifeos-seven-rho.vercel.app](https://lifeos-seven-rho.vercel.app); `/api/health` returns
 `{"ai":true}` live.
+
+## D-143: Server-side "today" now derives from household/user timezone, not UTC (calendar date-off-by-one bug)
+
+**Reported by Richard, Sept 2 2026 ~7:49pm PDT:** "I think the time zone is off, we need to make
+sure that the time zone is for the person at their location. For example my calendar is currently
+saying it is tomorrow, 9/3 not today, 9/2."
+
+**Root cause:** The Node server process (and Vercel Serverless Functions in production, confirmed via
+`node -e` in the sandbox: `process.env.TZ` is `undefined`, `Intl.DateTimeFormat().resolvedOptions().timeZone`
+reports `"UTC"`) runs with system timezone UTC. Every server-side "what day is today" computation used a
+bare `new Date()`. For anyone west of UTC, once their local evening passes midnight UTC, `new Date()`
+already reads as *tomorrow's* date — exactly the reported symptom (7:49pm PDT = ~2:49am UTC the next day).
+
+**Fix:**
+
+- `lib/timezones.ts` — new exported `getZonedNow(timezone: string): Date`, built on `date-fns-tz`'s
+  `toZonedTime` (already a dependency). Returns a `Date` whose UTC-read components equal the household's
+  local wall-clock date/time — safe specifically because the runtime's own system zone is UTC. Documented
+  inline as the mandatory helper for every future "what day is today" decision.
+- `lib/auth/session.ts` — `HouseholdContext` gained a `timezone: string` field; `requireHouseholdContext()`
+  now selects `users.timezone` (existing column, defaults `'America/Los_Angeles'`) and returns it alongside
+  the household/person context every page/action already destructures.
+- Every server-side call site that computed "today" from a bare `new Date()` was switched to
+  `getZonedNow(timezone)` (or has the zoned instant threaded through to a function that computes it):
+  `app/(app)/calendar/page.tsx`, `app/(app)/calendar/actions.ts`, `app/(app)/page.tsx` (Brief),
+  `app/(app)/actions.ts` (`regenerateBriefAction`), `app/(app)/household/page.tsx` (meal-plan date range),
+  `app/(app)/activities/actions.ts` (`markActivityDoneTodayAction`), `app/(app)/people/[id]/actions.ts`
+  (gift-suggestion occasion-date fallback, interaction-log date, birthdate future-check),
+  `app/(app)/people/[id]/relationship-gift-engine-actions.ts` (`fulfilled_at`), `app/api/people/route.ts`
+  (birthdate future-check), and `app/api/cron/brief/route.ts` (now passes `getZonedNow(timezone)` into
+  `generateDailyBrief` instead of the raw UTC `now`, so the brief's own date-only key matches the
+  household's local day, not just the hour-match check that already used the timezone).
+
+**Not changed (deliberately, per "don't refactor beyond what each fix needs"):**
+
+- `app/onboarding/actions.ts` — the household-creation birthdate check has no reliable stored timezone to
+  read yet (the household/user timezone row is being created in this same request). A real fix needs a
+  client→server timezone handoff (browser `Intl.DateTimeFormat().resolvedOptions().timeZone` via a hidden
+  form field), which is bigger scope than every other site here. Logged as **QUEUE-042** (non-blocking).
+- `app/api/cron/weekend-plan/route.ts` and `scripts/run-weekend-plan-job.ts` — both call
+  `generateWeekendPlan` with no explicit `today`, defaulting to server `new Date()`. The route's own
+  existing comment documents this as an accepted tradeoff for the cron's own weekly timing (runs
+  Wednesdays, far from the Saturday day-boundary edge case; worst case is "generated a bit early or late,
+  never a duplicate") — not part of the reported bug. The script is a manual/local dev trigger, same
+  reasoning. Left untouched.
+- `lib/brief/generate.ts`'s `generateDailyBrief(..., today: Date = new Date())` default parameter — every
+  direct caller now passes an explicit zoned Date, so the default is an unused fallback, not a live bug
+  path. Left as-is rather than touched speculatively.
+- `app/(app)/people/[id]/person-forms.tsx` — confirmed `"use client"`; its `new Date()` calls run in the
+  browser, where they already reflect the real local system timezone. No change needed.
+
+**Verification:** `pnpm exec tsc --noEmit` — 0 errors. `pnpm lint` — 0 errors (same 34 pre-existing
+unrelated warnings from generated Android build assets as prior entries). Full suite: **81 test files /
+780 tests passing** (up from 80/776 — added `lib/timezones.test.ts`, 4 tests, including one that
+reproduces the exact reported scenario: system clock frozen at `2026-09-03T02:49:00.000Z` (UTC) —
+matching 7:49pm PDT on Sept 2 — asserting `getZonedNow("America/Los_Angeles")` still resolves to
+`2026-09-02`, plus a UTC-zone sanity check and an ahead-of-UTC (`Asia/Tokyo`) rollover check).
+`pnpm build` — succeeds.
+
+**Git/deploy:** branch `fix/d143-timezone-date-boundary`, pushed, merged `--no-ff` into `main`. Deployed
+to production via `vercel --prod --yes`, aliased to
+[lifeos-seven-rho.vercel.app](https://lifeos-seven-rho.vercel.app).

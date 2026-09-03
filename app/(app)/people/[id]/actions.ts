@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireHouseholdContext } from "@/lib/auth/session";
+import { getZonedNow } from "@/lib/timezones";
 import {
   peopleRepo,
   personInterestsRepo,
@@ -59,11 +60,13 @@ export async function generateSuggestionsAction(
   _prevState: GenerateSuggestionsState,
   formData: FormData
 ): Promise<GenerateSuggestionsState> {
-  const { supabase, household } = await requireHouseholdContext();
+  const { supabase, household, timezone } = await requireHouseholdContext();
 
   const occasionType = String(formData.get("occasionType") ?? "just_because") as OccasionType;
   const occasionDateStr = String(formData.get("occasionDate") ?? "");
-  const occasionDate = occasionDateStr ? new Date(`${occasionDateStr}T00:00:00`) : new Date();
+  // D-143: household-local today, not a bare `new Date()` -- see
+  // lib/timezones.ts's getZonedNow for why.
+  const occasionDate = occasionDateStr ? new Date(`${occasionDateStr}T00:00:00`) : getZonedNow(timezone);
 
   const result = await generateGiftSuggestions(supabase, {
     householdId: household.id,
@@ -492,9 +495,11 @@ export async function setCadenceAction(
 }
 
 export async function logInteractionAction(personId: string): Promise<void> {
-  const { supabase } = await requireHouseholdContext();
+  const { supabase, timezone } = await requireHouseholdContext();
 
-  const occurredOn = new Date().toISOString().slice(0, 10);
+  // D-143: household-local today, not a bare `new Date()` -- see
+  // lib/timezones.ts's getZonedNow for why.
+  const occurredOn = getZonedNow(timezone).toISOString().slice(0, 10);
   const parsed = interactionInsertSchema.parse({
     person_id: personId,
     interaction_type: "in_person",
@@ -510,7 +515,7 @@ export async function updatePersonAction(
   _prevState: SimpleFormState,
   formData: FormData
 ): Promise<SimpleFormState> {
-  const { supabase, household } = await requireHouseholdContext();
+  const { supabase, household, timezone } = await requireHouseholdContext();
 
   const existing = await peopleRepo.getById(supabase, personId);
   if (!existing || existing.household_id !== household.id) {
@@ -521,7 +526,9 @@ export async function updatePersonAction(
   if (!fullName) return { error: "Full name is required." };
 
   const birthdate = String(formData.get("birthdate") ?? "");
-  if (birthdate && birthdate > new Date().toISOString().slice(0, 10)) {
+  // D-143: household-local today, not a bare `new Date()` -- see
+  // lib/timezones.ts's getZonedNow for why.
+  if (birthdate && birthdate > getZonedNow(timezone).toISOString().slice(0, 10)) {
     return { error: "Birthdate can't be in the future." };
   }
 
