@@ -7,6 +7,7 @@ import { generateDailyBrief } from "@/lib/brief/generate";
 import { isBriefStale } from "@/lib/brief/staleness";
 import { isFeatureEnabled } from "@/lib/flags";
 import { createSupabaseServiceRoleClient } from "@/lib/db/client-service-role";
+import { usersRepo } from "@/lib/db/repositories/households";
 import { briefsRepo, getBriefForPersonAndDate } from "@/lib/db/repositories/system";
 import { listCustodyBlocksForHouseholdInRange, listEventsInRange } from "@/lib/db/repositories/calendar";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
@@ -42,6 +43,20 @@ export default async function BriefPage() {
   }
 
   const content = brief?.content_json as BriefContent | undefined;
+
+  // D-151: weather silently disappeared with zero explanation when the
+  // brief's weather field is null (see KNOWN-ISSUES.md / DECISIONS.md D-150
+  // for the gap this closes). The most common cause by far is the D-050
+  // home-address gate never being set, so mirror the weekend-plan
+  // contributor's existing pattern (app/(app)/calendar/actions.ts) of
+  // naming the actual fix (Settings > Home address) instead of just
+  // omitting the section. Checks the viewer's own record, which matches
+  // the common single-owner-household case this app is built around.
+  // Guard against a null user_id -- non-self people can have one, and an
+  // empty/undefined id passed to a uuid column would error, not just miss.
+  const viewerHasHomeAddress = selfPerson.user_id
+    ? (await usersRepo.getById(supabase, selfPerson.user_id))?.home_lat != null
+    : false;
 
   // D-061: opportunities are detected by a separate cron and stored
   // directly in their own table, not threaded through the AI-generated
@@ -305,7 +320,7 @@ export default async function BriefPage() {
         )}
       </div>
 
-      {content.weather && (
+      {content.weather ? (
         <>
           <Separator />
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -315,6 +330,25 @@ export default async function BriefPage() {
             {content.weather.lowF != null && ` · Low ${Math.round(content.weather.lowF)}°F`}
           </div>
         </>
+      ) : (
+        // D-151: previously rendered nothing at all when weather was
+        // unavailable, with no way for the user to tell whether that meant
+        // "nothing to show" or "something's missing" -- matches the
+        // messaging weekend-plan generation already gives for the same
+        // underlying D-050 home-address gate.
+        !viewerHasHomeAddress && (
+          <>
+            <Separator />
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Cloud className="size-4" />
+              Add your home address under{" "}
+              <Link href="/settings" className="underline-offset-2 hover:underline">
+                Settings
+              </Link>{" "}
+              to see today&apos;s weather here.
+            </div>
+          </>
+        )
       )}
     </div>
   );

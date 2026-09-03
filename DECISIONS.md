@@ -4116,3 +4116,17 @@ Every new RLS policy gets a `pglite` test in `supabase/tests/pglite/rls.test.ts`
 
 **Reversal cost:** N/A — no code, schema, or UI changed; this is a notes-only entry.
 **Blocking:** No. None of these five items block any queued work; they're inputs for future product/pricing/UX decisions.
+
+## D-151: Brief page's weather section now explains itself instead of silently vanishing
+
+**Problem:** D-150's market-readiness audit confirmed a real UX gap: `app/(app)/page.tsx` rendered the weather block only when `content.weather` was truthy. When the D-050 home-address gate is unmet (`home_lat`/`home_lng` unset on the household owner), `lib/brief/generate.ts` leaves `weather` as `null` and the entire section disappeared with zero explanation — no nudge, no link to Settings. This is exactly the asymmetry D-150 flagged: weekend-plan generation already had a good empty-state message (`app/(app)/calendar/actions.ts`: "Add at least one activity, and set your home address under Settings, to generate a weekend plan."), but the Brief page had nothing.
+
+**Fix:** `app/(app)/page.tsx` now checks whether the viewer's own user record has `home_lat` set (via the existing `usersRepo.getById`, guarded against a null `selfPerson.user_id` to avoid a malformed-uuid query). When `content.weather` is absent specifically because no home address is on file, the Brief page renders the same visual slot (icon + separator, matching the existing weather row's styling) with a message linking to `/settings`: "Add your home address under Settings to see today's weather here." If a home address *is* set but weather still came back null for some other reason (e.g. a transient NWS outage), the section stays silent rather than showing a misleading "add your address" prompt — that's a rarer, lower-priority case left for a future pass, not conflated with the address gap this fix targets.
+
+**Not done:** no onboarding-step addition (the other half of D-150's gap — the wizard never asking for a home address at all) was in scope for this fix; that's a larger, separate change (adding a step to `app/onboarding/onboarding-wizard.tsx`) tracked as a follow-up, not bundled into this narrow bug fix.
+
+**Verified:** `pnpm typecheck` (0 errors), `pnpm lint` (0 errors, same 34 pre-existing unrelated warnings in generated Android build assets), `pnpm test` (793/793 passing, unchanged — no test-affecting logic touched), `pnpm build` (succeeds, `/` present in the route manifest).
+
+**Reversal cost:** Low — one file, additive JSX branch, no schema/migration/data change.
+
+**Git/deploy:** branch `fix/d151-brief-weather-empty-state`, committed, merged `--no-ff` into `main`, pushed.
