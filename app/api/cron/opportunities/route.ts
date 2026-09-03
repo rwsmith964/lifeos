@@ -7,15 +7,10 @@ import { NextResponse } from "next/server";
 import { detectOpportunitiesForHousehold } from "@/lib/opportunities/detect";
 import { createSupabaseServiceRoleClient } from "@/lib/db/client-service-role";
 import { householdsRepo } from "@/lib/db/repositories/households";
-
-function isAuthorized(request: Request): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return true;
-  return request.headers.get("authorization") === `Bearer ${secret}`;
-}
+import { isCronAuthorized } from "@/lib/http/cron-auth";
 
 export async function GET(request: Request) {
-  if (!isAuthorized(request)) {
+  if (!isCronAuthorized(request)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 

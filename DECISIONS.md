@@ -3928,3 +3928,19 @@ established precedent:
 pushed. No Vercel redeploy needed — this change is entirely database-side (RPC grants), not
 application code; production already reflects the fixed grants since they were applied directly
 against the live Supabase project.
+
+## D-146: Cron routes fail closed on missing `CRON_SECRET`, plus a build-time guard
+
+**Problem:** D-093 fixed the real-world exposure (unset `CRON_SECRET` in Vercel production) but left the underlying code unchanged: all five `app/api/cron/*` routes each carried their own inline `isAuthorized(request)` that explicitly failed OPEN — `if (!secret) return true`. That comment was correct about local dev convenience, but it meant the safety of every cron route depended entirely on an environment variable never silently going missing again (a redeploy that drops it, a new preview/staging env, a Vercel dashboard mistake), with nothing in the code or the build to catch that if it happened.
+
+**Fix:**
+- Added `lib/http/cron-auth.ts` exporting a single shared `isCronAuthorized(request)`, replacing all five inline copies (`brief`, `calendar-sync`, `gift-scan`, `opportunities`, `weekend-plan`). With `CRON_SECRET` set, it does a constant-time comparison (`crypto.timingSafeEqual`, length-checked first since it throws on mismatched lengths) instead of the previous `===` string comparison. With `CRON_SECRET` unset, it now fails CLOSED in production (`NODE_ENV === "production"` → `false`) and stays open everywhere else, preserving the "local dev needs zero config" property the original code was going for, without leaving production silently unprotected if the var is ever missing.
+- Added `scripts/check-cron-config.mjs` (mirrors `scripts/check-ai-config.mjs`'s existing `REQUIRE_ANTHROPIC_KEY` pattern) wired into `package.json`'s `build` script ahead of `next build`. It exits non-zero — failing the build — when `CRON_SECRET` is absent and either `VERCEL_ENV === "production"` or `REQUIRE_CRON_SECRET=1` is set; otherwise it just warns. This is what turns "the fail-closed change would now silently 401 every cron invocation, including Vercel's own scheduled ones, if the secret is ever missing" into a loud build-time failure instead of a quiet outage discovered a day later when no brief showed up.
+- Added `lib/http/cron-auth.test.ts`: matching token, wrong token, different-length token (both directions, to exercise the length-mismatch guard before `timingSafeEqual`), missing header, bare secret without a `Bearer` prefix, and an explicit regression pair proving missing-`CRON_SECRET` returns `false` in production / `true` in development — so this exact fail-open pattern can't quietly reappear.
+- Verified `CRON_SECRET` is still set in Vercel production (it was, per D-093, created 3 days ago) — no env change needed.
+
+**Verified:** `pnpm typecheck`, `pnpm lint` (0 errors — pre-existing warnings only in unrelated generated Android build assets), `pnpm test` (793 tests / 83 files, all passing — the 7 new tests account for the discrepancy between two previously-reported baselines, 786/82 and 793/83, both of which were correct at different points in this same work), and `pnpm build` all pass. The local build printed the new script's warning (not a failure, since a local build has no `VERCEL_ENV=production` and no `REQUIRE_CRON_SECRET`), confirming the guard fires without breaking non-production builds.
+
+**Not done (deliberately, per the work order splitting this into Part 1 of 5):** CI workflow, Playwright E2E specs, and the cross-household-sharing design document are separate parts of the same work order and are not part of this decision.
+
+**Git/deploy:** branch `fix/d146-cron-auth-fail-closed`, committed, merged `--no-ff` into `main`, pushed.
