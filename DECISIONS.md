@@ -4238,3 +4238,25 @@ Every new RLS policy gets a `pglite` test in `supabase/tests/pglite/rls.test.ts`
 **Reversal cost:** Low — new route plus one new exported function (`reverseAction`) and one new server action; removing them reverts to the exact prior (log-writes-only, no UI) behavior with no data migration. `action_log` rows themselves are untouched by reverting.
 
 **Git/deploy:** Branch `queue-011-action-log-digest-ui`, merged to `main` at `97d8b45`, pushed, deployed to production via `vercel --prod` (aliased to `lifeos-seven-rho.vercel.app`), `/api/health` confirmed responding post-deploy.
+
+## D-158: Inline field correction for the intake review queue (closes QUEUE-039)
+
+**Context:** Module 3's review queue (`app/(app)/intake/intake-review-queue.tsx`) only offered Approve or Reject on an AI-extracted draft. `correctDraftFields` (`lib/intake/review-queue.ts`) already existed fully implemented — merges corrections into `extracted_fields` at confidence 1.0, recomputes `overall_confidence`, optionally updates `detected_record_type` — but had no caller anywhere in the app and zero test coverage. A reviewer facing one wrong field (a misheard date, a typo'd name, a misclassified record type) had to Reject the whole draft and lose the rest of a correct extraction.
+
+**What shipped:**
+- `lib/intake/labels.ts`: added `inputSpecForField(key)`, per-field input metadata (text/textarea/number/date/datetime/boolean/select) so the UI renders the right control per extracted field key. Enum selects (event type, occasion type, relationship type) reuse the exact option lists already live in `event-form.tsx` and `people/new/page.tsx`, rendered with the same lowercase `.replace("_"," ")` pattern those forms already use for `<select>` options. Added `CORRECTABLE_RECORD_TYPES` (every `detected_record_type` except `ambiguous`) for a reclassification dropdown.
+- `app/(app)/intake/intake-review-queue.tsx`: added a "Correct" button next to Approve/Reject on every actionable draft card. Entering edit mode shows a record-type select plus one input per extracted field, pre-filled with the AI's original values via a new `FieldInput` component. Save submits only fields whose edited value differs from the stored one (plus the record type if changed); nothing is written until Save, and Cancel discards the edit state. Uses the existing `useAsyncToastAction` hook for pending/success/error feedback, matching Approve/Reject.
+- `app/(app)/intake/actions.ts`: added `correctIntakeDraftAction`, gated by `requireHouseholdContext()` exactly like the existing approve/reject actions, calling `correctDraftFields` and revalidating `/intake`.
+- `lib/intake/review-queue.test.ts` (new): 7 characterization tests for `correctDraftFields` — merges a correction at confidence 1.0 and recomputes `overall_confidence` from the full merged field set, updates `detected_record_type` only when passed, throws for a disabled flag / wrong household / already-converted / already-rejected draft. This closes a pre-existing zero-coverage gap on a function now exercised by real UI traffic.
+
+**Not done:**
+- `correctDraftFields` itself is unchanged — `detectedRecordType ?? existing` means an explicit `null` can never reset a draft back to "unclassified" via correction, a pre-existing constraint in that function. The reclassify dropdown therefore has no persistable "Unclassified" option.
+- No UI-level test coverage for `intake-review-queue.tsx` or `actions.ts`, matching the established zero-UI/action-test convention already in place for approve/reject on this same file.
+- No cross-table transaction wrapping the single-row update — same posture as `approveDraft`/`rejectDraft`.
+- The person picker (`needsPerson`) is hidden while editing rather than made editable inline; `personNameMentioned` stays a read-only hint, and the picker already lets the reviewer choose the actual person before approving.
+
+**Verified:** `pnpm typecheck` (0 errors), `pnpm lint` (0 errors, same 34 pre-existing warnings, all in generated Android build assets), `pnpm test` (84 test files / 807 tests passing — 800 baseline + 7 new), `pnpm build` (clean, `/intake` in the route listing). Live-verified post-deploy: `/api/health` returns `{"ai":true}`; unauthenticated `GET /intake` on production returns a 307 redirect to `/login` (route exists, auth-gated, same as every other `(app)` route).
+
+**Reversal cost:** Low — new UI-only additions plus one new server action; `correctDraftFields` itself untouched. Reverting drops the Correct button and action but leaves Approve/Reject fully intact.
+
+**Git/deploy:** Branch `queue-039-intake-inline-correction`, merged to `main` at `c7f2d86`, pushed, deployed to production via `vercel --prod` (aliased to `lifeos-seven-rho.vercel.app`), `/api/health` confirmed responding post-deploy.

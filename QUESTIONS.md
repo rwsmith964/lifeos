@@ -331,7 +331,11 @@ the remaining modules.
 
 ## QUEUE-011 | Module 3 / Universal Intake + Trust Layer | Priority: MEDIUM | Resolved 2026-09-03
 **Question:** Module 3's backend (drafts table, action log, review-queue approve/reject/correct functions, verified-completion wiring into Quick Capture, weekly digest builder) was done, tested, and merged, but no page/UI surfaced the review queue, the action log/undo, or the weekly digest.
-**Answer:** Review queue Approve/Reject UI shipped earlier as **D-136** (correction UI deferred separately as QUEUE-039, still open). The remainder — action-log/undo and the weekly-digest view — shipped as **D-157**: a new `/settings/activity` route (matching the digest notification's own `linkPath`) rendering "This week" (via the existing `buildWeeklyDigest`) and "All activity (last 30 days)" with a generic `reverseAction()` undo (owner/adult only, gated the same way as every other destructive action), plus a Settings-page link so the route is reachable from the nav.
+**Answer:** Review queue Approve/Reject UI shipped earlier as **D-136** (correction UI deferred separately as QUEUE-039, now also resolved — see below). The remainder — action-log/undo and the weekly-digest view — shipped as **D-157**: a new `/settings/activity` route (matching the digest notification's own `linkPath`) rendering "This week" (via the existing `buildWeeklyDigest`) and "All activity (last 30 days)" with a generic `reverseAction()` undo (owner/adult only, gated the same way as every other destructive action), plus a Settings-page link so the route is reachable from the nav.
+
+## QUEUE-039 | Universal Intake UI (D-136) | Priority: MEDIUM | Resolved 2026-09-03
+**Question:** The review queue only offered Approve-as-extracted or Reject. `correctDraftFields` (fix a misread field before approving) already existed in the backend but nothing called it — should the next pass add inline editing, and if so, per-record-type forms or a generic key/value editor? (This item originally also bundled a feature-flag-admin-UI question, now split out as open item QUEUE-047.)
+**Answer:** Shipped as **D-158**: a "Correct" button on every actionable draft card opens an edit mode with a record-type select and one input per extracted field (text/textarea/number/date/datetime/checkbox/select, chosen per field key via a new `inputSpecForField` lookup), pre-filled with the AI's original values. Save submits only changed fields (plus the record type if changed) through a new `correctIntakeDraftAction` calling the existing `correctDraftFields`. A generic key/value editor was effectively chosen over bespoke per-record-type forms — one field-metadata table drives every record type's form instead of eight separate layouts.
 
 ## Q-004 | shell layout / desktop-tablet | Priority: MEDIUM | Resolved 2026-09-03
 **Question:** The whole app shell is intentionally a narrow ~448px mobile-width column, centered with large unused margins on tablet/desktop. Should LifeOS ever get a real multi-column desktop layout, or is "phone-shaped app centered on desktop" fine indefinitely?
@@ -357,12 +361,12 @@ the remaining modules.
 **Reversal cost:** Low — the time-off data fix is Richard editing one existing record (or adding a new one) in the app UI, no engineering work. The travel-time/TSA/childcare cascade and packing wizard are net-new, additive features that can be layered on top of the "traveling" status this fix introduced without touching it.
 **Blocking:** No
 
-### QUEUE-039
-**Module:** Universal Intake UI (D-136)
-**File(s):** `app/(app)/intake/intake-review-queue.tsx`, `lib/intake/review-queue.ts` (`correctDraftFields`, unused by any UI).
-**Question:** The review queue only offers Approve-as-extracted or Reject. `correctDraftFields` (fix a misread field before approving) already exists in the backend but nothing calls it — should the next pass add inline editing, and if so, per-record-type forms or a generic key/value editor? Also: no flag-toggle UI exists anywhere in the app for any of the eight Module feature flags (`ambient_display`, `brief_registration_v2`, `execution_draft_only`, `household_layer`, `universal_intake_v2`, and the three with no household row at all) — every enable/disable this session and prior sessions has been a direct SQL write. Should Settings get an admin toggle panel for household owners?
-**Assumption made:** Shipped Approve/Reject only (matches the existing Module 6 `/execution` review-queue's own scope, which also has no inline-correct UI) rather than building a correction form speculatively. Enabled `universal_intake_v2` for the Smith Household directly via SQL so the shipped UI is actually reachable, same mechanism as every other flag toggle to date.
-**Reversal cost:** Low — inline correction is additive on top of the existing card component; a flag-toggle settings panel is additive and doesn't change any flag's current value.
+### QUEUE-047
+**Module:** Feature-flag administration (all Modules)
+**File(s):** No file yet — every flag toggle to date (`ambient_display`, `brief_registration_v2`, `execution_draft_only`, `household_layer`, `universal_intake_v2`, and the three with no household row at all) has been a direct SQL write, not app UI.
+**Question:** Split out of QUEUE-039 once its inline-correction half shipped as D-158 (see Resolved section) — this half is unrelated and still open. No flag-toggle UI exists anywhere in the app for any of the eight Module feature flags. Should Settings get an admin toggle panel for household owners?
+**Assumption made:** None yet — genuinely deferred, no autonomous guess made either way.
+**Reversal cost:** Low — a flag-toggle settings panel is additive and doesn't change any flag's current value.
 **Blocking:** No
 
 ### QUEUE-040
