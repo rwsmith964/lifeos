@@ -10,7 +10,8 @@
 // existing repository calls (Additive Contract §3).
 import { revalidatePath } from "next/cache";
 import { requireHouseholdContext } from "@/lib/auth/session";
-import { approveDraft, rejectDraft } from "@/lib/intake/review-queue";
+import { approveDraft, correctDraftFields, rejectDraft } from "@/lib/intake/review-queue";
+import type { IntakeDraftRow } from "@/lib/db/database.types";
 
 function revalidateIntakePaths() {
   revalidatePath("/intake");
@@ -25,5 +26,18 @@ export async function approveIntakeDraftAction(draftId: string, resolvedPersonId
 export async function rejectIntakeDraftAction(draftId: string) {
   const { supabase, household } = await requireHouseholdContext();
   await rejectDraft(supabase, household, draftId);
+  revalidateIntakePaths();
+}
+
+// QUEUE-039: lets a reviewer fix a misread field (or a wrong detected
+// record type) before approving, instead of only being able to Approve
+// the AI's extraction as-is or Reject the whole draft.
+export async function correctIntakeDraftAction(
+  draftId: string,
+  corrections: Record<string, unknown>,
+  detectedRecordType?: IntakeDraftRow["detected_record_type"]
+) {
+  const { supabase, household } = await requireHouseholdContext();
+  await correctDraftFields(supabase, household, draftId, corrections, detectedRecordType);
   revalidateIntakePaths();
 }
