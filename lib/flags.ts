@@ -18,6 +18,10 @@ export const FEATURE_FLAGS = {
   execution_draft_only: "Module 6: inbound assistant address, tiered autonomy scaffold, draft-only actions",
   household_layer: "Module 7: meal planning, grocery list, chores",
   brief_registration_v2: "Module 8: generic brief-contributor registration interface",
+  // D-139 (roadmap R-2): trip packing checklist wizard -- separate from
+  // Module 2's gear_checklist_items (single-activity gear), this is a
+  // multi-day-trip checklist generated from trip type/duration/activities.
+  packing_checklist_v2: "Packing checklist wizard: trip-aware AI-generated packing lists",
 } as const;
 
 export type FeatureFlagKey = keyof typeof FEATURE_FLAGS;

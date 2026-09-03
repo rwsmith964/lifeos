@@ -919,6 +919,67 @@ describe("RLS end-to-end (PGlite, real migrations + real seed data)", () => {
     });
   });
 
+  describe("packing_lists / packing_list_items (D-139, household-scoped like gear_checklist_items)", () => {
+    it("household members can read a packing list the owner adds; the outsider sees none", async () => {
+      await asUser(db, RICHARD_USER, () =>
+        db.exec(
+          `insert into packing_lists (household_id, title, trip_type) values ('${SEEDED_HOUSEHOLD}', 'Coast trip', 'beach');`
+        )
+      );
+
+      const childRead = await asUser(db, CHILD_USER, () =>
+        db.query(`select count(*)::int as n from packing_lists where household_id = '${SEEDED_HOUSEHOLD}';`)
+      );
+      expect((childRead.rows[0] as { n: number }).n).toBeGreaterThan(0);
+
+      const outsiderRead = await asUser(db, OUTSIDER_USER, () =>
+        db.query(`select count(*)::int as n from packing_lists where household_id = '${SEEDED_HOUSEHOLD}';`)
+      );
+      expect((outsiderRead.rows[0] as { n: number }).n).toBe(0);
+    });
+
+    it("a child-role member can read packing lists but cannot insert one (owner/adult only)", async () => {
+      await expect(
+        asUser(db, CHILD_USER, () =>
+          db.exec(`insert into packing_lists (household_id, title) values ('${SEEDED_HOUSEHOLD}', 'Should fail');`)
+        )
+      ).rejects.toThrow();
+    });
+
+    it("household members can read packing list items the owner adds; the outsider sees none, and a child-role member cannot insert one", async () => {
+      const listResult = await asUser(db, RICHARD_USER, () =>
+        db.query(
+          `insert into packing_lists (household_id, title) values ('${SEEDED_HOUSEHOLD}', 'Camping weekend') returning id;`
+        )
+      );
+      const listId = (listResult.rows[0] as { id: string }).id;
+
+      await asUser(db, RICHARD_USER, () =>
+        db.exec(
+          `insert into packing_list_items (household_id, packing_list_id, label) values ('${SEEDED_HOUSEHOLD}', '${listId}', 'Tent');`
+        )
+      );
+
+      const childRead = await asUser(db, CHILD_USER, () =>
+        db.query(`select count(*)::int as n from packing_list_items where packing_list_id = '${listId}';`)
+      );
+      expect((childRead.rows[0] as { n: number }).n).toBeGreaterThan(0);
+
+      const outsiderRead = await asUser(db, OUTSIDER_USER, () =>
+        db.query(`select count(*)::int as n from packing_list_items where packing_list_id = '${listId}';`)
+      );
+      expect((outsiderRead.rows[0] as { n: number }).n).toBe(0);
+
+      await expect(
+        asUser(db, CHILD_USER, () =>
+          db.exec(
+            `insert into packing_list_items (household_id, packing_list_id, label) values ('${SEEDED_HOUSEHOLD}', '${listId}', 'Should fail');`
+          )
+        )
+      ).rejects.toThrow();
+    });
+  });
+
   describe("leisure_outing_logs (Module 2, D-118, household-scoped like user_activities)", () => {
     const FISHING_ACTIVITY = "60000000-0000-0000-0000-000000000002";
 

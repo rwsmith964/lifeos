@@ -1648,3 +1648,69 @@ export type ChoreInsert = Insert<
   | "updated_at"
 >;
 export type ChoreUpdate = Update<ChoreRow>;
+
+// packing_lists / packing_list_items (D-139, packing_checklist_v2) --------
+
+export type TripType =
+  | "beach"
+  | "city"
+  | "camping"
+  | "ski_snow"
+  | "road_trip"
+  | "visiting_family"
+  | "international"
+  | "business"
+  | "other";
+
+export type PackingListStatus = "active" | "archived";
+
+export interface PackingListRow {
+  id: string;
+  household_id: string;
+  created_by_person_id: string | null;
+  title: string;
+  trip_type: TripType;
+  start_date: string | null;
+  end_date: string | null;
+  destination: string | null;
+  traveler_person_ids: string[];
+  planned_activities: string | null;
+  status: PackingListStatus;
+  created_at: string;
+  updated_at: string;
+}
+export type PackingListInsert = Insert<
+  PackingListRow,
+  | "id"
+  | "created_by_person_id"
+  | "trip_type"
+  | "start_date"
+  | "end_date"
+  | "destination"
+  | "traveler_person_ids"
+  | "planned_activities"
+  | "status"
+  | "created_at"
+  | "updated_at"
+>;
+export type PackingListUpdate = Update<PackingListRow>;
+
+export type PackingListItemSource = "ai" | "manual";
+
+export interface PackingListItemRow {
+  id: string;
+  household_id: string;
+  packing_list_id: string;
+  label: string;
+  category: string | null;
+  checked: boolean;
+  sort_order: number;
+  source: PackingListItemSource;
+  created_at: string;
+  updated_at: string;
+}
+export type PackingListItemInsert = Insert<
+  PackingListItemRow,
+  "id" | "category" | "checked" | "sort_order" | "source" | "created_at" | "updated_at"
+>;
+export type PackingListItemUpdate = Update<PackingListItemRow>;
