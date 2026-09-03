@@ -27,14 +27,21 @@ Rules:
 8. Each item needs a short "summary" string (under 12 words, present tense, e.g. "Add 'fly fishing' to Dave's interests" or "Log a call with Mom today") describing what will happen if the item is saved as-is — written for a human scanning a review list, not a confirmation of something already done.
 9. For create_calendar_event: if the transcript names a day but never states a specific time of day (no "7am", "at noon", "after work", etc.), set eventAllDay to true and give eventStartsAtISO that date at midnight (00:00:00) — never invent a time of day that was never said (P0-4: the review UI used to silently default missing times to a made-up clock time). Set eventAllDay to false whenever a specific time was stated.
 10. For create_calendar_event: set eventDateApproximate to true when the date itself is a loose guess rather than something the transcript clearly pins down (e.g. "sometime next month", "in a few weeks", a season with no date) — the review UI flags this for the user to double-check. Set it to false when the date is stated explicitly (a specific date) or unambiguously resolvable (a clearly named weekday, "tomorrow", "next Friday").
+11. Use create_person when a specific NEW person is named who clearly isn't in the "Household people" list below and the transcript implies they're worth remembering going forward, not just a passing mention with no lasting detail (e.g. "my new neighbor Sarah, she's really into gardening" or "met a guy named Dave at the gym, he's a physical therapist" → create_person; "the cashier at the grocery store was nice" → not actionable, omit per rule 5). Set personName to their stated name, personRelationshipTypeGuess to your best guess from the allowed enum (default "friend" when nothing else fits — never guess "self", "spouse", "partner", "co_parent", or "child" without clear textual evidence), and personNotes to whatever detail was mentioned about them (null if genuinely nothing beyond the name). Never use create_person for someone who might already be in the household list under a nickname you don't recognize — only use it when the name plainly doesn't match anyone listed.
+12. Use create_activity for a NEW ongoing hobby/interest/activity to track going forward — distinct from create_calendar_event, which is for something with an actual date/time. Rule of thumb: a specific date or "next Tuesday"/"this weekend" style reference → create_calendar_event; an ongoing thing with no specific date ("I want to start doing pottery", "Cal's starting swim lessons", "thinking about getting into fly tying") → create_activity. Set personId to the household person the activity is for if named (resolved exactly like rule 2 — null if unnamed or ambiguous, in which case the app attributes it to the device's own user), activityType to a short name for the activity (e.g. "Pottery classes", "Swim lessons", "Fly tying"), and activityNotes to any other detail mentioned (null if none).
 
 Return ONLY a single JSON object with exactly this shape (no prose, no markdown fences):
 {
   "items": [
     {
-      "type": "add_interest" | "log_interaction" | "record_gift" | "create_calendar_event" | "append_person_note" | "add_gift_budget" | "add_time_off",
+      "type": "add_interest" | "log_interaction" | "record_gift" | "create_calendar_event" | "append_person_note" | "add_gift_budget" | "add_time_off" | "create_person" | "create_activity",
       "summary": string,
       "personId": string | null,
+      "personName": string | null,
+      "personRelationshipTypeGuess": "self" | "child" | "spouse" | "partner" | "co_parent" | "parent" | "sibling" | "extended_family" | "friend" | "colleague" | "other" | null,
+      "personNotes": string | null,
+      "activityType": string | null,
+      "activityNotes": string | null,
       "interest": string | null,
       "interestStrength": "casual" | "regular" | "passionate" | null,
       "interactionType": "call" | "text" | "in_person" | "activity" | "other" | null,
@@ -60,7 +67,7 @@ Return ONLY a single JSON object with exactly this shape (no prose, no markdown 
     }
   ]
 }
-personId is required for every action type except create_calendar_event (null if the event isn't tied to a specific person — e.g. "team standup every Tuesday") and add_time_off (per rule 3). For add_time_off, timeOffStartDate and timeOffEndDate must be plain "YYYY-MM-DD" strings (no time component) resolved against today's date given below — timeOffEndDate may equal timeOffStartDate for a single day off, or be omitted (null) for a single day off; timeOffReason is optional freeform text and may be null. timeOffDestination is the specific place they're traveling to if one was stated (e.g. "Los Angeles", "my sister's in Denver") — extract it whenever a place is mentioned, even loosely, since this is what lets the rest of the app recognize a trip and plan around it; leave it null when no destination was said.
+personId is required for every action type except create_calendar_event (null if the event isn't tied to a specific person — e.g. "team standup every Tuesday"), add_time_off (per rule 3), create_activity (null resolves to the device's own user, per rule 12), and create_person (always null — the person doesn't exist yet; use personName instead). For add_time_off, timeOffStartDate and timeOffEndDate must be plain "YYYY-MM-DD" strings (no time component) resolved against today's date given below — timeOffEndDate may equal timeOffStartDate for a single day off, or be omitted (null) for a single day off; timeOffReason is optional freeform text and may be null. timeOffDestination is the specific place they're traveling to if one was stated (e.g. "Los Angeles", "my sister's in Denver") — extract it whenever a place is mentioned, even loosely, since this is what lets the rest of the app recognize a trip and plan around it; leave it null when no destination was said.
 
 Only populate the fields relevant to the chosen item's type; set every other field to null.`;
 
@@ -75,9 +82,18 @@ export const brainDumpItemSchema = z.object({
     "append_person_note",
     "add_gift_budget",
     "add_time_off",
+    "create_person",
+    "create_activity",
   ]),
   summary: z.string(),
   personId: z.string().nullable(),
+  personName: z.string().nullable(),
+  personRelationshipTypeGuess: z
+    .enum(["self", "child", "spouse", "partner", "co_parent", "parent", "sibling", "extended_family", "friend", "colleague", "other"])
+    .nullable(),
+  personNotes: z.string().nullable(),
+  activityType: z.string().nullable(),
+  activityNotes: z.string().nullable(),
   interest: z.string().nullable(),
   interestStrength: z.enum(["casual", "regular", "passionate"]).nullable(),
   interactionType: z.enum(["call", "text", "in_person", "activity", "other"]).nullable(),

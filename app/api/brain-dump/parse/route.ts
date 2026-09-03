@@ -148,6 +148,10 @@ export async function POST(request: Request) {
       noteText: restore(item.noteText),
       timeOffReason: restore(item.timeOffReason),
       timeOffDestination: restore(item.timeOffDestination),
+      personName: restore(item.personName),
+      personNotes: restore(item.personNotes),
+      activityType: restore(item.activityType),
+      activityNotes: restore(item.activityNotes),
     };
   });
 

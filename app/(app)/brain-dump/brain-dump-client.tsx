@@ -38,6 +38,8 @@ const ACTION_TYPES = [
   "append_person_note",
   "add_gift_budget",
   "add_time_off",
+  "create_person",
+  "create_activity",
 ] as const;
 type ActionType = (typeof ACTION_TYPES)[number];
 
@@ -49,7 +51,31 @@ const TYPE_LABELS: Record<ActionType, string> = {
   append_person_note: "Person note",
   add_gift_budget: "Gift budget",
   add_time_off: "Time off",
+  create_person: "New person",
+  create_activity: "New activity",
 };
+
+// D-140: the two types above are the "newly-created profile" types R-4
+// asks to walk through one-at-a-time (see the stepper in
+// BrainDumpClient's render below) rather than mixed flat into the
+// regular card list with everything else.
+const PROFILE_ITEM_TYPES = new Set<ActionType>(["create_person", "create_activity"]);
+
+// Excludes "self" -- brain dump can't create a second self person for the
+// household.
+const PERSON_RELATIONSHIP_OPTIONS = [
+  { value: "child", label: "Child" },
+  { value: "spouse", label: "Spouse" },
+  { value: "partner", label: "Partner" },
+  { value: "co_parent", label: "Co-parent" },
+  { value: "parent", label: "Parent" },
+  { value: "sibling", label: "Sibling" },
+  { value: "extended_family", label: "Extended family" },
+  { value: "friend", label: "Friend" },
+  { value: "colleague", label: "Colleague" },
+  { value: "other", label: "Other" },
+] as const;
+type PersonRelationshipOption = (typeof PERSON_RELATIONSHIP_OPTIONS)[number]["value"];
 
 interface PersonOption {
   id: string;
@@ -116,6 +142,11 @@ interface EditableItem {
   timeOffEndDate: string;
   timeOffReason: string;
   timeOffDestination: string;
+  personName: string;
+  personRelationshipTypeGuess: PersonRelationshipOption;
+  personNotes: string;
+  activityType: string;
+  activityNotes: string;
   status: "pending" | "saving" | "saved" | "error";
   errorMessage: string | null;
 }
@@ -146,6 +177,11 @@ interface ParsedApiItem {
   timeOffEndDate: string | null;
   timeOffReason: string | null;
   timeOffDestination: string | null;
+  personName: string | null;
+  personRelationshipTypeGuess: PersonRelationshipOption | "self" | null;
+  personNotes: string | null;
+  activityType: string | null;
+  activityNotes: string | null;
 }
 
 let clientIdCounter = 0;
@@ -203,6 +239,18 @@ function fromApiItem(item: ParsedApiItem): EditableItem {
     timeOffEndDate: item.timeOffEndDate ?? "",
     timeOffReason: item.timeOffReason ?? "",
     timeOffDestination: item.timeOffDestination ?? "",
+    personName: item.personName ?? "",
+    // The model can guess "self" for personRelationshipTypeGuess (it's a
+    // valid RelationshipType value) even though create_person can't
+    // actually create a second self person -- fall back to "other" rather
+    // than feeding an option the dropdown doesn't render.
+    personRelationshipTypeGuess:
+      item.personRelationshipTypeGuess && item.personRelationshipTypeGuess !== "self"
+        ? item.personRelationshipTypeGuess
+        : "other",
+    personNotes: item.personNotes ?? "",
+    activityType: item.activityType ?? "",
+    activityNotes: item.activityNotes ?? "",
     status: "pending",
     errorMessage: null,
   };
@@ -231,6 +279,10 @@ function isItemValid(item: EditableItem): boolean {
       );
     case "add_time_off":
       return item.timeOffStartDate.length > 0;
+    case "create_person":
+      return item.personName.trim().length > 0;
+    case "create_activity":
+      return item.activityType.trim().length > 0;
   }
 }
 
@@ -267,6 +319,11 @@ function toExecutePayload(item: EditableItem): Record<string, unknown> {
     timeOffEndDate: null as string | null,
     timeOffReason: null as string | null,
     timeOffDestination: null as string | null,
+    personName: null as string | null,
+    personRelationshipTypeGuess: null as string | null,
+    personNotes: null as string | null,
+    activityType: null as string | null,
+    activityNotes: null as string | null,
   };
 
   switch (item.type) {
@@ -318,6 +375,20 @@ function toExecutePayload(item: EditableItem): Record<string, unknown> {
         timeOffReason: item.timeOffReason.trim() || null,
         timeOffDestination: item.timeOffDestination.trim() || null,
       };
+    case "create_person":
+      return {
+        ...base,
+        personId: null,
+        personName: item.personName.trim(),
+        personRelationshipTypeGuess: item.personRelationshipTypeGuess,
+        personNotes: item.personNotes.trim() || null,
+      };
+    case "create_activity":
+      return {
+        ...base,
+        activityType: item.activityType.trim(),
+        activityNotes: item.activityNotes.trim() || null,
+      };
   }
 }
 
@@ -341,6 +412,11 @@ export function BrainDumpClient({
   // user starts typing genuinely new content (see the textarea onChange
   // below) or starts over.
   const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
+  // R-4: newly-created person/activity profiles get walked through
+  // one-at-a-time (a guided "next" sequence) rather than mixed flat into
+  // the regular multi-card list below — see profileItems/otherItems in
+  // the render. Index into `profileItems`, not into `items` directly.
+  const [profileStepIndex, setProfileStepIndex] = useState(0);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
 
   useEffect(() => {
@@ -422,6 +498,7 @@ export function BrainDumpClient({
           setParseMessage("Didn't find anything to save in that — add more detail and try again, or edit it below.");
         } else {
           setItems(data.items.map(fromApiItem));
+          setProfileStepIndex(0);
         }
       } else {
         setParseMessage(data.message ?? "Couldn't process that — try again.");
@@ -492,6 +569,7 @@ export function BrainDumpClient({
     setTranscript("");
     setParseMessage(null);
     setActiveBatchId(null);
+    setProfileStepIndex(0);
   }
 
   const pendingCount = items?.filter((it) => it.status === "pending" || it.status === "error").length ?? 0;
@@ -500,6 +578,21 @@ export function BrainDumpClient({
   // items instead of blocking — now it's disabled until every pending
   // item is filled in, with a message pointing at what's missing.
   const incompletePendingCount = items?.filter((it) => it.status === "pending" && !isItemValid(it)).length ?? 0;
+
+  // R-4: newly-created person/activity items are pulled out and reviewed
+  // one-at-a-time via the stepper below rather than mixed into the flat
+  // list. Only unresolved ones (pending/error) occupy a stepper slot —
+  // once saved or discarded they drop out and the index clamps down.
+  const unresolvedProfileItems =
+    items?.filter((it) => PROFILE_ITEM_TYPES.has(it.type) && (it.status === "pending" || it.status === "error")) ?? [];
+  // Everything not currently occupying a stepper slot renders in the flat
+  // list below — that includes every non-profile item, plus a profile
+  // item once it's been saved, so a saved new-person card doesn't just
+  // vanish (matches how every other saved item stays visible, dimmed).
+  const unresolvedProfileClientIds = new Set(unresolvedProfileItems.map((it) => it.clientId));
+  const otherItems = items?.filter((it) => !unresolvedProfileClientIds.has(it.clientId)) ?? [];
+  const clampedProfileStepIndex = Math.min(profileStepIndex, Math.max(0, unresolvedProfileItems.length - 1));
+  const currentProfileItem = unresolvedProfileItems[clampedProfileStepIndex] ?? null;
 
   if (!items) {
     return (
@@ -620,7 +713,45 @@ export function BrainDumpClient({
         </p>
       )}
 
-      {items.map((item) => (
+      {unresolvedProfileItems.length > 0 && currentProfileItem && (
+        <div className="flex flex-col gap-2 rounded-md border border-primary/30 bg-primary/5 p-3">
+          <div className="flex items-center justify-between text-xs font-medium text-muted-foreground">
+            <span>
+              New profile {clampedProfileStepIndex + 1} of {unresolvedProfileItems.length}
+            </span>
+            <div className="flex items-center gap-1.5">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={clampedProfileStepIndex === 0}
+                onClick={() => setProfileStepIndex((i) => Math.max(0, i - 1))}
+              >
+                Back
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={clampedProfileStepIndex >= unresolvedProfileItems.length - 1}
+                onClick={() => setProfileStepIndex((i) => Math.min(unresolvedProfileItems.length - 1, i + 1))}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+          <BrainDumpItemCard
+            key={currentProfileItem.clientId}
+            item={currentProfileItem}
+            people={people}
+            onChange={(patch) => updateItem(currentProfileItem.clientId, patch)}
+            onSave={() => void saveItem(currentProfileItem.clientId)}
+            onDiscard={() => discardItem(currentProfileItem.clientId)}
+          />
+        </div>
+      )}
+
+      {otherItems.map((item) => (
         <BrainDumpItemCard
           key={item.clientId}
           item={item}
@@ -700,7 +831,7 @@ function BrainDumpItemCard({
         )}
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        {item.type !== "create_calendar_event" && (
+        {item.type !== "create_calendar_event" && item.type !== "create_person" && (
           <div className="flex flex-col gap-1">
             <Label>Who</Label>
             <select
@@ -711,7 +842,7 @@ function BrainDumpItemCard({
               aria-label="Person"
             >
               <option value="">
-                {item.type === "add_time_off" ? "Me (default)" : "— Select —"}
+                {item.type === "add_time_off" || item.type === "create_activity" ? "Me (default)" : "— Select —"}
               </option>
               {people.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -719,7 +850,7 @@ function BrainDumpItemCard({
                 </option>
               ))}
             </select>
-            {item.personId == null && item.type !== "add_time_off" && (
+            {item.personId == null && item.type !== "add_time_off" && item.type !== "create_activity" && (
               <p className="text-xs text-muted-foreground">
                 I couldn&apos;t tell for sure who this is about — pick someone to save it.
               </p>
@@ -870,6 +1001,65 @@ function BrainDumpItemCard({
             <Label>Note</Label>
             <Textarea value={item.noteText} disabled={disabled} onChange={(e) => onChange({ noteText: e.target.value })} />
           </div>
+        )}
+
+        {item.type === "create_person" && (
+          <>
+            <div className="flex flex-col gap-1">
+              <Label>Name</Label>
+              <Input
+                value={item.personName}
+                disabled={disabled}
+                onChange={(e) => onChange({ personName: e.target.value })}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label>Relationship</Label>
+              <select
+                value={item.personRelationshipTypeGuess}
+                disabled={disabled}
+                onChange={(e) =>
+                  onChange({ personRelationshipTypeGuess: e.target.value as EditableItem["personRelationshipTypeGuess"] })
+                }
+                className={selectClass}
+              >
+                {PERSON_RELATIONSHIP_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label>Notes (optional)</Label>
+              <Textarea
+                value={item.personNotes}
+                disabled={disabled}
+                onChange={(e) => onChange({ personNotes: e.target.value })}
+              />
+            </div>
+          </>
+        )}
+
+        {item.type === "create_activity" && (
+          <>
+            <div className="flex flex-col gap-1">
+              <Label>Activity</Label>
+              <Input
+                value={item.activityType}
+                disabled={disabled}
+                onChange={(e) => onChange({ activityType: e.target.value })}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label>Notes (optional)</Label>
+              <Textarea
+                value={item.activityNotes}
+                disabled={disabled}
+                onChange={(e) => onChange({ activityNotes: e.target.value })}
+              />
+            </div>
+          </>
         )}
 
         {item.type === "create_calendar_event" && (

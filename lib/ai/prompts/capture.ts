@@ -77,8 +77,23 @@ export const captureActionSchema = z.object({
         "append_person_note",
         "add_gift_budget",
         "add_time_off",
+        "create_person",
+        "create_activity",
       ]),
       personId: z.string().nullable(),
+      // D-140: kept structurally in sync with brainDumpItemSchema (the
+      // live shared shape both features actually parse against, see file
+      // header) purely so CaptureAction stays a superset that
+      // capture-actions.ts's executeAction switch can narrow on — not
+      // because CAPTURE_SYSTEM_PROMPT/captureActionSchema are used at
+      // runtime.
+      personName: z.string().nullable(),
+      personRelationshipTypeGuess: z
+        .enum(["self", "child", "spouse", "partner", "co_parent", "parent", "sibling", "extended_family", "friend", "colleague", "other"])
+        .nullable(),
+      personNotes: z.string().nullable(),
+      activityType: z.string().nullable(),
+      activityNotes: z.string().nullable(),
       interest: z.string().nullable(),
       interestStrength: z.enum(["casual", "regular", "passionate"]).nullable(),
       interactionType: z.enum(["call", "text", "in_person", "activity", "other"]).nullable(),
