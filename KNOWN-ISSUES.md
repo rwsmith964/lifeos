@@ -122,3 +122,7 @@ A full-page voice-or-text "brain dump" flow now splits a rambling multi-topic no
 ## Fixed and verified this pass (D-146 — cron routes no longer fail open on a missing `CRON_SECRET`)
 
 **Real gap found and fixed:** D-093 (above) set `CRON_SECRET` in Vercel production but left each of the five cron routes' own `isAuthorized` check unchanged — every copy still explicitly failed OPEN (`if (!secret) return true`) if the env var were ever missing again. D-146 replaces all five inline copies with a single shared `lib/http/cron-auth.ts` helper that fails CLOSED in production instead, adds `scripts/check-cron-config.mjs` to fail the build outright if `CRON_SECRET` is missing in production (mirroring the existing `check-ai-config.mjs` pattern), and adds a regression test locking in the fail-closed behavior so this can't quietly reopen. See D-146 in DECISIONS.md for full detail.
+
+## Fixed and verified this pass (D-147 — no automated CI, now added)
+
+**Real gap found and fixed:** the repo had no automated verification of any kind for the core web app — `ios-build.yml` only covers the Capacitor iOS simulator build. Every push or PR to `main` could carry a broken typecheck, lint error, failing test, or build break with nothing catching it automatically. D-147 adds `.github/workflows/verify.yml`, running `pnpm typecheck && pnpm lint && pnpm test && pnpm build` on every push to `main`, every PR, and on-demand via `workflow_dispatch`. See D-147 in DECISIONS.md for full detail, including verification that the build step needs no Supabase secrets in CI.
