@@ -3358,3 +3358,50 @@ wanted later.
 warnings only). New test file `lib/people/demographic-interests.test.ts` (7 tests). Full suite:
 **78 test files / 758 tests passing** (up from D-136's 77/751 — the +7 are the new tests, zero
 regressions). `pnpm build` — succeeds.
+
+---
+
+## D-138: In-app feature-flag management (Settings > Modules)
+
+**Context:** Every module flag introduced by the Build Brief engagement (`relationship_gift_engine_v2`,
+`leisure_planner_v2`, `universal_intake_v2`, `scheduling_v2`, `ambient_display`,
+`execution_draft_only`, `household_layer`, `brief_registration_v2`) had been toggled exclusively via
+direct SQL against the `feature_flags` table across every prior session — flagged as a real gap in
+D-136's QUEUE-039 and scoped as roadmap item **R-5** in `ROADMAP-PROACTIVE-ASSISTANT.md`. This closes
+that gap.
+
+**What shipped:**
+
+- `app/(app)/settings/feature-flags-actions.ts` (new) — `setFeatureFlagAction(key, enabled)`, an
+  owner/adult-gated Server Action (same `requireOwnerOrAdult` shape as
+  `household-invite-actions.ts`) that calls the existing, already-tested `lib/flags.ts`
+  `setFeatureFlag()` and revalidates `/settings`. Throws on failure rather than returning a form
+  state, so it pairs with `useAsyncToastAction` (D-137's pattern) instead of `useActionState`.
+- `app/(app)/settings/feature-flags.tsx` (new) — a "Modules" card listing every key in
+  `FEATURE_FLAGS` with its one-line description and a switch. A household member who isn't an
+  owner/adult sees the current state read-only with an explanatory note (feature_flags' own RLS
+  already enforces this; the UI just avoids a raw permission error). No `@radix-ui/react-switch`
+  dependency existed and this is the only control in the app that needs one, so the switch is a
+  plain `role="switch"` button styled with existing Tailwind tokens (`bg-primary`/`bg-input`) —
+  same "don't add a dependency for one control" call as D-137's `role="button"` bubbles.
+- `app/(app)/settings/page.tsx` (edited) — fetches `listFeatureFlagStates()` (already existed,
+  unused until now) alongside the page's other parallel queries and renders `<FeatureFlags>` at the
+  bottom of Settings.
+
+Toggling a flag off does not un-flag any data already written while it was on (e.g. turning off
+`universal_intake_v2` doesn't hide existing intake drafts, it just stops surfacing new intake UI) —
+same semantics as `isFeatureEnabled`'s existing default-false-on-absence behavior; this UI only
+changes whether a row's `enabled` is true or false, nothing else.
+
+**Scope explicitly not built:** no confirmation dialog before toggling (flags are reversible
+household configuration, not a destructive action — the toast's Undo covers the "made a mistake"
+case per the async-action ground rule, without adding a click to arm every toggle); no per-flag
+audit log of who toggled what when (the `feature_flags` table already has `updated_at`, but no
+`updated_by` column — would need a migration if this becomes important).
+
+**Verification:** `pnpm typecheck` — 0 errors. `pnpm lint` — 0 errors (34 pre-existing unrelated
+warnings only, same set as D-137). Existing `lib/flags.test.ts` (5 tests) already covered
+`setFeatureFlag`/`listFeatureFlagStates` directly — no new test file added since no other Settings
+action file (`household-invite-actions.ts`, `calendar-feed-actions.ts`) has a dedicated test file
+either, so this stays consistent with that existing pattern. Full suite: **78 test files / 758
+tests passing** (unchanged from D-137 — no new tests, zero regressions). `pnpm build` — succeeds.

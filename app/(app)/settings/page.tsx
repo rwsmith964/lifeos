@@ -9,6 +9,8 @@ import { HouseholdMembers, type HouseholdMemberDisplay } from "./household-membe
 import { HouseholdSwitcher, type HouseholdSwitcherItem } from "./household-switcher";
 import { CalendarFeeds } from "./calendar-feeds";
 import { MySchedule } from "./my-schedule";
+import { FeatureFlags } from "./feature-flags";
+import { listFeatureFlagStates } from "@/lib/flags";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -22,11 +24,12 @@ export default async function SettingsPage() {
     role: m.role,
   }));
 
-  const [members, invites, calendarFeeds, people] = await Promise.all([
+  const [members, invites, calendarFeeds, people, featureFlagStates] = await Promise.all([
     listMembersOfHousehold(supabase, household.id),
     listInvitesForHousehold(supabase, household.id),
     listCalendarFeedsForHousehold(supabase, household.id),
     listPeopleForHousehold(supabase, household.id),
+    listFeatureFlagStates(supabase, household.id),
   ]);
   // The account owner's own person record (relationship_type "self") is
   // intentionally excluded from /people (P0-5), so their own work schedule
@@ -79,6 +82,7 @@ export default async function SettingsPage() {
         currentUserId={userId}
       />
       <CalendarFeeds feeds={calendarFeeds} canManage={canManage} />
+      <FeatureFlags states={featureFlagStates} canManage={canManage} />
     </div>
   );
 }
