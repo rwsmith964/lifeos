@@ -55,11 +55,12 @@ Return ONLY a single JSON object with exactly this shape (no prose, no markdown 
       "budgetMaxDollars": number | null,
       "timeOffStartDate": string | null,
       "timeOffEndDate": string | null,
-      "timeOffReason": string | null
+      "timeOffReason": string | null,
+      "timeOffDestination": string | null
     }
   ]
 }
-personId is required for every action type except create_calendar_event (null if the event isn't tied to a specific person — e.g. "team standup every Tuesday") and add_time_off (per rule 3). For add_time_off, timeOffStartDate and timeOffEndDate must be plain "YYYY-MM-DD" strings (no time component) resolved against today's date given below — timeOffEndDate may equal timeOffStartDate for a single day off, or be omitted (null) for a single day off; timeOffReason is optional freeform text and may be null.
+personId is required for every action type except create_calendar_event (null if the event isn't tied to a specific person — e.g. "team standup every Tuesday") and add_time_off (per rule 3). For add_time_off, timeOffStartDate and timeOffEndDate must be plain "YYYY-MM-DD" strings (no time component) resolved against today's date given below — timeOffEndDate may equal timeOffStartDate for a single day off, or be omitted (null) for a single day off; timeOffReason is optional freeform text and may be null. timeOffDestination is the specific place they're traveling to if one was stated (e.g. "Los Angeles", "my sister's in Denver") — extract it whenever a place is mentioned, even loosely, since this is what lets the rest of the app recognize a trip and plan around it; leave it null when no destination was said.
 
 Only populate the fields relevant to the chosen item's type; set every other field to null.`;
 
@@ -101,6 +102,7 @@ export const brainDumpItemSchema = z.object({
   timeOffStartDate: z.string().nullable(),
   timeOffEndDate: z.string().nullable(),
   timeOffReason: z.string().nullable(),
+  timeOffDestination: z.string().nullable(),
 });
 
 export const brainDumpResponseSchema = z.object({

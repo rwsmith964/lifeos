@@ -278,6 +278,7 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
                           : `${format(new Date(`${entry.start_date}T00:00:00`), "MMM d")}–${format(new Date(`${entry.end_date}T00:00:00`), "MMM d")}`}
                       </span>{" "}
                       {entry.reason && <span className="text-muted-foreground">{entry.reason}</span>}
+                      {entry.destination && <span className="text-muted-foreground"> — {entry.destination}</span>}
                     </p>
                     <DeleteTimeOffButton personId={id} entryId={entry.id} />
                   </div>

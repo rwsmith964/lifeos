@@ -147,6 +147,7 @@ export async function POST(request: Request) {
       eventTitle: restore(item.eventTitle),
       noteText: restore(item.noteText),
       timeOffReason: restore(item.timeOffReason),
+      timeOffDestination: restore(item.timeOffDestination),
     };
   });
 

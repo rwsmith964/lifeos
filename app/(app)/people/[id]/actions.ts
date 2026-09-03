@@ -305,6 +305,7 @@ export async function addTimeOffAction(
     // time off requested this way (a sick day, an appointment) is one day.
     end_date: String(formData.get("endDate") || startDate),
     reason: String(formData.get("reason") ?? ""),
+    destination: String(formData.get("destination") ?? ""),
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
 

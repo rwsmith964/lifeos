@@ -53,11 +53,12 @@ Return ONLY a single JSON object with exactly this shape (no prose, no markdown 
     "budgetMaxDollars": number | null,
     "timeOffStartDate": string | null,
     "timeOffEndDate": string | null,
-    "timeOffReason": string | null
+    "timeOffReason": string | null,
+    "timeOffDestination": string | null
   } | null,
   "confirmationMessage": string | null
 }
-personId is required for every action type except create_calendar_event, where it identifies the household member the event is about/with, if any (null if the event isn't tied to a specific person — e.g. "team standup every Tuesday"), and except add_time_off, where an unnamed person is left null per rule 7 above (the app resolves it server-side, never the model). record_gift always records a gift IDEA (status "idea"), never a completed transaction — for something already given, tell the user to use "Record gift" on the person's page instead, via an "unrecognized" status. For add_time_off, timeOffStartDate and timeOffEndDate must be plain "YYYY-MM-DD" strings (no time component) resolved against today's date given below — timeOffEndDate may equal timeOffStartDate for a single day off, or be omitted (null) for a single day off; timeOffReason is optional freeform text (e.g. "Vacation", "Sick") and may be null if the user didn't say why.
+personId is required for every action type except create_calendar_event, where it identifies the household member the event is about/with, if any (null if the event isn't tied to a specific person — e.g. "team standup every Tuesday"), and except add_time_off, where an unnamed person is left null per rule 7 above (the app resolves it server-side, never the model). record_gift always records a gift IDEA (status "idea"), never a completed transaction — for something already given, tell the user to use "Record gift" on the person's page instead, via an "unrecognized" status. For add_time_off, timeOffStartDate and timeOffEndDate must be plain "YYYY-MM-DD" strings (no time component) resolved against today's date given below — timeOffEndDate may equal timeOffStartDate for a single day off, or be omitted (null) for a single day off; timeOffReason is optional freeform text (e.g. "Vacation", "Sick") and may be null if the user didn't say why. timeOffDestination is the specific place they're traveling to if one was stated (e.g. "Los Angeles", "my sister's in Denver") — this is what lets the rest of the app recognize a trip and plan around it, so extract it whenever a place is mentioned, even loosely; leave it null when no destination was said (a plain "I'm off Friday" with no travel implied).
 
 Only populate the fields relevant to the chosen action.type; set every other action field to null. When status is "needs_clarification" or "unrecognized", action must be null and question (or confirmationMessage, for "unrecognized") must be set. When status is "ready", action must be set and confirmationMessage must be a short (under 20 words) human-readable summary phrased as already-done, e.g. "Added 'fly fishing' to Dave's interests" or "Logged a call with Mom today".`;
 
@@ -100,6 +101,7 @@ export const captureActionSchema = z.object({
       timeOffStartDate: z.string().nullable(),
       timeOffEndDate: z.string().nullable(),
       timeOffReason: z.string().nullable(),
+      timeOffDestination: z.string().nullable(),
     })
     .nullable(),
   confirmationMessage: z.string().nullable(),
