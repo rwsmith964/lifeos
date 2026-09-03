@@ -11,6 +11,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { requireHouseholdContext } from "@/lib/auth/session";
 import type { CaptureAction } from "@/lib/ai/prompts/capture";
 import { peopleRepo, personGiftBudgetsRepo, personInterestsRepo } from "@/lib/db/repositories/people";
+import { userActivitiesRepo } from "@/lib/db/repositories/activities";
 import { giftsRepo } from "@/lib/db/repositories/gifts";
 import { interactionsRepo, recordContactForCadence } from "@/lib/db/repositories/contact";
 import { calendarEventsRepo, eventAttendeesRepo } from "@/lib/db/repositories/calendar";
@@ -149,6 +150,50 @@ export async function executeAction(
       }
       return { table: "calendar_events", id: event.id };
     }
+    case "create_person": {
+      if (!action.personName) throw new Error("Missing person name");
+      const row = await peopleRepo.create(supabase, {
+        household_id: household.id,
+        full_name: action.personName,
+        relationship_type: action.personRelationshipTypeGuess ?? "friend",
+        notes: action.personNotes ?? "",
+      });
+      return { table: "people", id: row.id };
+    }
+    case "create_activity": {
+      if (!action.activityType) throw new Error("Missing activity type");
+      // Rule 12 in BRAIN_DUMP_SYSTEM_PROMPT: an unnamed/unresolved person
+      // defaults to the household's "self" person, same deliberate
+      // exception pattern as add_time_off above.
+      const personId = action.personId ?? selfPerson.id;
+      const row = await userActivitiesRepo.create(supabase, {
+        household_id: household.id,
+        person_id: personId,
+        activity_type: action.activityType,
+        // No enjoyment/duration signal exists in a brain-dump transcript by
+        // design (rule 12 only extracts a name + optional note) -- these
+        // are reasonable neutral defaults the user corrects on the
+        // Activities page, same "created minimal, refined later" pattern
+        // already established for calendar events (default 1hr duration
+        // when no end time is stated).
+        enjoyment_rank: 5,
+        typical_duration_minutes: 60,
+      });
+      // user_activities has no free-text notes column (deliberately kept
+      // clean -- it's a structured planning row, not a journal), so any
+      // extra detail the transcript mentioned is folded into the target
+      // person's notes instead, via the exact same append pattern as
+      // append_person_note above, rather than silently dropped.
+      if (action.activityNotes) {
+        const person = await peopleRepo.getById(supabase, personId);
+        if (person) {
+          const line = `${action.activityType}: ${action.activityNotes}`;
+          const nextNotes = person.notes ? `${person.notes}\n${line}` : line;
+          await peopleRepo.update(supabase, personId, { notes: nextNotes });
+        }
+      }
+      return { table: "user_activities", id: row.id };
+    }
     case "add_time_off": {
       if (!action.timeOffStartDate) throw new Error("Missing time off start date");
       // Rule 7 in CAPTURE_SYSTEM_PROMPT / BRAIN_DUMP_SYSTEM_PROMPT: an
@@ -207,6 +252,8 @@ export async function verifyExecuted(supabase: SupabaseClient, result: ExecuteAc
       return (await personGiftBudgetsRepo.getById(supabase, result.id)) !== null;
     case "people":
       return (await peopleRepo.getById(supabase, result.id)) !== null;
+    case "user_activities":
+      return (await userActivitiesRepo.getById(supabase, result.id)) !== null;
     case "calendar_events":
       return (await calendarEventsRepo.getById(supabase, result.id)) !== null;
     case "time_off_entries":
