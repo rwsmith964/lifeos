@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireHouseholdContext } from "@/lib/auth/session";
+import { getZonedNow } from "@/lib/timezones";
 import { calendarEventsRepo, custodyBlocksRepo, eventAttendeesRepo } from "@/lib/db/repositories/calendar";
 import { timeOffEntriesRepo } from "@/lib/db/repositories/work-schedule";
 import { createSupabaseServiceRoleClient } from "@/lib/db/client-service-role";
@@ -99,7 +100,7 @@ export interface WeekendPlanActionState {
 }
 
 export async function generateWeekendPlanAction(): Promise<WeekendPlanActionState> {
-  const { household } = await requireHouseholdContext();
+  const { household, timezone } = await requireHouseholdContext();
 
   // weekend_plans (and the external_data_cache writes generateWeekendPlan
   // makes along the way) have no insert policy for regular authenticated
@@ -112,7 +113,10 @@ export async function generateWeekendPlanAction(): Promise<WeekendPlanActionStat
   const serviceRoleClient = createSupabaseServiceRoleClient();
 
   try {
-    const result = await generateWeekendPlan(serviceRoleClient, household.id);
+    // D-143: household-local today, so "upcoming Saturday" doesn't skip
+    // ahead a full week when the server's UTC day has already rolled over
+    // past the user's local midnight.
+    const result = await generateWeekendPlan(serviceRoleClient, household.id, getZonedNow(timezone));
     if (result.status === "ai_unavailable" || result.status === "budget_exceeded") {
       return { error: result.reason };
     }
@@ -163,7 +167,7 @@ export interface AcceptWeekendPlanActionState {
 // shape (the UI only ever has one weekend plan in view at a time, for
 // upcomingSaturday, so there's nothing for the caller to pass).
 export async function acceptWeekendPlanAction(): Promise<AcceptWeekendPlanActionState> {
-  const { household, selfPerson } = await requireHouseholdContext();
+  const { household, selfPerson, timezone } = await requireHouseholdContext();
 
   // weekend_plans has no insert/update policy for regular authenticated
   // users (see the migration comment and D-029/D-131) -- same service-role
@@ -175,7 +179,9 @@ export async function acceptWeekendPlanAction(): Promise<AcceptWeekendPlanAction
     // The plan the UI shows is always "the upcoming Saturday's" -- same
     // daysUntilSaturday math as app/(app)/calendar/page.tsx's weekendPlan
     // lookup, so the button never needs to know a weekend_plans id.
-    const today = startOfDay(new Date());
+    // D-143: household-local today, not a bare `new Date()` -- see
+    // lib/timezones.ts's getZonedNow for why.
+    const today = startOfDay(getZonedNow(timezone));
     const daysUntilSaturday = (6 - today.getDay() + 7) % 7;
     const upcomingSaturday = format(new Date(today.getTime() + daysUntilSaturday * 86400000), "yyyy-MM-dd");
     const plan = await getWeekendPlanForDate(serviceRoleClient, household.id, upcomingSaturday);

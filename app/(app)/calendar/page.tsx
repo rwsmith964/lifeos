@@ -11,7 +11,6 @@ import {
   format,
   isSameDay,
   isSameMonth,
-  isToday,
   parse,
   startOfDay,
   startOfMonth,
@@ -21,6 +20,7 @@ import {
   subWeeks,
 } from "date-fns";
 import { requireHouseholdContext } from "@/lib/auth/session";
+import { getZonedNow } from "@/lib/timezones";
 import {
   listAttendeeNamesForEvents,
   listAttendeesForEvents,
@@ -182,18 +182,24 @@ function humanizeChipLabel(raw: string): string {
   );
 }
 
-function parseMonthParam(raw: string | undefined): Date {
-  if (!raw) return startOfMonth(new Date());
-  const parsed = parse(raw, MONTH_PARAM_FORMAT, new Date());
-  return Number.isNaN(parsed.getTime()) ? startOfMonth(new Date()) : startOfMonth(parsed);
+// D-143: `now` is the household-local "current instant" (getZonedNow(timezone)
+// from the caller), never a bare `new Date()` -- the server runs in UTC, so
+// an un-zoned reference date reads as tomorrow once the user's local evening
+// has passed midnight UTC. Parsing an explicit ?month=/?day= param is
+// timezone-agnostic (it's just parsing digits), so `now` is only used for
+// the "no param given" defaults below.
+function parseMonthParam(raw: string | undefined, now: Date): Date {
+  if (!raw) return startOfMonth(now);
+  const parsed = parse(raw, MONTH_PARAM_FORMAT, now);
+  return Number.isNaN(parsed.getTime()) ? startOfMonth(now) : startOfMonth(parsed);
 }
 
-function parseDayParam(raw: string | undefined, monthDate: Date): Date {
+function parseDayParam(raw: string | undefined, monthDate: Date, now: Date): Date {
   if (raw) {
-    const parsed = parse(raw, DAY_PARAM_FORMAT, new Date());
+    const parsed = parse(raw, DAY_PARAM_FORMAT, now);
     if (!Number.isNaN(parsed.getTime())) return startOfDay(parsed);
   }
-  const today = startOfDay(new Date());
+  const today = startOfDay(now);
   return isSameMonth(today, monthDate) ? today : startOfMonth(monthDate);
 }
 
@@ -240,12 +246,16 @@ export default async function CalendarPage({
   searchParams: Promise<{ month?: string; day?: string; view?: string; range?: string }>;
 }) {
   const { month: monthParam, day: dayParam, view: viewParam, range: rangeParam } = await searchParams;
-  const { supabase, household, selfPerson } = await requireHouseholdContext();
+  const { supabase, household, selfPerson, timezone } = await requireHouseholdContext();
   const view = viewParam === "custody" ? "custody" : "all";
   const range = parseRangeParam(rangeParam);
+  // D-143: single household-local "now" for every "what day is today"
+  // decision on this page (month/day param defaults, the weekend-plan
+  // Saturday lookup, and the today-highlight in the month grid below).
+  const now = getZonedNow(timezone);
 
-  const monthDate = parseMonthParam(monthParam);
-  const selectedDay = parseDayParam(dayParam, monthDate);
+  const monthDate = parseMonthParam(monthParam, now);
+  const selectedDay = parseDayParam(dayParam, monthDate, now);
   const monthLabel = format(monthDate, MONTH_PARAM_FORMAT);
 
   // D-065: month view's window is the full grid (including the leading/
@@ -580,7 +590,7 @@ export default async function CalendarPage({
     nextMonthHref = `/calendar?month=${format(addMonths(monthDate, 1), MONTH_PARAM_FORMAT)}${viewQuery}`;
   }
 
-  const today = startOfDay(new Date());
+  const today = startOfDay(now);
   const daysUntilSaturday = (6 - today.getDay() + 7) % 7;
   // "This weekend" means the Saturday still ahead of (or today, if today
   // IS Saturday) the current day — not next Saturday when today already
@@ -857,7 +867,7 @@ export default async function CalendarPage({
                       "flex min-h-[64px] flex-col gap-0.5 rounded-md px-0.5 py-1 text-xs",
                       inMonth ? "text-foreground" : "text-muted-foreground/40",
                       selected && "bg-primary text-primary-foreground",
-                      !selected && isToday(day) && "font-semibold text-primary"
+                      !selected && isSameDay(day, today) && "font-semibold text-primary"
                     )}
                   >
                     {custodyRows.length > 0 && (

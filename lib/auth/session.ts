@@ -24,6 +24,15 @@ export interface HouseholdContext {
   // than one (D-055 household switching) — the common single-household
   // case gets a one-item list and no visible switcher.
   memberships: HouseholdMembership[];
+  // D-143: the signed-in user's own IANA timezone (users.timezone,
+  // defaults 'America/Los_Angeles' — see migration 20260820000002).
+  // Every server-side "what day is today" computation must derive from
+  // this via lib/timezones.ts's getZonedNow(timezone), never a bare
+  // `new Date()` — the server process itself runs in UTC (Vercel
+  // Serverless Functions have no TZ override), so an un-zoned `new
+  // Date()` reads as tomorrow's date for any user west of UTC once their
+  // local evening has rolled past midnight UTC.
+  timezone: string;
 }
 
 // Memoized per request (React's cache(), not a cross-request cache — see
@@ -50,16 +59,17 @@ export const requireHouseholdContext = cache(async (): Promise<HouseholdContext>
   // household to choose between.
   const { data: userRow } = await supabase
     .from("users")
-    .select("active_household_id")
+    .select("active_household_id, timezone")
     .eq("id", user.id)
     .single();
   const activeId = userRow?.active_household_id as string | null | undefined;
   const active = memberships.find((m) => m.household.id === activeId) ?? memberships[0];
   const household = active.household;
+  const timezone = (userRow?.timezone as string | null | undefined) ?? "America/Los_Angeles";
 
   const people = await listPeopleForHousehold(supabase, household.id, { includeArchived: true });
   const selfPerson = people.find((p) => p.user_id === user.id && p.relationship_type === "self");
   if (!selfPerson) redirect("/onboarding");
 
-  return { supabase, userId: user.id, household, selfPerson, memberships };
+  return { supabase, userId: user.id, household, selfPerson, memberships, timezone };
 });

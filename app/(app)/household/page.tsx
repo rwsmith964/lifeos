@@ -11,6 +11,7 @@
 import { notFound } from "next/navigation";
 import { format } from "date-fns";
 import { requireHouseholdContext } from "@/lib/auth/session";
+import { getZonedNow } from "@/lib/timezones";
 import { isFeatureEnabled } from "@/lib/flags";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
 import {
@@ -35,14 +36,16 @@ export const metadata = {
 };
 
 export default async function HouseholdPage() {
-  const { supabase, household } = await requireHouseholdContext();
+  const { supabase, household, timezone } = await requireHouseholdContext();
 
   const enabled = await isFeatureEnabled(supabase, household.id, "household_layer");
   if (!enabled) {
     notFound();
   }
 
-  const today = new Date();
+  // D-143: household-local today, not a bare `new Date()` -- see
+  // lib/timezones.ts's getZonedNow for why.
+  const today = getZonedNow(timezone);
   const days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(today);
     d.setDate(d.getDate() + i);

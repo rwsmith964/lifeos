@@ -5,6 +5,8 @@
 // `Intl.supportedValuesOf("timeZone")` is available in Node 18+ and all
 // evergreen browsers, so this needs no bundled data file. A small
 // hardcoded fallback covers the rare runtime where it's missing.
+import { toZonedTime } from "date-fns-tz";
+
 const FALLBACK_TIMEZONES = [
   "America/Los_Angeles",
   "America/Denver",
@@ -46,4 +48,26 @@ export function isValidTimezone(value: string): boolean {
   } catch {
     return false;
   }
+}
+
+// D-143: single source of truth for "what is 'today' for this person".
+// Vercel Serverless Functions (and this sandbox) run Node with no TZ
+// override, i.e. the process's system timezone is UTC -- every date-fns
+// call (startOfDay, isToday, format, ...) reads wall-clock components via
+// that system timezone. Before this helper, every "today" computation on
+// the server used `new Date()` directly, which is a UTC instant: any user
+// west of UTC sees tomorrow's date after their local evening rolls past
+// midnight UTC (e.g. 7pm PDT is already 2am UTC the next day) -- exactly
+// the D-143 bug report (calendar showing 9/3 at 7:49pm PDT on 9/2).
+//
+// `toZonedTime` shifts the real UTC instant by `timezone`'s offset, so the
+// returned Date's (UTC-read) components equal the wall-clock date/time in
+// that zone. Passing this Date into ordinary date-fns functions then
+// produces the correct local day everywhere, with no per-call-site
+// timezone math. Always call this with the household/user's stored
+// `timezone` (never a bare `new Date()`) for any "what day is today"
+// decision -- calendar defaults, weekend-plan lookup, daily brief
+// generation, "today" quick-actions, and future-date validation.
+export function getZonedNow(timezone: string): Date {
+  return toZonedTime(new Date(), timezone);
 }

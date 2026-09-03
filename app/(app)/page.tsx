@@ -2,6 +2,7 @@ import { addDays, format, formatDistanceToNow, startOfDay } from "date-fns";
 import Link from "next/link";
 import { AlertTriangle, CalendarClock, CheckSquare, Cloud, Gift, Mic, Sparkles, Users, Zap } from "lucide-react";
 import { requireHouseholdContext } from "@/lib/auth/session";
+import { getZonedNow } from "@/lib/timezones";
 import { generateDailyBrief } from "@/lib/brief/generate";
 import { isBriefStale } from "@/lib/brief/staleness";
 import { isFeatureEnabled } from "@/lib/flags";
@@ -18,9 +19,14 @@ import { Separator } from "@/components/ui/separator";
 import { RegenerateBriefButton } from "./regenerate-brief-button";
 
 export default async function BriefPage() {
-  const { supabase, household, selfPerson } = await requireHouseholdContext();
+  const { supabase, household, selfPerson, timezone } = await requireHouseholdContext();
 
-  const today = new Date();
+  // D-143: household-local today, not a bare `new Date()` -- the server
+  // runs in UTC, so an un-zoned reference date reads as tomorrow once the
+  // user's local evening has passed midnight UTC (this is what generated
+  // the wrong day's brief for the same reason the calendar showed the
+  // wrong date).
+  const today = getZonedNow(timezone);
   const todayDateStr = format(today, "yyyy-MM-dd");
 
   let brief = await getBriefForPersonAndDate(supabase, selfPerson.id, todayDateStr);
