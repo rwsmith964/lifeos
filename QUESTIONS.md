@@ -453,3 +453,11 @@ optimization with no user-visible effect at current scale.
 is expanded to assert row-level results per table first, giving strong regression coverage before
 a batch rewrite, or (b) if real production load ever makes RLS evaluation cost measurable (neither
 is true today — this is a pre-launch app).
+
+### QUEUE-046
+**Module:** Cross-household sharing design (D-149) — DECISIONS.md, no code/schema/UI changed.
+**File(s):** none changed — this is a design-doc scoping note. Would affect a future implementation of `household_link_consents`, `household_link_availability_probes`, `household_link_invites`, and the associated RLS policies described in D-149.
+**Question:** D-149 proposes an initial v1 category set (`calendar`, `custody_schedule`, `people_basic`, `activities`, `availability`) for cross-household sharing, based on what the app already models. This is not a locked spec — it's a reasonable starting taxonomy, not something the user explicitly confirmed. Two things a future implementation pass needs a decision on that this design doc intentionally left open: (1) which category (or categories) to build first — `calendar` is the cheapest to extend since `household_links`/`is_linked_household_member` already exist, but `availability` is likely the most user-facing valuable one and needs a new RPC, rate-limit table, and probe log from scratch; (2) whether `custody_schedule`'s per-child `scope` column (proposed as `jsonb`, nullable = "all applicable") is the right shape, or whether custody-relevant sharing should instead be derived automatically from existing custody-block child assignments rather than requiring a separate manual scope selection.
+**Assumption made:** None yet — no implementation started. The design doc flags this as an open question for whoever picks up the implementation pass, per the standing instruction to log rather than block on every open design choice.
+**Reversal cost:** N/A — design-only, nothing built.
+**Blocking:** No. This does not block Part 5 or any other queued work. Relevant only when/if the user greenlights implementing D-149.
