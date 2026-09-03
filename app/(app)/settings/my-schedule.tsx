@@ -82,6 +82,7 @@ export function MySchedule({
                         : `${format(new Date(`${entry.start_date}T00:00:00`), "MMM d")}–${format(new Date(`${entry.end_date}T00:00:00`), "MMM d")}`}
                     </span>{" "}
                     {entry.reason && <span className="text-muted-foreground">{entry.reason}</span>}
+                    {entry.destination && <span className="text-muted-foreground"> — {entry.destination}</span>}
                   </p>
                   <DeleteTimeOffButton personId={personId} entryId={entry.id} />
                 </div>

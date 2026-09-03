@@ -137,6 +137,10 @@ export async function generateWeekendPlanAction(): Promise<WeekendPlanActionStat
         error: "Add at least one activity, and set your home address under Settings, to generate a weekend plan.",
       };
     }
+    // D-135: "generated" and "traveling" both fall through here on purpose
+    // — both persisted a real weekend_plans row (the calendar page reads
+    // it back and renders whichever content_markdown got written), so
+    // neither needs its own branch above.
   } catch (error) {
     return { error: friendlyMutationError(error, { fallback: "Couldn't generate a weekend plan — please try again." }) };
   }

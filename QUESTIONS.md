@@ -354,3 +354,11 @@ the remaining modules.
 ## Q-001 | NAMING | Priority: LOW | Resolved 2026-08-21
 **Question:** What should the product actually be called?
 **Answer:** Keep "LifeOS" (Option A) for now. `APP_NAME` in `lib/constants.ts` stays as-is.
+
+### QUEUE-038
+**Module:** Calendar / Weekend planner travel-awareness (D-135)
+**File(s):** `lib/planner/generate.ts`, `time_off_entries` table (Supabase) — real data, not a repo file.
+**Question:** Two things bundled here. (1) The fix makes the planner check `time_off_entries` for the target Sat/Sun window, but the only real row on file (Richard, "Vacation", 2026-08-31 to 2026-09-04) doesn't actually cover the real upcoming weekend of Sept 5-6 (today in-session is Sept 2) — so the planner still won't detect the LA trip Richard described until that entry (or a new one) is corrected to span Sept 5-6, ideally with "Los Angeles, CA" set as the new destination field. (2) This fix only covers "someone is away, don't recommend local activities, ask if they want help" — it deliberately does NOT build the richer cascade Richard described in the same message: recognizing a specific flight's TSA/airport-arrival cutoff, computing drive time to the airport from wherever the traveler is, checking for an *accepted* childcare request and who/where the kids will be, scheduling packing time, or a packing-checklist wizard that asks about trip type/activities. That's a much larger feature needing actual itinerary data (e.g. from a parsed flight screenshot) that doesn't exist in the data model yet.
+**Assumption made:** Shipped the detection-and-nudge layer now (real, working improvement over "recommends golf while you're in LA") without waiting on the data correction or building the full itinerary cascade, since both are substantial enough to need Richard's input/data entry rather than an autonomous guess. Left the stale time-off row untouched rather than guessing new dates or a destination for Richard's real vacation record.
+**Reversal cost:** Low — the time-off data fix is Richard editing one existing record (or adding a new one) in the app UI, no engineering work. The travel-time/TSA/childcare cascade and packing wizard are net-new, additive features that can be layered on top of the "traveling" status this fix introduced without touching it.
+**Blocking:** No

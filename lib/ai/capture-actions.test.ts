@@ -51,6 +51,7 @@ describe("executeAction", () => {
       timeOffStartDate: null,
       timeOffEndDate: null,
       timeOffReason: null,
+      timeOffDestination: null,
     });
 
     const insertCall = calls.find((c) => c.table === "calendar_events" && c.op === "insert");
@@ -89,6 +90,7 @@ describe("executeAction", () => {
       timeOffStartDate: null,
       timeOffEndDate: null,
       timeOffReason: null,
+      timeOffDestination: null,
     });
 
     const insertCall = calls.find((c) => c.table === "gifts" && c.op === "insert");
@@ -128,6 +130,7 @@ describe("executeAction", () => {
       timeOffStartDate: null,
       timeOffEndDate: null,
       timeOffReason: null,
+      timeOffDestination: null,
     });
 
     const updateCall = calls.find((c) => c.table === "people" && c.op === "update");
@@ -161,6 +164,7 @@ describe("executeAction", () => {
         timeOffStartDate: null,
         timeOffEndDate: null,
         timeOffReason: null,
+        timeOffDestination: null,
       })
     ).rejects.toThrow("Missing person or gift description");
   });

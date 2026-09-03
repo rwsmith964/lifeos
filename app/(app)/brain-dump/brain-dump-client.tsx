@@ -115,6 +115,7 @@ interface EditableItem {
   timeOffStartDate: string;
   timeOffEndDate: string;
   timeOffReason: string;
+  timeOffDestination: string;
   status: "pending" | "saving" | "saved" | "error";
   errorMessage: string | null;
 }
@@ -144,6 +145,7 @@ interface ParsedApiItem {
   timeOffStartDate: string | null;
   timeOffEndDate: string | null;
   timeOffReason: string | null;
+  timeOffDestination: string | null;
 }
 
 let clientIdCounter = 0;
@@ -200,6 +202,7 @@ function fromApiItem(item: ParsedApiItem): EditableItem {
     timeOffStartDate: item.timeOffStartDate ?? "",
     timeOffEndDate: item.timeOffEndDate ?? "",
     timeOffReason: item.timeOffReason ?? "",
+    timeOffDestination: item.timeOffDestination ?? "",
     status: "pending",
     errorMessage: null,
   };
@@ -263,6 +266,7 @@ function toExecutePayload(item: EditableItem): Record<string, unknown> {
     timeOffStartDate: null as string | null,
     timeOffEndDate: null as string | null,
     timeOffReason: null as string | null,
+    timeOffDestination: null as string | null,
   };
 
   switch (item.type) {
@@ -312,6 +316,7 @@ function toExecutePayload(item: EditableItem): Record<string, unknown> {
         timeOffStartDate: item.timeOffStartDate,
         timeOffEndDate: item.timeOffEndDate || null,
         timeOffReason: item.timeOffReason.trim() || null,
+        timeOffDestination: item.timeOffDestination.trim() || null,
       };
   }
 }
@@ -949,6 +954,15 @@ function BrainDumpItemCard({
             <div className="flex flex-col gap-1">
               <Label>Reason (optional)</Label>
               <Input value={item.timeOffReason} disabled={disabled} onChange={(e) => onChange({ timeOffReason: e.target.value })} />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label>Destination (optional)</Label>
+              <Input
+                placeholder="Los Angeles, CA"
+                value={item.timeOffDestination}
+                disabled={disabled}
+                onChange={(e) => onChange({ timeOffDestination: e.target.value })}
+              />
             </div>
           </>
         )}

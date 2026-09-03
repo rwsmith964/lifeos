@@ -28,7 +28,11 @@ export async function GET(request: Request) {
   for (const household of households) {
     try {
       const result = await generateWeekendPlan(client, household.id);
-      if (result.status === "generated") generated++;
+      // D-135: "traveling" is also a successfully-persisted plan (a
+      // trip-prep nudge instead of a local recommendation) -- count it the
+      // same as "generated" so this counter still reflects households
+      // that got SOME plan written, not just ones that got a local outing.
+      if (result.status === "generated" || result.status === "traveling") generated++;
     } catch (error) {
       errors.push(`${household.id}: ${error instanceof Error ? error.message : String(error)}`);
     }

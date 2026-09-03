@@ -811,6 +811,18 @@ export function AddTimeOffForm({ personId }: { personId: string }) {
           onChange={() => setErrorDismissed(true)}
         />
       </div>
+      <div className="flex flex-col gap-1">
+        <Label htmlFor={`timeoff-destination-${personId}`} className="text-xs">
+          Destination (optional)
+        </Label>
+        <Input
+          id={`timeoff-destination-${personId}`}
+          name="destination"
+          placeholder="Los Angeles, CA"
+          className="h-8 w-40"
+          onChange={() => setErrorDismissed(true)}
+        />
+      </div>
       {showError && <p className="text-xs text-destructive">{state.error}</p>}
       {invalid && !showError && <p className="text-xs text-destructive">A start date is required.</p>}
       <Button type="button" size="sm" onClick={handleAdd} disabled={pending}>

@@ -725,6 +725,16 @@ export const timeOffEntryInsertSchema = z.object({
   start_date: isoDate,
   end_date: isoDate,
   reason: z.string().trim().max(80, "Keep the reason under 80 characters.").optional().default(""),
+  // D-135: optional trip destination -- lets the weekend planner recognize
+  // *where* someone is going, not just that they're away. Nullable/optional
+  // since most time off (sick day, appointment) has no destination at all.
+  destination: z
+    .string()
+    .trim()
+    .max(120, "Keep the destination under 120 characters.")
+    .optional()
+    .transform((v) => (v ? v : null))
+    .nullable(),
   source: z.enum(["manual", "quick_capture"]).optional().default("manual"),
 }).refine((v) => v.end_date >= v.start_date, {
   message: "End date can't be before the start date.",

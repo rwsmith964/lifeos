@@ -382,6 +382,9 @@ export interface TimeOffEntryRow {
   start_date: string;
   end_date: string;
   reason: string;
+  // D-135: optional trip destination (e.g. "Los Angeles, CA"). Null for an
+  // ordinary local time-off entry with no travel-specific meaning.
+  destination: string | null;
   source: "manual" | "quick_capture";
   created_at: string;
   updated_at: string;

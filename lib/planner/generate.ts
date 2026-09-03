@@ -15,12 +15,14 @@ import {
   type ScoredActivityContext,
   type WeekendPlanAiResponse,
 } from "../ai/prompts/weekend-plan";
+import type { PersonRow, TimeOffEntryRow } from "../db/database.types";
 import { listActivitiesWithLocations } from "../db/repositories/activities";
 import { listCustodyBlocksForHouseholdInRange, listEventsInRange } from "../db/repositories/calendar";
 import { listActiveCadencesForHousehold } from "../db/repositories/contact";
 import { householdsRepo, usersRepo } from "../db/repositories/households";
 import { listPeopleForHousehold, peopleRepo } from "../db/repositories/people";
 import { getWeekendPlanForDate, weekendPlansRepo } from "../db/repositories/system";
+import { listTimeOffForPeopleInRange } from "../db/repositories/work-schedule";
 import { getNoaaTidePredictions } from "../external/noaa-tides";
 import { getOdfwReport } from "../external/odfw";
 import { computeSolunarPeriods } from "../external/solunar";
@@ -37,6 +39,12 @@ const WAKING_HOUR_END = 20;
 
 export type GenerateWeekendPlanResult =
   | { status: "generated"; contentMarkdown: string }
+  // D-135: at least one household member has a time-off entry overlapping
+  // this weekend. A "personal assistant" planner shouldn't keep proposing
+  // local outings (e.g. golf) when the household is actually traveling --
+  // this is a deterministic trip-prep nudge, never AI-narrated, so it
+  // can't be wrong about who's away or where they're going.
+  | { status: "traveling"; contentMarkdown: string }
   | { status: "ai_unavailable"; reason: string }
   | { status: "budget_exceeded"; reason: string }
   // D-085 (P3-3): `noCandidatesReason` distinguishes "nothing configured
@@ -58,6 +66,24 @@ export async function generateWeekendPlan(
   const saturday = nextSaturdayFrom(today);
   const sunday = addDays(saturday, 1);
   const forDate = format(saturday, "yyyy-MM-dd");
+
+  // D-135: check household travel BEFORE anything else -- an away weekend
+  // trumps "no activities configured" and every scoring/AI concern below.
+  // A household member being away is itself the answer the planner should
+  // give, not a reason to keep computing a local recommendation nobody
+  // asked for.
+  const householdPeopleForTravelCheck = await listPeopleForHousehold(client, householdId);
+  const travelingEntries = await listTimeOffForPeopleInRange(
+    client,
+    householdPeopleForTravelCheck.map((p) => p.id),
+    format(saturday, "yyyy-MM-dd"),
+    format(sunday, "yyyy-MM-dd")
+  );
+  if (travelingEntries.length > 0) {
+    const contentMarkdown = buildTravelingPlanMarkdown(travelingEntries, householdPeopleForTravelCheck, saturday, sunday);
+    await upsertTravelingPlan(client, householdId, forDate, contentMarkdown);
+    return { status: "traveling", contentMarkdown };
+  }
 
   const owner = await findHouseholdOwnerUser(client, householdId);
   const home = owner?.home_lat != null && owner?.home_lng != null ? { lat: owner.home_lat, lng: owner.home_lng } : null;
@@ -96,7 +122,9 @@ export async function generateWeekendPlan(
   // a preferred_companion CAN be a child (e.g. a parent's own kid listed as
   // a fishing buddy), so this can't skip the redaction just because
   // "companions" sounds adult-only.
-  const householdPeople = await listPeopleForHousehold(client, householdId);
+  // Reuse the household people list already fetched for the travel check
+  // above -- no need to query it twice.
+  const householdPeople = householdPeopleForTravelCheck;
   const tokenMap = buildChildTokenMap(householdPeople);
 
   // D-131: locationId is carried alongside the existing narration-only
@@ -326,6 +354,87 @@ export async function generateWeekendPlan(
   }
 
   return { status: "generated", contentMarkdown: markdown };
+}
+
+// D-135: builds the trip-prep nudge shown instead of a local-activity
+// recommendation when someone in the household has time off overlapping
+// this weekend. Deterministic and privacy-safe by construction -- it never
+// calls the AI, so it can't invent a destination or plan detail that
+// wasn't actually entered, and person names never need the child-token
+// redaction the AI-narrated path requires (nothing here leaves this
+// process).
+export function buildTravelingPlanMarkdown(
+  entries: TimeOffEntryRow[],
+  people: PersonRow[],
+  saturday: Date,
+  sunday: Date
+): string {
+  const peopleById = new Map(people.map((p) => [p.id, p]));
+  const weekendLabel = `${format(saturday, "EEEE, MMM d")} – ${format(sunday, "EEEE, MMM d")}`;
+  const lines: string[] = [`## Someone's away ${weekendLabel}`, ""];
+
+  // Most recently added first isn't meaningful here -- sort by start date
+  // so a multi-person trip reads in a sensible order.
+  const sorted = [...entries].sort((a, b) => a.start_date.localeCompare(b.start_date));
+  for (const entry of sorted) {
+    const person = peopleById.get(entry.person_id);
+    const name = person?.nickname || person?.full_name || "Someone in your household";
+    const dateRange =
+      entry.start_date === entry.end_date
+        ? format(new Date(`${entry.start_date}T00:00:00`), "MMM d")
+        : `${format(new Date(`${entry.start_date}T00:00:00`), "MMM d")}–${format(new Date(`${entry.end_date}T00:00:00`), "MMM d")}`;
+    let line = `- **${name}** is off ${dateRange}`;
+    if (entry.destination) line += ` — heading to ${entry.destination}`;
+    if (entry.reason) line += ` (${entry.reason})`;
+    lines.push(line);
+  }
+
+  lines.push(
+    "",
+    "Since travel takes over the weekend, local activity suggestions are on hold. Want help building a trip itinerary, checking what still needs to happen before you go (packing, drop-offs, drive time), or putting together a packing checklist?"
+  );
+  return lines.join("\n");
+}
+
+// D-135: persists the traveling nudge the same way a normal generated plan
+// is persisted, so the calendar page's existing weekend-plan card renders
+// it with zero UI changes -- it just never gets a recommended_activity_id,
+// so the "add to calendar" accept button correctly never appears for a
+// weekend with no local recommendation to accept.
+async function upsertTravelingPlan(
+  client: SupabaseClient,
+  householdId: string,
+  forDate: string,
+  contentMarkdown: string
+): Promise<void> {
+  const content: WeekendPlanAiResponse = {
+    headline: "Household travel this weekend",
+    recommendation: null,
+    alternates: [],
+  };
+  const planFields = {
+    content_json: content,
+    content_markdown: contentMarkdown,
+    model_version: "template-fallback",
+    recommended_activity_id: null,
+    recommended_location_id: null,
+    recommended_block_start: null,
+    recommended_block_end: null,
+    travel_minutes_each_way: null,
+    accepted_at: null,
+    activity_calendar_event_id: null,
+    prep_calendar_event_id: null,
+  };
+  const existing = await getWeekendPlanForDate(client, householdId, forDate);
+  if (existing) {
+    await weekendPlansRepo.update(client, existing.id, planFields);
+  } else {
+    await weekendPlansRepo.create(client, {
+      household_id: householdId,
+      for_date: forDate,
+      ...planFields,
+    });
+  }
 }
 
 async function findHouseholdOwnerUser(client: SupabaseClient, householdId: string) {

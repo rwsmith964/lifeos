@@ -3201,3 +3201,62 @@ this session to check or correct that allow-list directly; this needs five minut
 Supabase dashboard from Richard (Authentication → URL Configuration → set Site URL to
 `https://lifeos-seven-rho.vercel.app` and confirm/add it — or a `https://lifeos-seven-rho.vercel.app/**`
 wildcard — under Redirect URLs).
+
+## D-135 | 2026-09-02 | Weekend planner recognizes household travel instead of recommending local activities
+
+**Problem:** Richard reported the weekend planner kept suggesting local outings (e.g. golf) for
+a weekend he'd entered as travel to LA. Root cause confirmed by reading `generateWeekendPlan()`
+(`lib/planner/generate.ts`) in full: the function never queried `time_off_entries` at all — it
+went straight from computing the Sat/Sun window to scoring activities against weather/travel-time,
+with no check for whether anyone in the household was actually away. Separately, the one existing
+`time_off_entries` row had no way to record a destination, so even a travel-aware planner would
+have had nothing to say beyond "someone's off."
+
+**Fix (additive, two parts):**
+1. **Schema:** `supabase/migrations/20260902000005_time_off_destination.sql` adds a nullable
+   `destination text` column to `time_off_entries`. Wired through the full stack: insert schema
+   (`lib/db/schemas.ts`), the add-time-off form (`person-forms.tsx`), display on the person page
+   and Settings > My Schedule, and both AI capture paths (`lib/ai/prompts/capture.ts`,
+   `lib/ai/prompts/brain-dump.ts` + their executors) so saying "I'll be in LA this weekend" now
+   saves a destination, not just a date range.
+2. **Planner:** `generateWeekendPlan()` now calls the already-existing
+   `listTimeOffForPeopleInRange()` (`lib/db/repositories/work-schedule.ts`) for every household
+   person against the target Sat/Sun window, **before** any activity scoring or AI call. If
+   anyone has an overlapping entry, the function returns a new `"traveling"` status with a
+   deterministic (non-AI) trip-prep nudge built by `buildTravelingPlanMarkdown()` — lists who's
+   away, their dates, destination (if set), and reason (if set), then asks whether the user wants
+   help with an itinerary, prep tasks, or a packing checklist. This bypasses AI narration entirely
+   by design: a trip nudge only needs to restate data already on file, so there's nothing for an
+   LLM to add and no chance of it hallucinating a destination or plan detail that wasn't entered.
+   The result is persisted via `weekendPlansRepo` exactly like a normal generated plan (same
+   `content_markdown` field), so the calendar page's existing weekend-plan card renders it with
+   zero UI changes — it just never gets a `recommended_activity_id`, so the "Add to calendar"
+   accept button correctly never appears. `generateWeekendPlanAction` (`app/(app)/calendar/actions.ts`)
+   and the Wednesday cron (`app/api/cron/weekend-plan/route.ts`) both treat `"traveling"` as a
+   successful generation (no new branches needed in the former; the cron's `generated` counter now
+   also counts it).
+
+**Scope explicitly not built this pass** (see QUEUE-038): recognizing a specific trip's
+*schedule* (flight times, TSA/airport-drive-time cascade, childcare hand-off recognition,
+packing-time scheduling) and a packing-checklist wizard. Those need actual itinerary data (e.g.
+parsed from a screenshot) that doesn't exist yet in the data model — this fix only makes the
+planner *aware* that travel is happening and hands off to a conversation, which is the necessary
+first step before any of that richer scheduling can be built.
+
+**Verification:** `pnpm typecheck` — 0 errors. `pnpm lint` — 0 errors (unrelated pre-existing
+warnings only, in a generated Android build artifact, untouched by this change). New test file
+`lib/planner/generate-traveling.test.ts` (5 tests) covers `buildTravelingPlanMarkdown`: person
+name/nickname resolution, destination/reason inclusion and omission, unknown-person fallback, and
+multi-person sort order. Full suite: **76 test files / 743 tests passing** (up from the pre-change
+baseline of 75/738 — the +5 are the new tests, zero regressions). `pnpm build` — succeeds.
+Migration applied live to Supabase (project `moblcysnsaxohnslubym`) via `apply_migration`, confirmed
+successful. Committed on `feature/d135-weekend-plan-travel-awareness`, pushed, and merged/deployed
+per standard workflow — see commit history for the merge commit and Vercel deployment confirmation.
+
+**Known data gap flagged, not silently fixed (see QUEUE-038 for detail):** the only real
+`time_off_entries` row on file (Richard, "Vacation", 2026-08-31 to 2026-09-04) does not cover the
+actual upcoming weekend of Sept 5-6 — "today" this session is Sept 2. So even with this fix
+shipped, the planner will not detect the LA trip until Richard adds or edits a time-off entry
+whose dates actually span Sept 5-6 (now with the option to set "Los Angeles, CA" as the
+destination). This was left as real data for Richard to correct rather than guessed at or
+back-filled.

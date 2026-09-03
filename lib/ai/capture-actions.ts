@@ -167,6 +167,7 @@ export async function executeAction(
         start_date: startDate,
         end_date: endDate,
         reason: action.timeOffReason ?? "",
+        destination: action.timeOffDestination ?? null,
         source: "quick_capture",
       });
       return { table: "time_off_entries", id: row.id };
