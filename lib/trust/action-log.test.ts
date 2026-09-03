@@ -4,8 +4,29 @@
 // logic." These tests assert that directly against the fake client's
 // recorded calls, not just the return value.
 import { describe, it, expect } from "vitest";
-import { withActionLog } from "./action-log";
+import { withActionLog, reverseAction } from "./action-log";
 import { createFakeSupabaseClient } from "../test-support/fake-supabase";
+import type { ActionLogRow } from "../db/database.types";
+
+function baseRow(overrides: Partial<ActionLogRow> = {}): ActionLogRow {
+  return {
+    id: "log-1",
+    household_id: "h1",
+    actor: "ai",
+    feature: "intake_convert",
+    action_summary: "Added gift g1",
+    read_summary: {},
+    decision_summary: null,
+    table_name: "gifts",
+    record_id: "g1",
+    before_snapshot: null,
+    after_snapshot: null,
+    undoable: true,
+    undone_at: null,
+    created_at: "2026-09-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
 
 describe("withActionLog", () => {
   it("is a true no-op when universal_intake_v2 is off: mutationFn still runs, but nothing is written to action_log", async () => {
@@ -96,5 +117,44 @@ describe("withActionLog", () => {
     ).rejects.toThrow("write failed");
 
     expect(calls.some((c) => c.table === "action_log")).toBe(false);
+  });
+});
+
+describe("reverseAction", () => {
+  it("deletes the record when before_snapshot is absent (the original write was an insert)", async () => {
+    const { client, calls } = createFakeSupabaseClient({ gifts: {} });
+
+    await reverseAction(client as never, baseRow({ table_name: "gifts", record_id: "g1", before_snapshot: null }));
+
+    const deleteCalls = calls.filter((c) => c.table === "gifts" && c.op === "delete");
+    expect(deleteCalls).toHaveLength(1);
+    expect(deleteCalls[0].filters).toContainEqual({ method: "eq", args: ["id", "g1"] });
+  });
+
+  it("restores before_snapshot via update when the original write was an update-in-place", async () => {
+    const { client, calls } = createFakeSupabaseClient({ people: {} });
+
+    await reverseAction(
+      client as never,
+      baseRow({
+        table_name: "people",
+        record_id: "p1",
+        before_snapshot: { notes: "original notes" },
+      })
+    );
+
+    const updateCalls = calls.filter((c) => c.table === "people" && c.op === "update");
+    expect(updateCalls).toHaveLength(1);
+    expect(updateCalls[0].values).toEqual({ notes: "original notes" });
+    expect(updateCalls[0].filters).toContainEqual({ method: "eq", args: ["id", "p1"] });
+  });
+
+  it("throws without writing anything when the row has no record_id", async () => {
+    const { client, calls } = createFakeSupabaseClient({});
+
+    await expect(reverseAction(client as never, baseRow({ record_id: null }))).rejects.toThrow(
+      "This action has no associated record to undo."
+    );
+    expect(calls).toHaveLength(0);
   });
 });

@@ -18,6 +18,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isFeatureEnabled } from "../flags";
 import { actionLogRepo } from "../db/repositories/action-log";
+import type { ActionLogRow } from "../db/database.types";
 
 export interface ActionLogSpec<T> {
   householdId: string;
@@ -77,4 +78,46 @@ export async function withActionLog<T>(client: SupabaseClient, spec: ActionLogSp
   });
 
   return result;
+}
+
+/**
+ * Generic reversal for one action_log row (QUEUE-011's undo UI). Every row
+ * this ever runs against was itself written by withActionLog above, which
+ * always stamps `table_name` + `recordIdOf(result)` from a real repo
+ * create/update -- so the reversal only needs two shapes, chosen by
+ * whether a before_snapshot exists:
+ *
+ *  - before_snapshot present -> the original write was an update-in-place;
+ *    undo restores exactly those column values (same table/id).
+ *  - before_snapshot absent  -> the original write was an insert (nothing
+ *    existed before); undo deletes the row it created.
+ *
+ * Deliberately generic (raw client.from(table_name), not a per-table repo
+ * import) rather than a switch over every wrapped call site in
+ * lib/intake/convert.ts -- new withActionLog call sites keep getting
+ * added (see the action_log migration's own comment on `feature` being
+ * free-text for the same reason), and every one already supplies
+ * table_name/record_id/before_snapshot in the shape this function needs,
+ * so a closed per-table switch here would just be a second list to keep
+ * in sync with convert.ts's. Table-level RLS still applies through the
+ * caller's own request-scoped client -- this grants no privilege beyond
+ * what the signed-in household member already has.
+ *
+ * Throws (does not silently no-op) when the row can't be reversed at all,
+ * so the caller's confirm-dialog flow surfaces a real error instead of a
+ * false "Restored." toast.
+ */
+export async function reverseAction(client: SupabaseClient, row: ActionLogRow): Promise<void> {
+  if (!row.record_id) {
+    throw new Error("This action has no associated record to undo.");
+  }
+
+  if (row.before_snapshot) {
+    const { error } = await client.from(row.table_name).update(row.before_snapshot as never).eq("id", row.record_id);
+    if (error) throw error;
+    return;
+  }
+
+  const { error } = await client.from(row.table_name).delete().eq("id", row.record_id);
+  if (error) throw error;
 }

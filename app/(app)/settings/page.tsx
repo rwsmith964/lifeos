@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { format } from "date-fns";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { listInvitesForHousehold, listMembersOfHousehold, usersRepo } from "@/lib/db/repositories/households";
@@ -83,6 +84,19 @@ export default async function SettingsPage() {
       />
       <CalendarFeeds feeds={calendarFeeds} canManage={canManage} />
       <FeatureFlags states={featureFlagStates} canManage={canManage} />
+      <Card>
+        <CardContent className="flex items-center justify-between gap-2">
+          <div>
+            <Label>Activity</Label>
+            <p className="text-xs text-muted-foreground">
+              See what the assistant did on its own, and undo an action if needed.
+            </p>
+          </div>
+          <Link href="/settings/activity" className="text-sm font-medium text-primary hover:underline">
+            View activity log
+          </Link>
+        </CardContent>
+      </Card>
     </div>
   );
 }
