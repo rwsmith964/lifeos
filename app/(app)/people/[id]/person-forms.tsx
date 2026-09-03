@@ -7,6 +7,7 @@ import { Loader2 } from "lucide-react";
 import { ConfirmDeleteButton } from "@/components/ui/confirm-delete-button";
 import {
   addInterestAction,
+  addSuggestedInterestAction,
   addBudgetAction,
   addGiftSiteAction,
   recordGiftAction,
@@ -31,6 +32,10 @@ import {
 import type { ChildActivityAttendanceRow, ChildActivityRow, PersonRow } from "@/lib/db/database.types";
 import { useAiHealth } from "@/lib/hooks/use-ai-health";
 import { useFormValidity } from "@/lib/hooks/use-form-validity";
+import { useAsyncToastAction } from "@/lib/hooks/use-async-toast-action";
+import { Badge } from "@/components/ui/badge";
+import { estimateAgeYears } from "@/lib/ai/prompts/gift-suggestion";
+import { suggestedInterestsFor } from "@/lib/people/demographic-interests";
 import { giftReactionDisplayLabel, occasionTypeDisplayLabel } from "@/lib/gifts/occasions";
 import type { OccasionType, GiftReaction } from "@/lib/db/database.types";
 import { Button } from "@/components/ui/button";
@@ -124,6 +129,91 @@ export function AddInterestForm({ personId }: { personId: string }) {
         Add
       </Button>
     </form>
+  );
+}
+
+// D-137: demographic-based interest suggestion bubbles. One click adds the
+// suggestion as a "casual" interest via the same upsert path as the typed
+// form above (addSuggestedInterestAction). A bubble disappears once its
+// interest is on the person's list (revalidatePath refreshes
+// `existingInterests` from the server after add), so this never offers a
+// duplicate. Suggestions are age-bucketed (birthdate -> estimateAgeYears,
+// same helper gift suggestions use) with a relationship_type fallback when
+// age is unknown — see lib/people/demographic-interests.ts for the source
+// list and QUEUE-040 for why there's no gender dimension.
+export function SuggestedInterestBubbles({
+  personId,
+  birthdate,
+  birthYearKnown,
+  relationshipType,
+  existingInterests,
+}: {
+  personId: string;
+  birthdate: PersonRow["birthdate"];
+  birthYearKnown: boolean;
+  relationshipType: PersonRow["relationship_type"];
+  existingInterests: string[];
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const ageYears = estimateAgeYears(birthdate, birthYearKnown, new Date());
+  const already = new Set(existingInterests.map((i) => i.trim().toLowerCase()));
+  const suggestions = suggestedInterestsFor(ageYears, relationshipType).filter(
+    (s) => !already.has(s.interest.toLowerCase())
+  );
+
+  if (suggestions.length === 0) return null;
+
+  const visible = expanded ? suggestions : suggestions.slice(0, 6);
+
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-muted-foreground text-xs">Popular ideas to consider — click to add</p>
+      <div className="flex flex-wrap gap-2">
+        {visible.map((suggestion) => (
+          <SuggestionBubble key={suggestion.interest} personId={personId} suggestion={suggestion} />
+        ))}
+        {!expanded && suggestions.length > visible.length && (
+          <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setExpanded(true)}>
+            + {suggestions.length - visible.length} more
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SuggestionBubble({
+  personId,
+  suggestion,
+}: {
+  personId: string;
+  suggestion: { interest: string; category: string };
+}) {
+  const { pending, run } = useAsyncToastAction(
+    () => addSuggestedInterestAction(personId, suggestion.interest, suggestion.category),
+    {
+      successMessage: `Added "${suggestion.interest}".`,
+      errorMessage: "Couldn't add that interest",
+    }
+  );
+  return (
+    <Badge
+      variant="outline"
+      role="button"
+      tabIndex={0}
+      aria-label={`Add interest: ${suggestion.interest}`}
+      aria-disabled={pending}
+      className="hover:bg-accent cursor-pointer select-none"
+      onClick={pending ? undefined : run}
+      onKeyDown={(e) => {
+        if (!pending && (e.key === "Enter" || e.key === " ")) {
+          e.preventDefault();
+          run();
+        }
+      }}
+    >
+      {pending ? "Adding…" : `+ ${suggestion.interest}`}
+    </Badge>
   );
 }
 

@@ -28,6 +28,7 @@ import {
   AddBudgetForm,
   AddGiftSiteForm,
   AddInterestForm,
+  SuggestedInterestBubbles,
   AddTimeOffForm,
   AddWorkScheduleForm,
   AddChildActivityForm,
@@ -356,6 +357,13 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
               ))}
             </div>
           )}
+          <SuggestedInterestBubbles
+            personId={id}
+            birthdate={person.birthdate}
+            birthYearKnown={person.birth_year_known}
+            relationshipType={person.relationship_type}
+            existingInterests={interests.map((i) => i.interest)}
+          />
           <AddInterestForm personId={id} />
         </CardContent>
       </Card>

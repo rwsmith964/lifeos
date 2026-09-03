@@ -38,7 +38,7 @@ import { friendlyMutationError } from "@/lib/db/errors";
 import { applyGiftFeedback } from "@/lib/gifts/feedback";
 import { generateGiftSuggestions } from "@/lib/gifts/suggest";
 import { geocodeAddress } from "@/lib/external/geocode";
-import type { OccasionType } from "@/lib/db/database.types";
+import type { OccasionType, PersonInterestInsert } from "@/lib/db/database.types";
 
 export interface SimpleFormState {
   error: string | null;
@@ -95,8 +95,6 @@ export async function addInterestAction(
   _prevState: SimpleFormState,
   formData: FormData
 ): Promise<SimpleFormState> {
-  const { supabase } = await requireHouseholdContext();
-
   const parsed = personInterestInsertSchema.safeParse({
     person_id: personId,
     interest: String(formData.get("interest") ?? ""),
@@ -106,17 +104,52 @@ export async function addInterestAction(
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
 
   try {
-    // Upsert, not insert: re-adding an interest the person already has
-    // (person_id, interest) is a unique constraint, and previously an
-    // uncaught violation here crashed the whole app (D-032). Re-adding is
-    // a normal thing to do — treat it as "update the strength" rather
-    // than an error.
-    await personInterestsRepo.upsert(supabase, parsed.data, "person_id,interest");
+    await upsertInterest(personId, parsed.data.interest, parsed.data.category, parsed.data.strength);
   } catch (error) {
     return { error: friendlyMutationError(error, { fallback: "Couldn't add that interest — please try again." }) };
   }
-  revalidatePath(`/people/${personId}`);
   return { error: null };
+}
+
+// D-137: one-click add for a demographic-suggested interest bubble
+// (SuggestedInterestBubbles, person-forms.tsx). Same upsert as
+// addInterestAction above, factored out so the two entry points (typed
+// form vs. clicked bubble) can't drift — throws instead of returning a
+// SimpleFormState since bubble clicks use useAsyncToastAction, not
+// useActionState.
+export async function addSuggestedInterestAction(
+  personId: string,
+  interest: string,
+  category: string | null
+): Promise<void> {
+  const parsed = personInterestInsertSchema.safeParse({
+    person_id: personId,
+    interest,
+    category,
+    strength: "casual",
+  });
+  if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Invalid interest.");
+  await upsertInterest(personId, parsed.data.interest, parsed.data.category, parsed.data.strength);
+}
+
+async function upsertInterest(
+  personId: string,
+  interest: string,
+  category: string | null | undefined,
+  strength: PersonInterestInsert["strength"]
+) {
+  const { supabase } = await requireHouseholdContext();
+  // Upsert, not insert: re-adding an interest the person already has
+  // (person_id, interest) is a unique constraint, and previously an
+  // uncaught violation here crashed the whole app (D-032). Re-adding is
+  // a normal thing to do — treat it as "update the strength" rather
+  // than an error.
+  await personInterestsRepo.upsert(
+    supabase,
+    { person_id: personId, interest, category, strength },
+    "person_id,interest"
+  );
+  revalidatePath(`/people/${personId}`);
 }
 
 // D-063: the "save site" action — bookmarks a preferred gift-shopping site

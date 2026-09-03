@@ -370,3 +370,11 @@ the remaining modules.
 **Assumption made:** Shipped Approve/Reject only (matches the existing Module 6 `/execution` review-queue's own scope, which also has no inline-correct UI) rather than building a correction form speculatively. Enabled `universal_intake_v2` for the Smith Household directly via SQL so the shipped UI is actually reachable, same mechanism as every other flag toggle to date.
 **Reversal cost:** Low — inline correction is additive on top of the existing card component; a flag-toggle settings panel is additive and doesn't change any flag's current value.
 **Blocking:** No
+
+### QUEUE-040
+**Module:** Demographic interest suggestion bubbles (D-137)
+**File(s):** `lib/db/database.types.ts` (`PersonRow`), `lib/people/demographic-interests.ts`.
+**Question:** Richard's request explicitly said "age, gender, general demographics," but `PersonRow` has no gender field — only `birthdate`/`birth_year_known` and `relationship_type` exist. Should a gender field be added to `people`, and if so, is it a free-text field, a fixed enum, or an optional/skippable field (given real sensitivity around collecting gender for children in particular)? The current bubbles deliberately avoid gendering suggestions (e.g. the young-child bucket lists Spiderman and Paw Patrol together, not split "boy"/"girl" lists) so no gender data is required at all.
+**Assumption made:** Shipped age + relationship_type as the demographic signal, with non-gendered suggestion lists per age bucket. Did not add a gender column speculatively — that's a schema change with its own privacy/compliance surface (this app is already tracking App Store / Play Store data-safety disclosures per the launch-prep workstream) that deserves an explicit decision rather than a silent addition.
+**Reversal cost:** Medium — adding a gender field later is an additive nullable column (cheap schema-wise), but re-splitting the curated suggestion lists by gender, deciding the UI for an optional/skippable field, and updating the privacy/data-safety disclosure docs already drafted for the app stores is real follow-up work, not a one-line change.
+**Blocking:** No
