@@ -1,0 +1,28 @@
+-- D-145: close a security-advisor gap left by the Sept 2 child-activities
+-- migration (20260902000003_child_activities.sql). D-108's hardening pass
+-- (20260831000001_harden_security_definer_functions.sql) revoked the
+-- default PUBLIC EXECUTE grant from every internal RLS-helper
+-- SECURITY DEFINER function -- including this function's sibling,
+-- activity_household_id(uuid) -- but child_activity_household_id(uuid)
+-- didn't exist yet, so it still carries the implicit PUBLIC grant that
+-- Postgres puts on every new function. The Supabase security advisor
+-- flagged it as anon-and-authenticated-executable
+-- (anon_security_definer_function_executable /
+-- authenticated_security_definer_function_executable).
+--
+-- Same reasoning as D-108: this is an internal RLS-policy helper (used
+-- only inside child_activity_attendance's four policies to resolve a
+-- child_activities row's household_id), not a token-gated public-preview
+-- function like get_household_invite_preview/get_childcare_request_preview.
+-- No app code calls it directly (`rg child_activity_household_id app lib`
+-- returns nothing outside this migration) -- it only runs as part of RLS
+-- policy evaluation for the `authenticated` role. `anon` has no
+-- legitimate reason to resolve a child activity's household_id at all.
+--
+-- NOTE: this alone turned out to be insufficient -- see the immediate
+-- follow-up migration 20260903000002_harden_child_activity_household_id_fix_anon_grant.sql,
+-- which repeats the exact D-108/D-108-corrective story: this function's
+-- ACL carries an explicit anon=X grant (not just the implicit PUBLIC
+-- grant), so revoking from PUBLIC alone left anon still able to call it.
+revoke execute on function public.child_activity_household_id(uuid) from public;
+grant execute on function public.child_activity_household_id(uuid) to authenticated, service_role;

@@ -404,3 +404,23 @@ the remaining modules.
 **Reversal cost:** N/A — nothing built yet to reverse. Once a places/POI credential is available, this is a net-new feature (new suggestion module alongside the existing activity/gift suggestion engines), not a refactor of anything shipped.
 **Blocking:** Yes — needs Richard to choose a places/POI provider and supply an API key (via the custom-credentials flow) before any implementation can start.
 **Resolution note (Sept 2 2026):** Richard chose Google Places API (New) and supplied a key, added via the custom-credentials flow (`places.googleapis.com`, header auth). Built and shipped as **D-144**: a "Find nearby" search on each activity's edit page (`lib/external/places.ts`, `suggestNearbyLocationsAction`), biased around the signed-in user's home address, with one-click add into the existing `activity_locations` list. Live-verified against the real API. No longer blocking.
+
+### QUEUE-044
+**Module:** Security hardening / Supabase Auth configuration
+**File(s):** none — this is a Supabase Auth project-setting, not application code.
+**Question:** The Supabase security advisor flags `auth_leaked_password_protection` (WARN): Supabase
+Auth's "check new passwords against HaveIBeenPwned" protection is currently disabled. This toggle
+lives in Auth project configuration (Dashboard: Authentication → Policies → Password Security, or
+the Management API), which is not reachable through any tool the Supabase connector exposes this
+session (`list_tables`, `execute_sql`, `apply_migration`, `get_project`, etc. only reach the Postgres
+database itself, not Auth project settings — same category of gap as QUEUE-037's Auth Redirect URLs).
+**Assumption made:** Logged as non-blocking and left disabled rather than guessing at an
+undocumented Management-API call outside the connector's exposed surface.
+**Reversal cost:** Low — a single dashboard toggle, no migration or app-code change involved either
+way.
+**Blocking:** No — this hardens against a specific attack (credential-stuffing with previously
+breached passwords), it does not fix a currently-exploitable bug. `auth_login_attempts`-based
+per-email lockout (D-108) already mitigates brute-force guessing independently of this toggle.
+**Resolution needed:** Richard enables it directly: Supabase dashboard → Authentication → Policies
+→ Password Security → toggle "Leaked password protection" on. About 1 minute, no code/deploy
+required.
