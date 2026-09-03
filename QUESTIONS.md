@@ -161,14 +161,6 @@ the remaining modules.
 **Reversal cost:** Medium — re-enabling continuous push-on-edit means clearing `synced_to_account_id` (or adding a `synced_at`/content-hash column) whenever a pushed event is edited, plus a real ETag-conflict policy for the case where the remote copy also changed; additive (new nullable column or two), but touches `pushToSyncAccount`'s selection query and needs product input on the conflict policy.
 **Blocking:** No
 
-### QUEUE-018
-**Module:** Module 4 / Scheduling Intelligence
-**File(s):** `lib/calendar/two-way-sync.ts`
-**Question:** When a LifeOS-native event that was previously pushed to a CalDAV account is later deleted locally, should the remote copy be deleted too?
-**Assumption made:** v1 does not propagate local deletes to the remote calendar — deleting a `calendar_events` row leaves its previously-pushed CalDAV resource in place, orphaned. `caldav.ts` already exports `deleteCalendarResource` and `sync-providers.ts`'s adapter interface already exposes `deleteRemoteEvent`, so the primitive exists; wiring it into the local delete path was deferred rather than skipped for capability reasons. Reasoning: the existing calendar event delete flow (pre-Module-4, shipped code) has no hook point for "also do this side effect on delete" today, and the brief prohibits refactoring shipped code beyond what a fix strictly needs — adding that hook is exactly the kind of scope creep §9 warns against for a first pass. An orphaned remote copy is also a strictly safer failure mode than an incorrectly-deleted one if the wiring has a bug.
-**Reversal cost:** Low — additive: add a call to `deleteRemoteEvent` (via `adapterForAccount`) at the existing delete call site, gated on the row having a non-null `synced_to_account_id`/`external_caldav_href`. No schema change needed, since those columns already exist from D-120.
-**Blocking:** No
-
 ### QUEUE-019
 **Module:** Module 5 / Ambient Display Mode
 **File(s):** `app/ambient/page.tsx`, `lib/ambient/build-ambient-view.ts`
@@ -340,6 +332,10 @@ the remaining modules.
 ---
 
 ## Resolved
+
+## QUEUE-018 | Module 4 / Scheduling Intelligence | Priority: MEDIUM | Resolved 2026-09-03
+**Question:** When a LifeOS-native event that was previously pushed to a CalDAV account is later deleted locally, should the remote copy be deleted too?
+**Answer:** Yes. Shipped as **D-156**: `propagateDeleteToRemote()` in `lib/calendar/two-way-sync.ts`, called from `deleteCalendarEventAction()` after the local delete, using the adapter's existing `deleteRemoteEvent()`. Best-effort/never-throws, matching pull/push sync's failure posture. `restoreCalendarEventAction()` (Undo) was also fixed to clear the sync-tracking fields on a recreated row so Undo doesn't leave an event permanently un-pushed.
 
 ## Q-004 | shell layout / desktop-tablet | Priority: MEDIUM | Resolved 2026-09-03
 **Question:** The whole app shell is intentionally a narrow ~448px mobile-width column, centered with large unused margins on tablet/desktop. Should LifeOS ever get a real multi-column desktop layout, or is "phone-shaped app centered on desktop" fine indefinitely?
