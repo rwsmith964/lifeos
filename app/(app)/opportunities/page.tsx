@@ -4,6 +4,8 @@ import { Zap } from "lucide-react";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { listOpenOpportunitiesWithSubjectForHousehold } from "@/lib/db/repositories/opportunities";
 import { getPresentedOpportunities, type OpportunityTier } from "@/lib/opportunities/present";
+import { formatScoreBreakdownForDisplay } from "@/lib/planner/score-breakdown-display";
+import type { ScoringComponent } from "@/lib/planner/weights";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { OpportunityActions } from "./opportunity-actions";
@@ -58,6 +60,21 @@ export default async function OpportunitiesPage() {
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge variant={TIER_BADGE_VARIANT[opp.tier]}>{opp.tier}</Badge>
                       <Badge variant="outline">Score {opp.score}/100</Badge>
+                      {opp.score_breakdown && (
+                        <details className="text-xs text-muted-foreground">
+                          <summary className="cursor-pointer select-none">Why this score?</summary>
+                          <ul className="mt-1 flex flex-col gap-0.5 pl-4">
+                            {formatScoreBreakdownForDisplay(opp.score_breakdown as Record<ScoringComponent, number>).map(
+                              (component) => (
+                                <li key={component.key}>
+                                  {component.label}: {component.points > 0 ? "+" : ""}
+                                  {component.points}
+                                </li>
+                              )
+                            )}
+                          </ul>
+                        </details>
+                      )}
                       {opp.activity_id && (
                         <Link
                           href={`/activities/${opp.activity_id}`}
