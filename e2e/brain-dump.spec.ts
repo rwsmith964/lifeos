@@ -3,6 +3,16 @@ import { signIn, SMITH_CREDENTIALS } from "./helpers/auth";
 import { cardWithTitle } from "./helpers/fields";
 import { FIXTURE_EVENT_DATE, FIXTURE_TIME_OFF_START, FIXTURE_TIME_OFF_END } from "../lib/ai/test-fixtures";
 
+// The brain-dump review cards below (app/(app)/brain-dump/brain-dump-client.tsx)
+// render a real CardTitle, so `cardWithTitle` (helpers/fields.ts) matches them
+// correctly. The calendar page's day-agenda card is different -- its title is
+// a plain `<p>` inside CardContent with no CardTitle at all (see
+// e2e/calendar-crud.spec.ts's dayCardWithTitle for the same fix) -- so the
+// final round-trip check below must not reuse `cardWithTitle` for it.
+function dayCardWithTitle(page: import("@playwright/test").Page, titleText: string) {
+  return page.locator('[data-slot="card"]').filter({ has: page.getByText(titleText, { exact: true }) });
+}
+
 // D-148, spec 2: Brain Dump round trip against the AI_TEST_MODE fixture
 // (lib/ai/test-fixtures.ts). A transcript with no child name/nickname in
 // it gets the fixed two-item fixture response: one create_calendar_event
@@ -47,6 +57,6 @@ test.describe("Brain Dump round trip", () => {
     const [year, month] = FIXTURE_EVENT_DATE.split("-");
     await page.goto(`/calendar?month=${year}-${month}&day=${FIXTURE_EVENT_DATE}`);
     await page.reload();
-    await expect(cardWithTitle(page, "E2E Fixture Dentist Follow-up")).toBeVisible({ timeout: 10_000 });
+    await expect(dayCardWithTitle(page, "E2E Fixture Dentist Follow-up")).toBeVisible({ timeout: 10_000 });
   });
 });

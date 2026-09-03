@@ -30,8 +30,14 @@ const CALLAN_PERSON_ID = "3000000d-0000-0000-0000-000000000001";
 
 async function generateFixtureSuggestions(page: import("@playwright/test").Page, personId: string) {
   await page.goto(`/people/${personId}`);
-  await page.getByLabel("Occasion date").fill(occasionDatePlus15());
-  await page.getByRole("button", { name: "Get gift ideas", exact: true }).click();
+  // The person page renders two separate forms with an "Occasion date"
+  // field -- GenerateSuggestionsForm ("Get gift ideas") and RecordGiftForm
+  // ("Record gift", for logging a past gift) -- so a bare page-level
+  // getByLabel is ambiguous (Playwright strict-mode violation). Scope to
+  // the form that actually contains the "Get gift ideas" button.
+  const generateForm = page.locator("form").filter({ has: page.getByRole("button", { name: "Get gift ideas", exact: true }) });
+  await generateForm.getByLabel("Occasion date").fill(occasionDatePlus15());
+  await generateForm.getByRole("button", { name: "Get gift ideas", exact: true }).click();
   await page.waitForURL(/\/gifts$/, { timeout: 20_000 });
 }
 

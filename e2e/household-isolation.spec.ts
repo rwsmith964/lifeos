@@ -53,8 +53,14 @@ test.describe("Two-household data isolation", () => {
     // --- Part 3: positive control -- the Jones household DOES see its own data ---
     await signIn(page, JONES_CREDENTIALS);
 
+    // The People list intentionally excludes the signed-in user's own
+    // self-person (P0-5, app/(app)/people/page.tsx's excludeSelf query --
+    // "self is who's using the app, not someone they're keeping track of").
+    // So Jamie Jones (self) never appears here even for their own household;
+    // only assert the non-self "Jordan Jones" shows up on this surface.
+    // Jamie's own data is verified directly below via their person detail
+    // page and the calendar, neither of which is subject to that exclusion.
     await page.goto("/people");
-    await expect(page.getByText("Jamie Jones").first()).toBeVisible();
     await expect(page.getByText("Jordan Jones").first()).toBeVisible();
 
     await page.goto(`/people/${JAMIE_JONES_ID}`);

@@ -1,6 +1,5 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
 import { signIn, SMITH_CREDENTIALS } from "./helpers/auth";
-import { cardWithTitle } from "./helpers/fields";
 
 // D-148, spec 1: create -> edit -> delete an event, reloading between each
 // step so every assertion is against what the server actually persisted,
@@ -9,6 +8,17 @@ import { cardWithTitle } from "./helpers/fields";
 // day-agenda row is a Card whose CardContent holds the title text plus an
 // "Edit event" icon link and a delete button — there is no dedicated
 // event-detail page to navigate into first.
+//
+// This page's day-agenda cards render the title as a plain
+// `<p class="text-sm font-medium">` inside CardContent -- there is no
+// CardTitle (`data-slot="card-title"`), unlike the gift-suggestion cards
+// helpers/fields.ts's `cardWithTitle` was built for. Reusing that helper
+// here would never match, so this file scopes by an exact text match
+// inside the Card instead.
+function dayCardWithTitle(page: Page, titleText: string): Locator {
+  return page.locator('[data-slot="card"]').filter({ has: page.getByText(titleText, { exact: true }) });
+}
+
 test.describe("Calendar event create/edit/delete", () => {
   test("create, edit, then delete an event survives a reload each time", async ({ page }) => {
     await signIn(page, SMITH_CREDENTIALS);
@@ -32,7 +42,7 @@ test.describe("Calendar event create/edit/delete", () => {
     // Reload and confirm the event is really in the database, not just
     // held in client state.
     await page.reload();
-    let row = cardWithTitle(page, title);
+    let row = dayCardWithTitle(page, title);
     await expect(row).toBeVisible({ timeout: 10_000 });
 
     // --- Edit ---
@@ -46,7 +56,7 @@ test.describe("Calendar event create/edit/delete", () => {
     await page.waitForURL(/\/calendar/, { timeout: 15_000 });
 
     await page.reload();
-    row = cardWithTitle(page, updatedTitle);
+    row = dayCardWithTitle(page, updatedTitle);
     await expect(row).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText(title, { exact: true })).toHaveCount(0);
 
