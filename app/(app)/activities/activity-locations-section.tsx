@@ -1,14 +1,20 @@
 "use client";
 
-import { useActionState, useEffect, useRef } from "react";
-import { Loader2, MapPin } from "lucide-react";
-import { addActivityLocationAction, removeActivityLocationAction, type SimpleFormState } from "./actions";
+import { useActionState, useEffect, useRef, useState, useTransition } from "react";
+import { Loader2, MapPin, Search, Star } from "lucide-react";
+import {
+  addActivityLocationAction,
+  removeActivityLocationAction,
+  suggestNearbyLocationsAction,
+  type SimpleFormState,
+} from "./actions";
 import { ConfirmDeleteButton } from "@/components/ui/confirm-delete-button";
 import { useFormValidity } from "@/lib/hooks/use-form-validity";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { ActivityLocationRow } from "@/lib/db/database.types";
+import type { PlaceSuggestion } from "@/lib/external/places";
 
 const initialState: SimpleFormState = { error: null };
 
@@ -20,13 +26,21 @@ const initialState: SimpleFormState = { error: null };
  * section is additive and only handles any *other* locations for the same
  * activity, so an activity that happens at two courses/ranges/spots can
  * have both without duplicating the whole activity.
+ *
+ * QUEUE-043: "Find nearby" adds a Google Places search (lib/external/places.ts)
+ * on top of the manual-entry form below — same list, same add/remove
+ * actions, just a faster way to populate the manual fields than typing an
+ * address by hand. Degrades to "not set up yet" copy if no
+ * GOOGLE_PLACES_API_KEY is configured; manual entry always still works.
  */
 export function ActivityLocationsSection({
   activityId,
   additionalLocations,
+  activityTypeHint,
 }: {
   activityId: string;
   additionalLocations: ActivityLocationRow[];
+  activityTypeHint: string;
 }) {
   const action = addActivityLocationAction.bind(null, activityId);
   const [state, dispatch, pending] = useActionState(action, initialState);
@@ -47,6 +61,36 @@ export function ActivityLocationsSection({
     if (!checkValid()) return;
     justSubmittedRef.current = true;
     dispatch(new FormData(formRef.current!));
+  }
+
+  // --- QUEUE-043: nearby-places search ---
+  const [query, setQuery] = useState(activityTypeHint);
+  const [searchPending, startSearch] = useTransition();
+  const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [searched, setSearched] = useState(false);
+  const [addingPlaceId, setAddingPlaceId] = useState<string | null>(null);
+
+  function handleSearch() {
+    startSearch(async () => {
+      const result = await suggestNearbyLocationsAction(activityId, query);
+      setSuggestions(result.suggestions);
+      setSearchError(result.error);
+      setSearched(true);
+    });
+  }
+
+  async function handleAddSuggestion(place: PlaceSuggestion) {
+    setAddingPlaceId(place.placeId);
+    const formData = new FormData();
+    formData.set("name", place.name);
+    if (place.address) formData.set("address", place.address);
+    if (place.lat != null) formData.set("lat", String(place.lat));
+    if (place.lng != null) formData.set("lng", String(place.lng));
+    formData.set("googlePlaceId", place.placeId);
+    await addActivityLocationAction(activityId, initialState, formData);
+    setSuggestions((prev) => prev.filter((p) => p.placeId !== place.placeId));
+    setAddingPlaceId(null);
   }
 
   return (
@@ -79,6 +123,66 @@ export function ActivityLocationsSection({
           ))}
         </ul>
       )}
+
+      <div className="flex flex-col gap-2 rounded-md bg-muted/40 p-2">
+        <Label htmlFor="nearbyQuery" className="text-xs">
+          Find nearby (search, e.g. &ldquo;golf course&rdquo;)
+        </Label>
+        <div className="flex gap-2">
+          <Input
+            id="nearbyQuery"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleSearch();
+              }
+            }}
+            placeholder="e.g. golf course"
+          />
+          <Button type="button" size="sm" variant="secondary" onClick={handleSearch} disabled={searchPending}>
+            {searchPending ? <Loader2 className="size-4 animate-spin" /> : <Search className="size-4" />}
+          </Button>
+        </div>
+        {searchError && <p className="text-xs text-destructive">{searchError}</p>}
+        {searched && !searchError && suggestions.length === 0 && (
+          <p className="text-xs text-muted-foreground">No results.</p>
+        )}
+        {suggestions.length > 0 && (
+          <ul className="flex flex-col gap-2">
+            {suggestions.map((place) => (
+              <li
+                key={place.placeId}
+                className="flex items-center justify-between gap-2 rounded-md border bg-background p-2 text-sm"
+              >
+                <span className="flex flex-col">
+                  <span className="flex items-center gap-1.5">
+                    <MapPin className="size-3.5 text-muted-foreground" />
+                    {place.name}
+                    {place.rating != null && (
+                      <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
+                        <Star className="size-3" />
+                        {place.rating}
+                      </span>
+                    )}
+                  </span>
+                  {place.address && <span className="pl-5 text-xs text-muted-foreground">{place.address}</span>}
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleAddSuggestion(place)}
+                  disabled={addingPlaceId === place.placeId}
+                >
+                  {addingPlaceId === place.placeId ? <Loader2 className="size-4 animate-spin" /> : "Add"}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
 
       <form ref={formRef} noValidate onChange={clearInvalid} className="flex flex-col gap-2">
         <div className="grid grid-cols-2 gap-2">

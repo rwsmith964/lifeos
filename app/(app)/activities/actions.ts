@@ -9,6 +9,8 @@ import { tripIdeasRepo } from "@/lib/db/repositories/trip-ideas";
 import { activityLocationInsertSchema } from "@/lib/db/schemas";
 import { friendlyMutationError } from "@/lib/db/errors";
 import { geocodeAddress } from "@/lib/external/geocode";
+import { searchNearbyPlaces, type PlaceSuggestion } from "@/lib/external/places";
+import { usersRepo } from "@/lib/db/repositories/households";
 
 export interface SimpleFormState {
   error: string | null;
@@ -91,12 +93,20 @@ export async function addActivityLocationAction(
     }
   }
 
+  // QUEUE-043: when this location came from a "Find nearby" suggestion
+  // (see suggestNearbyLocationsAction below) instead of manual entry, the
+  // hidden googlePlaceId field carries the Places result's id through so
+  // it isn't lost -- stored in the existing external_ids bag, same shape
+  // usgs_gauge/noaa_station already use for other activity types.
+  const googlePlaceId = String(formData.get("googlePlaceId") ?? "").trim();
+
   const parsed = activityLocationInsertSchema.safeParse({
     user_activity_id: activityId,
     name,
     address,
     lat,
     lng,
+    external_ids: googlePlaceId ? { google_place_id: googlePlaceId } : undefined,
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Couldn't save that location." };
@@ -126,4 +136,56 @@ export async function removeActivityLocationAction(activityId: string, locationI
   revalidatePath(`/activities/${activityId}/edit`);
   revalidatePath("/activities");
   return { error: null };
+}
+
+export interface SuggestNearbyLocationsResult {
+  error: string | null;
+  suggestions: PlaceSuggestion[];
+}
+
+// QUEUE-043: "Find nearby" button on the activity edit page — a read-only
+// lookup (no mutation, so plain SimpleFormState's revalidatePath pattern
+// doesn't apply) that biases the search around the signed-in user's own
+// home_lat/home_lng (Settings > home address, D-060) since that's the
+// only per-person location LifeOS already has, rather than adding a new
+// "search near ___" input on top of the query box.
+export async function suggestNearbyLocationsAction(
+  activityId: string,
+  query: string
+): Promise<SuggestNearbyLocationsResult> {
+  const { supabase, household, userId } = await requireHouseholdContext();
+  const activity = await userActivitiesRepo.getById(supabase, activityId);
+  if (!activity || activity.household_id !== household.id) {
+    return { error: "Activity not found.", suggestions: [] };
+  }
+
+  const trimmedQuery = query.trim();
+  if (!trimmedQuery) {
+    return { error: "Type what you're looking for, e.g. \u201cgolf course\u201d.", suggestions: [] };
+  }
+
+  const user = await usersRepo.getById(supabase, userId);
+  if (user?.home_lat == null || user?.home_lng == null) {
+    return {
+      error: "Set your home address in Settings first so we know where \u201cnearby\u201d means.",
+      suggestions: [],
+    };
+  }
+
+  const outcome = await searchNearbyPlaces(trimmedQuery, { lat: user.home_lat, lng: user.home_lng });
+  if (!outcome.available) {
+    if (outcome.reason === "not_configured") {
+      return {
+        error: "Location suggestions aren't set up yet \u2014 ask whoever manages LifeOS to add a Google Places API key.",
+        suggestions: [],
+      };
+    }
+    return { error: outcome.message ?? "Couldn't search for nearby places \u2014 please try again.", suggestions: [] };
+  }
+
+  if (outcome.places.length === 0) {
+    return { error: `No results for \u201c${trimmedQuery}\u201d near your home address.`, suggestions: [] };
+  }
+
+  return { error: null, suggestions: outcome.places };
 }
