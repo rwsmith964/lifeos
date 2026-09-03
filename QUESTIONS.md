@@ -378,3 +378,11 @@ the remaining modules.
 **Assumption made:** Shipped age + relationship_type as the demographic signal, with non-gendered suggestion lists per age bucket. Did not add a gender column speculatively — that's a schema change with its own privacy/compliance surface (this app is already tracking App Store / Play Store data-safety disclosures per the launch-prep workstream) that deserves an explicit decision rather than a silent addition.
 **Reversal cost:** Medium — adding a gender field later is an additive nullable column (cheap schema-wise), but re-splitting the curated suggestion lists by gender, deciding the UI for an optional/skippable field, and updating the privacy/data-safety disclosure docs already drafted for the app stores is real follow-up work, not a one-line change.
 **Blocking:** No
+
+### QUEUE-041
+**Module:** Itinerary-aware trip planning / flight intake cascade (D-142, roadmap R-1)
+**File(s):** `lib/intake/trip-cascade.ts` (`DEFAULT_TSA_BUFFER_MINUTES`).
+**Question:** Should the TSA security-cutoff buffer (currently a hardcoded 120-minute constant applied to every flight) be configurable per household or per person — e.g. a household with young kids or TSA PreCheck might reasonably want a longer or shorter buffer than the default?
+**Assumption made:** Shipped a hardcoded `DEFAULT_TSA_BUFFER_MINUTES = 120` (2 hours, a standard domestic-flight recommendation) rather than adding a settings column speculatively — same posture as QUEUE-007's confidence threshold. `computeTripCascade` already accepts an optional `tsaBufferMinutes` override parameter, so wiring a per-household setting through later is additive (new nullable column + one call-site change), not a rework.
+**Reversal cost:** Low — the function signature already supports an override; this is purely "add a settings field and pass it through," no cascade-logic changes needed.
+**Blocking:** No

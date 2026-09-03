@@ -3650,3 +3650,98 @@ changed). `pnpm build` — succeeds, `/onboarding` present in the route manifest
 `a5cc4ef`. Deployed to production via `vercel --prod --yes`, aliased to
 [lifeos-seven-rho.vercel.app](https://lifeos-seven-rho.vercel.app); `/api/health` returns 200 live,
 `/onboarding` returns a 307 redirect to `/login` for a logged-out request as expected.
+
+## D-142: Itinerary-aware trip planning — flight intake cascade (roadmap R-1)
+
+**Request:** Roadmap item R-1 — when a flight itinerary is captured (photo of a boarding pass /
+confirmation email), automatically cascade a TSA-cutoff → drive-time → pack-by sequence onto the
+calendar, and cross-reference existing childcare coverage for the trip window, per the standing
+autonomous-work directive ("work through everything you can... R-1 as much as feasible").
+
+**Design change from the original plan:** The original plan was a dedicated `flight_itinerary`
+parser — its own system prompt, a new `parser_used` enum value, and keyword-hint routing in
+`parse.ts` (mirroring how `recipe`/`task`/`ambiguous` are split today). Reading
+`app/api/intake/route.ts` showed this doesn't fit how flight intake actually happens:
+`parseAttachmentSource` — used for every image/screenshot upload, which is the realistic way a
+boarding pass gets submitted — always defaults to `parser="generic"`. There's no extracted text to
+run keyword hints against before the AI call runs on an attachment, so a `flight_itinerary`-specific
+parser would never be selected for the one input path that matters (someone typing "I have a flight"
+as bare text is not a realistic capture flow). Shipped instead: `"flight"` as a new
+`detected_record_type` value only, folded into the existing shared
+`GENERIC_INTAKE_SYSTEM_PROMPT`/`OUTPUT_CONTRACT` (already used by all three parsers) with explicit
+flight-recognition instructions (classify boarding passes/confirmations as `flight`, not
+`calendar_event`; never invent a date/time not present in the source). Smaller surface — no new
+parser file, no `parser_used` constraint widening, no `parse.ts` changes — for the same user-facing
+capability.
+
+**What shipped:**
+
+- `supabase/migrations/20260902000007_intake_flight_record_type.sql` — widens the
+  `intake_drafts_detected_record_type_check` constraint to add `'flight'`. Applied live to the
+  Supabase project via the migration tool.
+- `lib/db/database.types.ts`, `lib/db/schemas.ts` — `"flight"` added to `IntakeDraftRow`'s
+  `detected_record_type` union and `intakeRecordTypeSchema` (also fixed a pre-existing gap: `"recipe"`
+  was missing from `intakeRecordTypeSchema` even though it's a valid `detected_record_type` and has
+  its own conversion branch — same drive-by fix category as prior segments' schema-widening work).
+- `lib/intake/prompts.ts` — `"flight"` added to `intakeExtractionSchema`'s `recordType` enum;
+  `OUTPUT_CONTRACT` extended with the flight field shape (`flightAirline, flightNumber,
+  flightDepartureAirport, flightDepartureAtISO, flightArrivalAirport, flightArrivalAtISO`);
+  `GENERIC_INTAKE_SYSTEM_PROMPT` prose extended with flight-recognition and classification rules.
+- `lib/intake/labels.ts` — `flight: "Flight"` in `RECORD_TYPE_LABELS`; 6 new field labels so the
+  review queue's existing generic label lookup renders flight fields with zero UI changes (same
+  precedent as every other intake record type — `intake-review-queue.tsx` has no per-type switch).
+- `lib/intake/trip-cascade.ts` (new) — `computeTripCascade(flight, home, options)`: given a flight's
+  departure airport/time and an optional home `{lat, lng}`, computes `tsaCutoffAt` (departure minus
+  `DEFAULT_TSA_BUFFER_MINUTES = 120`), optionally `leaveByAt`/`driveMinutes`/`driveTimeSource` (via
+  the existing `geocodeAddress`/`getTravelTime` helpers, same precedent as
+  `app/(app)/people/childcare-actions.ts`'s drive-time lookup — try/catch degrades to `null` on
+  failure rather than throwing), and `packByAt` (`tsaCutoffAt` minus `DEFAULT_PACK_LEAD_MINUTES =
+  720`, i.e. the night before by default). Returns a sorted `events[]` list: security-cutoff
+  reminder always, "leave for the airport" only when drive time was resolvable, pack reminder
+  always. Also exports `summarizeChildcareCoverage(supabase, householdId, tripStart, tripEnd,
+  peopleById)`, which reads `childcare_requests` via the existing
+  `listChildcareRequestsForHousehold`, filters to `status === "accepted"` with `care_date` inside the
+  trip window, and formats a plain-English summary ("Grandma covers Cal & Emlyn Smith") — reused by
+  the confirmation message, never shown as a raw record.
+- `lib/intake/convert.ts` — new `case "flight":` branch. Creates the flight itself as a
+  `calendar_events` row (`event_type: "travel"`, already a valid enum value — no new type needed)
+  through `withActionLog` + `verifyRecordPersisted`, exactly like every other convert branch. Then,
+  best-effort and wrapped in its own try/catch so a cascade failure never undoes the already-saved
+  flight event: calls `computeTripCascade` and inserts each derived event as its own draft
+  `intake_drafts` row (status `"ready"`, `detected_record_type: "task"`, tagged so the household
+  reviews/approves each cascade step individually rather than having events silently appear on the
+  calendar — consistent with the "drafts not writes where relevant" ground rule) and calls
+  `summarizeChildcareCoverage`, appending its summary (or a "No confirmed childcare coverage" line)
+  to the confirmation message.
+- `lib/intake/review-queue.ts`, `app/(app)/intake/actions.ts` — `approveDraft`/
+  `approveIntakeDraftAction` now thread `userId` (from `requireHouseholdContext()`) through to
+  `convertDraftToRecord`, since the flight branch needs it to look up the household's home address
+  for the drive-time leg (`usersRepo.getById`). Every other convert branch ignores the new optional
+  `ConvertContext.userId` field — additive, not a signature-breaking change for existing callers.
+
+**Not built:**
+
+- **Household-configurable TSA buffer** — `DEFAULT_TSA_BUFFER_MINUTES` is a hardcoded constant
+  (120 minutes), not a per-household setting. Same posture as QUEUE-007's confidence threshold:
+  shipping a sensible default now rather than adding a settings column speculatively. Logged as
+  QUEUE-041 (non-blocking).
+- No dedicated `flight_itinerary` parser file or `parser_used` enum widening — see the design-change
+  rationale above.
+- No UI changes to the intake capture form or review queue — both already generically support any
+  `detected_record_type`/field-key shape (record-type label lookup, and date-like field keys ending
+  `ISO`/`Date`/`On` already auto-format via `date-fns`), confirmed by reading both files before
+  starting rather than assumed.
+
+**Verification:** `pnpm exec tsc --noEmit` — 0 errors. `pnpm lint` — 0 errors (34 pre-existing
+unrelated warnings from generated Android build assets only, same set as prior D-13x/D-14x entries).
+Full suite: **80 test files / 776 tests passing** (up from 79/767 — added
+`lib/intake/trip-cascade.test.ts`, 6 tests covering the cascade time-math with and without a home
+address, custom buffer/lead overrides, and the childcare-summary date-range/status filtering; and a
+new `describe` block in `lib/intake/convert.test.ts`, 3 tests covering the successful flight
+conversion + derived drafts + childcare-coverage message, the childcare-coverage-found case, and the
+missing-required-field throw). `pnpm build` — succeeds.
+
+**Git/deploy:** branch `feature/d142-flight-itinerary-cascade`, pushed, merged `--no-ff` into `main`
+at `9ea8783`. Deployed to production via `vercel --prod --yes`, aliased to
+[lifeos-seven-rho.vercel.app](https://lifeos-seven-rho.vercel.app); `/api/health` returns
+`{"ai":true}` live.
