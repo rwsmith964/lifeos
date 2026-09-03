@@ -74,13 +74,17 @@ test.describe("Gift suggestions", () => {
     // --- Save ---
     await alpha.getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByRole("status").getByText("Saved to shortlist.")).toBeVisible({ timeout: 10_000 });
-    // The badge flip from "suggested" buttons to the "Saved" badge depends
-    // on useAsyncToastAction's router.refresh() round-trip completing, not
-    // just on the (already-visible) toast -- give it the same generous
-    // budget as every other post-mutation assertion in this file instead
-    // of the 5s default, which is a real source of CI flakiness.
-    await expect(alpha.getByText("Saved", { exact: true })).toBeVisible({ timeout: 10_000 });
-    await expect(alpha.getByRole("button", { name: "Mark ordered", exact: true })).toBeVisible({ timeout: 10_000 });
+    // The toast fires right after `action()` resolves (the mutation is
+    // already committed at that point -- see useAsyncToastAction), but
+    // the badge flip additionally depends on the *separate*
+    // `router.refresh()` RSC round-trip completing and re-rendering with
+    // the new status. Confirmed via a live CI run (33728088223) that 10s
+    // isn't consistently enough for that refresh alone even though the
+    // toast itself reliably appears within 10s -- give the refresh its
+    // own generous budget, matching this file's other 20s waits (e.g. the
+    // post-generate redirect above) rather than reusing the toast's.
+    await expect(alpha.getByText("Saved", { exact: true })).toBeVisible({ timeout: 20_000 });
+    await expect(alpha.getByRole("button", { name: "Mark ordered", exact: true })).toBeVisible({ timeout: 20_000 });
 
     await page.reload();
     await expect(
