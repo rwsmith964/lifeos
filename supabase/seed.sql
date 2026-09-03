@@ -87,7 +87,13 @@ values
   ('30000000-0000-0000-0000-000000000009', '20000000-0000-0000-0000-000000000001', null, 'Steve Smith', null, 'sibling', '1988-01-25', true, ''),
   ('3000000a-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', null, 'Amanda Reyes', null, 'colleague', null, false, 'Works with Richard.'),
   ('3000000b-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', null, 'Betty Smith', 'Grandma Betty', 'extended_family', '1950-04-11', true, ''),
-  ('3000000c-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', null, 'Frank Smith', 'Uncle Frank', 'extended_family', '1962-07-30', true, 'Occasional fishing trips.')
+  ('3000000c-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', null, 'Frank Smith', 'Uncle Frank', 'extended_family', '1962-07-30', true, 'Occasional fishing trips.'),
+  -- D-148: nickname carrying its own distinct first name ("Cal" is not a
+  -- substring/derivation of "Callan" the way most nicknames are of their
+  -- full first name), seeded specifically so the Playwright E2E nickname-
+  -- resolution spec (lib/ai/context.ts redactMentions/labelFor) has a real
+  -- case to exercise instead of trivially matching on first name alone.
+  ('3000000d-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', null, 'Callan Smith', 'Cal', 'child', make_date(2018, extract(month from current_date + 60)::int, extract(day from current_date + 60)::int), true, 'Age 8.')
 on conflict (id) do nothing;
 
 -- ---------------------------------------------------------------------

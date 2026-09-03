@@ -3964,3 +3964,32 @@ against the live Supabase project.
 **Not done (deliberately, per the work order splitting this into Part 2 of 5):** Playwright E2E tests (Part 3) are not yet wired into this workflow — the work order's Part 3 explicitly calls for extending `verify.yml` once those specs exist, rather than adding an empty/placeholder E2E job now.
 
 **Git/deploy:** branch `feature/d147-ci-workflow`, committed, merged `--no-ff` into `main`, pushed.
+
+## D-148: Playwright E2E suite (7 specs) wired into CI (`verify.yml`'s new `e2e` job)
+
+**Problem:** `pnpm test` (vitest + pglite) verifies units and RLS policies against synthetic queries, but nothing in the repo exercised the app end-to-end through a real browser against a real (locally-seeded) Supabase instance. Manual QA passes had repeatedly caught real bugs this way (see KNOWN-ISSUES.md's history of "found and fixed live this pass" entries), but manual QA doesn't run on every push and regresses silently.
+
+**Fix — test infrastructure:**
+- `playwright.config.ts`: Chromium only (a correctness regression suite, not a cross-browser one), `workers: 1` / `fullyParallel: false` (several specs share signed-in household state and would race each other), `baseURL` from `PLAYWRIGHT_BASE_URL` (defaults to `http://127.0.0.1:3100` so it never collides with a locally-running `pnpm dev` on 3000).
+- `lib/ai/test-fixtures.ts` (new) + a small `lib/ai/client.ts` hook: when `AI_TEST_MODE=1` (set **only** by the CI `e2e` job, never in Vercel), AI calls (brain dump / Quick Capture parsing, gift suggestions) return fixed, deterministic fixture data instead of calling Anthropic, so specs assert against known values instead of real model output.
+- `supabase/seed.sql`: added a 13th person, Callan Smith ("Cal"), specifically because "Cal" is not a prefix/substring of "Callan" — the nickname-resolution spec needed a real case where nickname ≠ derived-from-first-name.
+- `supabase/seed-e2e.sql` (new): a second, isolated household ("Jones") with a distinctive `CANARY-JONES-9f21` token seeded into several tables, applied only in CI via `psql` after `supabase db reset` (the installed Supabase CLI, v2.78.1, has no `db reset --seed-file` flag).
+- `e2e/helpers/auth.ts` (`signIn`, `SMITH_CREDENTIALS`, `JONES_CREDENTIALS`) and `e2e/helpers/fields.ts` (`labeledField`, `cardWithTitle`) — shared helpers to keep specs from re-deriving the same shadcn selectors independently.
+
+**Fix — the 7 specs (`e2e/*.spec.ts`):**
+1. `calendar-crud.spec.ts` — create → edit → delete a calendar event, reloading between each step to confirm server persistence (not just optimistic UI state).
+2. `brain-dump.spec.ts` — a no-child-name transcript resolves to the fixed two-item AI_TEST_MODE fixture (a calendar event + time off), verifies pre-filled fields, saves both, confirms the calendar event persisted after a reload.
+3/5. `gift-flow.spec.ts` — generates the fixed 3-item gift fixture, then: (3) Save → toast → "Saved" badge → `/gifts/saved` → Dismiss → Undo restores state; (5) asserts the order-by status label is always a relative phrase ("Needed now" / "N days left to order"), never a raw past-tense date — `occasionDate = today+15` is chosen so the fixture's furniture/standard/digital shipping-window math deterministically yields exactly one past-due item and two future ones from a single generation call.
+4. `nickname-resolution.spec.ts` — Quick Capture ("Cal really wants to try rock climbing") produces a confirmation bubble; detected via the `/^Saved —/` prefix `app/api/capture/route.ts` always uses for a successful save, since the confirmation and a clarifying-question bubble share no distinguishing DOM attribute.
+6. `household-isolation.spec.ts` (**the regression test for D-053**, the real production incident this whole suite exists to prevent a repeat of) — three-part: (a) list pages never show Jones canary data while signed in as Smith; (b) direct-ID access to Jones-owned records (person detail, calendar-event edit) while signed in as Smith doesn't leak canary data via RLS bypass — not just list-level filtering; (c) positive control — signed in as Jones, the same canary data **is** visible, proving (a)/(b) aren't trivially passing due to missing seed data.
+7. `mobile-viewport.spec.ts` — 375×812 viewport; confirms the bottom nav (not the desktop sidebar) is the one rendered, every bottom-nav destination is reachable, and neither the destinations nor the Quick Capture panel cause horizontal overflow.
+
+**Real bug found and fixed in the test suite itself (not application code) while verifying this part:** adding Callan Smith to `supabase/seed.sql` (13 people, up from 12) silently broke two existing RLS pglite tests in `supabase/tests/pglite/rls.test.ts` that hardcoded the old total (`toBe(13)` for what is now 14 rows after the child-fixture insert). Caught by `pnpm test` going from 793/793 to 791/793 passing; fixed by updating both assertions (and the one test title) to the correct new count. Confirmed no other hardcoded seed-count assertions exist anywhere else in the codebase.
+
+**CI wiring:** added an `e2e` job to `.github/workflows/verify.yml`, gated on `needs: verify` (only runs once typecheck/lint/test/build are green) — `supabase/setup-cli@v1` → `supabase start` (migrations + `seed.sql`) → `supabase status -o env` to export the local instance's URL/anon/service-role keys into `$GITHUB_ENV` → `supabase db reset` → `psql -f supabase/seed-e2e.sql` (Jones household) → `pnpm build` with `AI_TEST_MODE=1` → start the app on port 3100 with a readiness poll against `/api/health` → `pnpm exec playwright test` → upload the HTML report as an artifact on failure. Local `pnpm test`/`pnpm build` never exercise this job — it needs Docker (for `supabase start`), which is unavailable in the sandbox, so this job's correctness can only be confirmed by a real GitHub Actions run.
+
+**Verified:** `pnpm typecheck && pnpm lint && pnpm test (793/793, after the fix above) && pnpm build` all pass locally. `.github/workflows/verify.yml` validated as syntactically well-formed YAML.
+
+**Not done (deliberately, per the work order splitting this into Part 3 of 5):** the cross-household-sharing design document (Part 4) and market-readiness notes (Part 5) are separate parts of the same work order.
+
+**Git/deploy:** branch `feature/d148-playwright-e2e`, committed, merged `--no-ff` into `main`, pushed.
