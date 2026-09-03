@@ -24,11 +24,11 @@ for Richard and must not be lost. New entries from this engagement use `QUEUE-##
 **Reversal cost:** Low
 **Blocking:** No
 
-### QUEUE-003
+### QUEUE-003 — RESOLVED (D-160)
 **Module:** Module 2 / Leisure Planner
 **File(s):** `app/(app)/activities/leisure-planner-actions.ts`, `lib/planner/score-breakdown-display.ts`, `lib/planner/gear-checklist.ts`
-**Question:** Same shape as QUEUE-002 (now resolved — see below) — Module 2's backend (3 new tables + `opportunities.score_breakdown`, all flagged off) is done, tested, and merged, but no UI surfaces the viability config manager, gear checklist manager, outing log form, or opportunities breakdown display yet.
-**Assumption made:** Keep moving to Module 3 per the brief's "never idle" mandate — backend-first with the flag OFF is fully compliant with the additive contract. UI for Module 2 is the next active item (QUEUE-003, in progress) now that Module 1's UI has shipped.
+**Question:** Same shape as QUEUE-002 (resolved via D-159) — Module 2's backend (3 new tables + `opportunities.score_breakdown`, all flagged off) is done, tested, and merged, but no UI surfaces the viability config manager, gear checklist manager, outing log form, or opportunities breakdown display yet.
+**Resolution:** UI shipped — see D-160 in DECISIONS.md. Viability config manager and default-gear-checklist manager added to the Activities page; per-activity gear checklist and outing log added to the activity edit page; "Why this score?" breakdown added to the Opportunities page. All flag-gated on `leisure_planner_v2`, which is already enabled for the real household.
 **Reversal cost:** Low
 **Blocking:** No
 
