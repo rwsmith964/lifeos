@@ -4144,3 +4144,17 @@ Every new RLS policy gets a `pglite` test in `supabase/tests/pglite/rls.test.ts`
 **Reversal cost:** Low — one new component, one new server action, and a step-machine edit that only touches step ordering/numbering. Removing the step means reverting `onboarding-wizard.tsx`'s three touched spots and deleting the two new files; no schema or migration change either way (writes through the same `users.home_address`/`home_lat`/`home_lng` columns D-050/D-151 already use).
 
 **Git/deploy:** branch `feat/d152-onboarding-home-address`, committed, merged `--no-ff` into `main`, pushed.
+
+## D-153: ROADMAP-PROACTIVE-ASSISTANT.md corrected — R-1 through R-5 were already shipped, doc still said "unbuilt"
+
+**Problem:** The roadmap doc's header read "unbuilt, scoped for future sessions" and every one of R-1 through R-5 was written in future tense ("why it's not built yet," "rough shape of the work"). In reality, all five had already shipped in this or a prior session: R-1 → D-142, R-2 → D-139, R-3 → D-141, R-4 → D-140, R-5 → D-138 (confirmed by grepping DECISIONS.md headers before editing, not assumed from memory). Only R-6 (gender field) was genuinely still open. A stale roadmap doc is itself a "broken thing" per the standing instruction — a future session (or Richard) reading it would reasonably conclude none of this exists yet and either re-scope or re-build already-shipped work.
+
+**Fix:** Rewrote ROADMAP-PROACTIVE-ASSISTANT.md: added a status-summary table at the top mapping each R-item to its shipped D-number (or "open"), moved R-1 through R-5's content into the "Already shipped" section with a one-line summary of what actually shipped (noting D-142's scope reduction from the original plan), and kept only R-6 as an actual open roadmap item. No code changed — documentation only.
+
+**Not done:** Did not touch R-6 itself (still correctly "only if a real need emerges," not something to build speculatively). Did not re-verify each D-13X/D-14X entry's implementation beyond confirming the DECISIONS.md header exists for each — the entries themselves were already reviewed and shipped in their own sessions.
+
+**Verified:** Documentation-only change; no typecheck/lint/test/build impact (confirmed no code files touched). Re-read the rewritten file for internal consistency (table, prose, and status line all agree) before committing.
+
+**Reversal cost:** None — pure documentation, no schema/code/behavior change either way.
+
+**Git/deploy:** committed directly to `main` (docs-only, same precedent as D-149/D-150), no build/deploy needed since no application code changed.
