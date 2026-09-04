@@ -348,7 +348,8 @@ export async function convertDraftToRecord(ctx: ConvertContext, draft: IntakeDra
         const home = ctx.userId ? await usersRepo.getById(supabase, ctx.userId) : null;
         const cascade = await computeTripCascade(
           { departureAirport, departureAt },
-          home?.home_lat != null && home?.home_lng != null ? { lat: home.home_lat, lng: home.home_lng } : null
+          home?.home_lat != null && home?.home_lng != null ? { lat: home.home_lat, lng: home.home_lng } : null,
+          household.tsa_buffer_minutes != null ? { tsaBufferMinutes: household.tsa_buffer_minutes } : {}
         );
 
         for (const derived of cascade.events) {

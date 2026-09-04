@@ -164,6 +164,24 @@ export function SettingsForm({
           </div>
 
           <div className="flex flex-col gap-2">
+            <Label htmlFor="tsaBufferMinutes">TSA buffer for flights (minutes)</Label>
+            <Input
+              id="tsaBufferMinutes"
+              name="tsaBufferMinutes"
+              type="number"
+              min={0}
+              max={600}
+              step={5}
+              placeholder="120 (default)"
+              defaultValue={household.tsa_buffer_minutes ?? ""}
+            />
+            <p className="text-xs text-muted-foreground">
+              How long before a flight&apos;s departure time you want to be through security. Used when a flight is
+              added from a screenshot or forwarded email. Leave blank to use the default of 120 minutes.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-2">
             <Label htmlFor="homeAddress">Home address</Label>
             <Input
               id="homeAddress"
