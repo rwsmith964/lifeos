@@ -756,6 +756,8 @@ export interface CalendarEventRow {
   synced_to_account_id: string | null;
   external_caldav_href: string | null;
   external_caldav_etag: string | null;
+  /** Last successful push time to a two-way sync account (D-166/QUEUE-017). Distinct from updated_at, which the push's own bookkeeping write also advances -- this column is what lets last-write-wins re-push detect "edited since we last pushed it" instead of re-pushing on every cron cycle. Null until first pushed. */
+  synced_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -777,6 +779,7 @@ export type CalendarEventInsert = Insert<
   | "synced_to_account_id"
   | "external_caldav_href"
   | "external_caldav_etag"
+  | "synced_at"
   | "created_at"
   | "updated_at"
 >;

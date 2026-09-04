@@ -131,13 +131,15 @@ for Richard and must not be lost. New entries from this engagement use `QUEUE-##
 **Reversal cost:** Low — purely additive; rotating to a KMS-backed key or Supabase Vault later doesn't change the call sites, just the key source.
 **Blocking:** No
 
-### QUEUE-017
+### QUEUE-017 — RESOLVED (D-166)
 **Module:** Module 4 / Scheduling Intelligence
 **File(s):** `lib/calendar/two-way-sync.ts`
 **Question:** For the push (LifeOS -> CalDAV) direction of two-way sync, should an already-pushed local event be re-pushed every time it's edited after the initial sync, to keep the remote copy current?
 **Assumption made:** v1 pushes each local event to its CalDAV account exactly once, on the first sync after it becomes eligible (`synced_to_account_id IS NULL`). Once `pushToSyncAccount` records a `synced_to_account_id`/`external_caldav_href`/`external_caldav_etag` on the row, later edits to that event are NOT re-pushed — the remote copy reflects the event's state as of first sync only. This keeps v1 conflict-free (no need to reconcile a local edit against a possibly-also-edited remote ETag) at the cost of remote copies going stale after a local edit. Chosen because the brief explicitly calls out auto-reconciliation/auto-rescheduling as the fastest way to lose trust, and a correct edit-reconciliation policy (last-write-wins? merge? surface a conflict?) is exactly that kind of judgment call the brief says not to make silently.
 **Reversal cost:** Medium — re-enabling continuous push-on-edit means clearing `synced_to_account_id` (or adding a `synced_at`/content-hash column) whenever a pushed event is edited, plus a real ETag-conflict policy for the case where the remote copy also changed; additive (new nullable column or two), but touches `pushToSyncAccount`'s selection query and needs product input on the conflict policy.
 **Blocking:** No
+
+**Update (D-166):** Richard: "always overwrite the external copy" -- explicitly chose last-write-wins with no conflict prompt, resolving the open conflict-policy question above by opting out of building one. Implemented: new nullable `calendar_events.synced_at` column distinguishes "edited since last push" from `updated_at` (which the push write itself also advances); a new `listEditedSyncedEventsForAccount` query finds already-synced events edited since; `pushToSyncAccount` re-pushes each via `adapter.pushEvent(account, icsText, { href, etag: null })` -- the `etag: null` is deliberate, forcing `If-Match: *` (blind overwrite) instead of the stored etag. See D-166 for full implementation and verification detail.
 
 ### QUEUE-019
 **Module:** Module 5 / Ambient Display Mode

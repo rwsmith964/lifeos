@@ -195,7 +195,7 @@ export async function listUnsyncedLocalEventsForHousehold(
   householdId: string,
   windowEndISO: string
 ): Promise<CalendarEventRow[]> {
-  return calendarEventsRepo.list(client, (q) =>
+  const rows = await calendarEventsRepo.list(client, (q) =>
     q
       .eq("household_id", householdId)
       .is("synced_to_account_id", null)
@@ -203,6 +203,48 @@ export async function listUnsyncedLocalEventsForHousehold(
       .neq("event_type", "external")
       .lt("starts_at", windowEndISO)
       .order("starts_at", { ascending: true })
+  );
+  // Defensive re-check: production Postgres/PostgREST honours the .is()
+  // filter above, but the shared test double (fake-supabase.ts) returns
+  // its configured row set unconditionally regardless of query filters.
+  // This keeps the function correct against that fake without touching
+  // shared test infrastructure used by 12 other test files.
+  return rows.filter((event) => !event.synced_to_account_id);
+}
+
+/**
+ * Already-synced local events edited since their last push (D-166 /
+ * QUEUE-017 last-write-wins re-push). An event qualifies when it's synced
+ * to this account, isn't itself an external import, and its updated_at is
+ * newer than its synced_at -- OR synced_at is still null (a pre-D-166 row
+ * synced before this column existed, treated as due for a backfill push).
+ *
+ * updated_at alone can't distinguish "user edited this" from "we just
+ * pushed it": pushToSyncAccount's own bookkeeping write (recording
+ * synced_to_account_id/href/etag) advances updated_at too. synced_at is a
+ * separate column recording only the last successful push time, which is
+ * why this needs its own column-to-column comparison rather than a single
+ * PostgREST filter (Postgres can't compare two columns of the same row via
+ * the .filter query-builder syntax used elsewhere in this file), so the
+ * comparison is done in application code after a bounded fetch.
+ */
+export async function listEditedSyncedEventsForAccount(
+  client: SupabaseClient,
+  syncAccountId: string,
+  windowEndISO: string
+): Promise<CalendarEventRow[]> {
+  const rows = await calendarEventsRepo.list(client, (q) =>
+    q
+      .eq("synced_to_account_id", syncAccountId)
+      .is("external_source", null)
+      .neq("event_type", "external")
+      .lt("starts_at", windowEndISO)
+      .order("starts_at", { ascending: true })
+  );
+  return rows.filter(
+    (event) =>
+      event.synced_to_account_id === syncAccountId &&
+      (!event.synced_at || event.updated_at > event.synced_at)
   );
 }
 
