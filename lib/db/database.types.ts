@@ -102,6 +102,10 @@ export interface HouseholdRow {
   // /calendar/custody, which is deliberately the full picture per D-068).
   // Defaults true to match the reported preference out of the box.
   calendar_hide_other_parent_custody: boolean;
+  // QUEUE-041: household-level override for the flight intake cascade's
+  // TSA security-cutoff buffer. Null means "use the application default"
+  // (DEFAULT_TSA_BUFFER_MINUTES in lib/intake/trip-cascade.ts).
+  tsa_buffer_minutes: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -118,6 +122,7 @@ export type HouseholdInsert = Insert<
   | "brief_time"
   | "notification_channels"
   | "calendar_hide_other_parent_custody"
+  | "tsa_buffer_minutes"
   | "created_at"
   | "updated_at"
 >;

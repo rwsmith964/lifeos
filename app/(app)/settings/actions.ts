@@ -37,6 +37,17 @@ export async function updateHouseholdSettingsAction(
     notification_channels: formData.get("notifyEmail") != null ? ["email"] : [],
     // D-128: same absent-means-unchecked convention as notifyEmail above.
     calendar_hide_other_parent_custody: formData.get("calendarHideOtherParentCustody") != null,
+    // QUEUE-041: blank input means "use the application default" -- stored
+    // as null, not 0, so it's distinguishable from an intentional 0-minute
+    // buffer (a household right next to security, however unlikely). A
+    // non-blank, non-numeric value is left to reach zod as NaN so it
+    // surfaces the same "Invalid input" error every other numeric field
+    // in this schema gets, rather than silently falling back to null.
+    tsa_buffer_minutes: (() => {
+      const raw = formData.get("tsaBufferMinutes");
+      if (raw == null || String(raw).trim() === "") return null;
+      return Number(raw);
+    })(),
   });
   if (!parsedHousehold.success) {
     return { error: parsedHousehold.error.issues[0]?.message ?? "Invalid input.", saved: false };

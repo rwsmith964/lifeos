@@ -4302,3 +4302,25 @@ Every new RLS policy gets a `pglite` test in `supabase/tests/pglite/rls.test.ts`
 **Reversal cost:** Low. Purely additive: one new file plus three edited files (flag-gated import/render blocks in two pages, one new repo finder function). Reverting drops the three new UI sections and the one new repo function; no schema or data migration involved, and no pre-existing function was modified.
 
 **Git/deploy:** Branch `queue-003-module2-ui`, merged to `main` at `810ee1e`, pushed via the GitHub credential proxy, auto-deployed to production by the existing GitHub→Vercel integration (deployment reached `Ready`, aliased to `lifeos-seven-rho.vercel.app`).
+
+## D-161: Household-configurable TSA security buffer (closes QUEUE-041)
+
+**Context:** The flight intake cascade (`lib/intake/trip-cascade.ts`, D-142/R-1) computed the "arrive at the airport by" security-cutoff draft using a hardcoded `DEFAULT_TSA_BUFFER_MINUTES = 120` for every household. `computeTripCascade()` already accepted an optional `tsaBufferMinutes` override parameter — QUEUE-041 asked whether this should become a real household-level setting so, e.g., a household with TSA PreCheck or young kids could tune it. Only the settings-to-function wiring was missing.
+
+**What shipped:**
+- New migration `supabase/migrations/20260903000003_household_tsa_buffer.sql`: adds a nullable `households.tsa_buffer_minutes integer` column with a `0-600` check constraint. Null (the default for every existing and new household) means "use the application default," matching the same absence-means-default posture as `feature_flags` rows and QUEUE-007's confidence threshold — the constant in code stays the single source of truth for the default value rather than being duplicated into a SQL column default.
+- `lib/db/database.types.ts` / `lib/db/schemas.ts`: added `tsa_buffer_minutes` to `HouseholdRow`/`HouseholdInsert` and to `householdInsertSchema` (`z.number().int().min(0).max(600).nullable().optional()`).
+- `app/(app)/settings/settings-form.tsx`: new "TSA buffer for flights (minutes)" number input (blank = default, placeholder shows "120 (default)").
+- `app/(app)/settings/actions.ts`: `updateHouseholdSettingsAction` now parses the field — blank input persists `null`; a non-blank, non-numeric value is deliberately left to reach zod as `NaN` so it surfaces the same "Invalid input" error every other numeric field in this schema already gets, rather than silently falling back to the default.
+- `lib/intake/convert.ts`: the flight-branch call to `computeTripCascade` now passes `{ tsaBufferMinutes: household.tsa_buffer_minutes }` when the household has a non-null override, `{}` (falls back to `DEFAULT_TSA_BUFFER_MINUTES`) otherwise. No change to `trip-cascade.ts`'s function signature or logic — this is exactly the additive path QUEUE-041 anticipated.
+
+**Not done:**
+- No per-person override, only per-household — matches how every other household-scoped preference (`gift_scan_horizon_days`, `notification_channels`, etc.) works in Settings today; QUEUE-041 only asked about household-or-person, and household is the existing pattern.
+- No UI to preview what the computed cutoff time would look like with a given buffer; it's a plain number field, consistent with `giftScanHorizonDays`'s own plain-number treatment.
+- Live click-through (typing a value into the new Settings field and confirming a subsequently-imported flight uses it) was not possible this segment — the linked local device is offline. Substituted a new unit test (`lib/intake/convert.test.ts`) asserting a household with `tsa_buffer_minutes: 45` produces a security-cutoff draft 45 minutes before departure instead of the 120-minute default.
+
+**Verified:** typecheck (0 errors), lint (0 errors, same pre-existing Android-build-asset warnings only), tests (808/808 passing — 807 baseline + 1 new characterization test in `convert.test.ts`), build (clean, `/settings` in the route listing). Migration applied directly to the production Supabase project (`moblcysnsaxohnslubym`) via the `supabase` connector — additive-only, no data affected, verified via the resulting `success: true` response. **Environment note:** this sandbox's global `pnpm` (9.15.0) rejects this repo's `pnpm-workspace.yaml` (which has no `packages` key — it's only used for `overrides`/`allowBuilds`) with `packages field missing or empty`, and `corepack use` to the `package.json`-pinned `pnpm@11.22.0` fails on this sandbox's Node 20 (`pnpm@11` requires `node:sqlite`, Node 22+). Verification commands were run directly against `node_modules/.bin/{next,tsc,eslint,vitest}` instead of via `pnpm run`, with identical results to the `pnpm`-wrapped baseline from prior sessions. See KNOWN-ISSUES.md.
+
+**Reversal cost:** Low — additive nullable column plus one call-site change and one settings field; reverting drops the Settings input and the household override, leaving every flight cascade back on the 120-minute default with no data loss (the column can stay or be dropped independently).
+
+**Git/deploy:** Branch `queue-041-tsa-buffer-config`.

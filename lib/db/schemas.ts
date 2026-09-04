@@ -99,6 +99,9 @@ export const householdInsertSchema = z.object({
   // itself already no-ops safely on any channel it doesn't implement yet.
   notification_channels: z.array(notificationChannelSchema).optional(),
   calendar_hide_other_parent_custody: z.boolean().optional(),
+  // QUEUE-041: null means "use the application default" (see
+  // lib/intake/trip-cascade.ts's DEFAULT_TSA_BUFFER_MINUTES).
+  tsa_buffer_minutes: z.number().int().min(0).max(600).nullable().optional(),
 });
 
 export const userInsertSchema = z.object({

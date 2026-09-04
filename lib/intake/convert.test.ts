@@ -24,6 +24,7 @@ function baseHousehold(overrides: Partial<HouseholdRow> = {}): HouseholdRow {
     brief_time: "07:00",
     notification_channels: [],
     calendar_hide_other_parent_custody: true,
+    tsa_buffer_minutes: null,
     created_at: "2026-01-01T00:00:00.000Z",
     updated_at: "2026-01-01T00:00:00.000Z",
     ...overrides,
@@ -229,6 +230,40 @@ describe("convertDraftToRecord (flight branch, R-1/D-142)", () => {
     expect(titles).toContain("Arrive at PDX (security cutoff)");
     expect(titles).toContain("Pack for the trip");
     expect(titles.some((t) => String(t).startsWith("Leave for"))).toBe(false);
+  });
+
+  // QUEUE-041: household.tsa_buffer_minutes overrides the cascade's
+  // hardcoded 120-minute default when set.
+  it("uses the household's tsa_buffer_minutes override for the security-cutoff draft instead of the 120-minute default", async () => {
+    const { client, calls } = createFakeSupabaseClient({
+      feature_flags: { rows: [{ enabled: true }] },
+      calendar_events: {
+        onInsert: (values) => ({ id: "event-3", ...values }),
+        rows: [{ id: "event-3", title: "Delta DL123 to DEN", all_day: false }],
+      },
+      action_log: {},
+      intake_drafts: {},
+      people: { rows: [] },
+      childcare_requests: { rows: [] },
+    });
+
+    const ctx: ConvertContext = {
+      supabase: client as never,
+      household: baseHousehold({ tsa_buffer_minutes: 45 }),
+      selfPerson: baseSelfPerson(),
+    };
+    await convertDraftToRecord(ctx, flightDraft());
+
+    const draftInserts = calls.filter((c: FakeCall) => c.table === "intake_drafts" && c.op === "insert");
+    const cutoffDraft = draftInserts.find((c) => {
+      const fields = (c.values as Record<string, unknown>).extracted_fields as Record<string, ExtractedField>;
+      return String(fields.eventTitle.value) === "Arrive at PDX (security cutoff)";
+    });
+    expect(cutoffDraft).toBeTruthy();
+    const fields = (cutoffDraft!.values as Record<string, unknown>).extracted_fields as Record<string, ExtractedField>;
+    // Flight departs 08:00Z; a 45-minute buffer cuts off at 07:15Z, not the
+    // default-120-minute 06:00Z.
+    expect(fields.eventStartsAtISO.value).toBe("2026-09-15T07:15:00.000Z");
   });
 
   it("surfaces accepted childcare coverage overlapping the trip window in the confirmation message", async () => {

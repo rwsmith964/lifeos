@@ -25,11 +25,9 @@ import type { PersonRow } from "../db/database.types";
 
 /**
  * Default minutes before a domestic flight's stated departure time that
- * a traveler should be through security. No household-level override
- * exists yet -- that would need a new nullable households column, out of
- * scope for this pass -- so every household uses this default, exactly
- * the same posture DEFAULT_CONFIDENCE_THRESHOLD takes in
- * lib/intake/confidence.ts. Logged as QUEUE-041.
+ * a traveler should be through security, used whenever a household hasn't
+ * set its own `households.tsa_buffer_minutes` override (QUEUE-041, closed
+ * by that column + convert.ts passing it through to computeTripCascade).
  */
 export const DEFAULT_TSA_BUFFER_MINUTES = 120;
 
