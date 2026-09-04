@@ -349,13 +349,14 @@ for Richard and must not be lost. New entries from this engagement use `QUEUE-##
 **Reversal cost:** Low — the time-off data fix is Richard editing one existing record (or adding a new one) in the app UI, no engineering work. The travel-time/TSA/childcare cascade and packing wizard are net-new, additive features that can be layered on top of the "traveling" status this fix introduced without touching it.
 **Blocking:** No
 
-### QUEUE-047
+### QUEUE-047 — RESOLVED (D-138)
 **Module:** Feature-flag administration (all Modules)
-**File(s):** No file yet — every flag toggle to date (`ambient_display`, `brief_registration_v2`, `execution_draft_only`, `household_layer`, `universal_intake_v2`, and the three with no household row at all) has been a direct SQL write, not app UI.
+**File(s):** `app/(app)/settings/feature-flags.tsx` (`FeatureFlags` component), `app/(app)/settings/page.tsx`.
 **Question:** Split out of QUEUE-039 once its inline-correction half shipped as D-158 (see Resolved section) — this half is unrelated and still open. No flag-toggle UI exists anywhere in the app for any of the eight Module feature flags. Should Settings get an admin toggle panel for household owners?
 **Assumption made:** None yet — genuinely deferred, no autonomous guess made either way.
 **Reversal cost:** Low — a flag-toggle settings panel is additive and doesn't change any flag's current value.
 **Blocking:** No
+**Resolution:** Already shipped as **D-138** ("in-app feature-flag management", Settings > Modules) — `FeatureFlags` component wired into the Settings page, gated by `canManage` (owner/adult). Confirmed via `git log` (`a48caa8`, merged `e430d82`). Entry left unmarked in this file until now; no further work needed.
 
 ### QUEUE-048
 **Module:** Module 1 / Relationship & Gift Engine person-detail UI (D-159)
@@ -390,7 +391,7 @@ for Richard and must not be lost. New entries from this engagement use `QUEUE-##
 **Reversal cost:** Low — additive hidden form field + one call-site change once decided; doesn't touch any other D-143 file.
 **Blocking:** No
 
-### QUEUE-043
+### QUEUE-043 — RESOLVED (D-144)
 **Module:** Golf / location-based activity suggestions (roadmap backlog item, scoping only — not built)
 **File(s):** none yet — this is a pre-build scoping note, no code exists for this feature.
 **Question:** A "suggest nearby golf courses / points of interest" feature needs a real places/POI data source (course locations, hours, ratings, tee-time availability) — none of the currently connected services cover this. Checked the full connector list this session: only `supabase`, `vercel`, `github_mcp_direct` (source repo), `finance` (public markets), and `opticodds` (sports betting odds) are connected — none of them expose golf-course or general POI/places data. A real implementation needs either a paid places API (e.g. Google Places, Foursquare) with its own API key, or a golf-specific data provider (e.g. GolfNow/TeeOff-style course + tee-time APIs), which would go through the custom-credentials flow once Richard picks a provider and supplies a key.
