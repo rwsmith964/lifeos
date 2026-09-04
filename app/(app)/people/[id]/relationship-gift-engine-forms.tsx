@@ -47,20 +47,21 @@ import {
 
 const initialState: SimpleFormState = { error: null };
 
-// Reuses the exact option lists already live in event-form.tsx / people/new/page.tsx
-// so a relation label typed here reads the same as everywhere else in the app --
-// but relation_label is a free-text column (not an enum), so these are just
-// starting suggestions via a datalist, never a hard constraint.
-const RELATION_LABEL_SUGGESTIONS = [
+// D-162: closed set (person_relationships.relation_label is now enforced
+// by a check constraint -- see the D-162 migration), same vocabulary as
+// people/new/page.tsx's RELATIONSHIP_OPTIONS minus "self" (which doesn't
+// apply to a relation between two people).
+const RELATION_LABEL_OPTIONS = [
   "spouse",
   "partner",
   "child",
-  "co-parent",
+  "co_parent",
   "parent",
   "sibling",
-  "extended family",
+  "extended_family",
   "friend",
   "colleague",
+  "other",
 ] as const;
 
 const OCCASION_OPTIONS_WITH_BLANK = ["", "birthday", "christmas", "anniversary", "graduation", "just_because", "default"] as const;
@@ -267,7 +268,6 @@ export function AddRelationshipForm({
   const justSubmittedRef = useRef(false);
   const [errorDismissed, setErrorDismissed] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
-  const datalistId = `relation-label-options-${personId}`;
 
   function handleAdd() {
     if (!checkValid()) return;
@@ -330,20 +330,23 @@ export function AddRelationshipForm({
           <Label htmlFor={`relation-label-${personId}`} className="text-xs">
             Relation
           </Label>
-          <Input
+          <select
             id={`relation-label-${personId}`}
             name="relationLabel"
-            list={datalistId}
-            placeholder="wife, son, best friend"
+            defaultValue=""
             required
-            className="h-8 w-36"
+            className="border-input h-8 w-36 rounded-md border bg-transparent px-2 text-sm"
             onChange={() => setErrorDismissed(true)}
-          />
-          <datalist id={datalistId}>
-            {RELATION_LABEL_SUGGESTIONS.map((label) => (
-              <option key={label} value={label} />
+          >
+            <option value="" disabled>
+              Select…
+            </option>
+            {RELATION_LABEL_OPTIONS.map((label) => (
+              <option key={label} value={label}>
+                {label.replace("_", " ")}
+              </option>
             ))}
-          </datalist>
+          </select>
         </div>
         <Button type="button" size="sm" onClick={handleAdd} disabled={pending}>
           Add
@@ -369,7 +372,7 @@ export function RelationshipRow({
     <div className="flex items-start justify-between text-sm">
       <p>
         <span className="font-medium">{relationship.related_name}</span>{" "}
-        <span className="text-muted-foreground">— {relationship.relation_label}</span>
+        <span className="text-muted-foreground">— {relationship.relation_label.replace("_", " ")}</span>
         {relationship.notes && <span className="block text-xs text-muted-foreground">{relationship.notes}</span>}
       </p>
       <ConfirmDeleteButton

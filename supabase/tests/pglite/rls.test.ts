@@ -669,7 +669,7 @@ describe("RLS end-to-end (PGlite, real migrations + real seed data)", () => {
       );
       await asUser(db, RICHARD_USER, () =>
         db.exec(
-          `insert into person_relationships (person_id, related_name, relation_label) values ('${DAVE_PERSON}', 'Jane', 'wife');`
+          `insert into person_relationships (person_id, related_name, relation_label) values ('${DAVE_PERSON}', 'Jane', 'spouse');`
         )
       );
       await asUser(db, RICHARD_USER, () =>

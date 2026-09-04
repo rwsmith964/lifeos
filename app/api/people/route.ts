@@ -23,6 +23,7 @@ export async function POST(request: Request) {
     full_name: String(formData.get("fullName") ?? "").trim(),
     nickname: String(formData.get("nickname") ?? "").trim() || null,
     relationship_type: String(formData.get("relationshipType") ?? "friend"),
+    gender: String(formData.get("gender") ?? "").trim() || null,
     birthdate: birthdate || null,
     birth_year_known: formData.get("birthYearKnown") === "on",
     notes: String(formData.get("notes") ?? ""),

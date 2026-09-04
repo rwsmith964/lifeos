@@ -39,6 +39,25 @@ export const relationshipTypeSchema = z.enum([
   "other",
 ]);
 
+// D-162: optional/skippable -- null is the default "not specified" state,
+// never inferred or defaulted. See QUEUE-040.
+export const personGenderSchema = z.enum(["female", "male", "non_binary", "prefer_not_to_say"]);
+
+// D-162: closed set for relations *between* people (person_relationships),
+// reusing relationshipTypeSchema's vocabulary minus 'self'. See QUEUE-048.
+export const relationLabelSchema = z.enum([
+  "spouse",
+  "partner",
+  "child",
+  "co_parent",
+  "parent",
+  "sibling",
+  "extended_family",
+  "friend",
+  "colleague",
+  "other",
+]);
+
 export const interestStrengthSchema = z.enum(["casual", "regular", "passionate"]);
 export const interestSourceSchema = z.enum([
   "manual",
@@ -144,6 +163,7 @@ export const personInsertSchema = z.object({
   full_name: z.string().min(1),
   nickname: z.string().nullable().optional(),
   relationship_type: relationshipTypeSchema,
+  gender: personGenderSchema.nullable().optional(),
   birthdate: isoDate.nullable().optional(),
   birth_year_known: z.boolean().optional(),
   anniversary: isoDate.nullable().optional(),
@@ -809,7 +829,7 @@ export const personRelationshipInsertSchema = z.object({
   person_id: uuid,
   related_person_id: uuid.nullable().optional(),
   related_name: z.string().trim().min(1, "Enter a name.").max(120, "Keep the name under 120 characters."),
-  relation_label: z.string().trim().min(1, "Describe how they're related (e.g. \"wife\", \"son\").").max(60, "Keep this under 60 characters."),
+  relation_label: relationLabelSchema,
   notes: z.string().trim().max(2000).nullable().optional(),
 });
 

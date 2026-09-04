@@ -28,7 +28,8 @@ consequences if answered incorrectly.
 | **Usage Data** | No | No analytics/telemetry SDK is integrated (verify against `package.json` before submitting if this changes) | — | — |
 | **Diagnostics** | No | No crash-reporting SDK is integrated today | — | — |
 | **Location** | No | Activity/event "location" fields are free-text strings the user types (e.g. "Riverside Park"), not device GPS coordinates — this is **User Content**, not Apple's **Location** data type | — | — |
-| **Financial Info, Health & Fitness, Browsing History, Search History, Purchases, Sensitive Info** | No | Not collected | — | — |
+| **Sensitive Info** | Yes | Optional gender field on a household member's profile (D-162), a closed set of values (female/male/non-binary/prefer not to say). Always optional and skippable for any person, including children — no value is collected unless the user explicitly chooses one | Yes | No |
+| **Financial Info, Health & Fitness, Browsing History, Search History, Purchases** | No | Not collected | — | — |
 
 ## Data use
 

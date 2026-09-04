@@ -5,7 +5,7 @@ export const metadata = {
   title: `Privacy Policy — ${APP_NAME}`,
 };
 
-const LAST_UPDATED = "August 31, 2026";
+const LAST_UPDATED = "September 4, 2026";
 const CONTACT_EMAIL = "rwsmith964@gmail.com";
 
 export default function PrivacyPolicyPage() {
@@ -34,8 +34,9 @@ export default function PrivacyPolicyPage() {
         <li>
           <strong>Household and family information you add:</strong> names, contact
           details, relationships, notes, and — where you choose to enter it — schedules,
-          custody arrangements, and locations for people in your household, including
-          children.
+          custody arrangements, gender, and locations for people in your household,
+          including children. Gender is always optional and can be left unanswered for
+          anyone, including children.
         </li>
         <li>
           <strong>Calendar and activity information:</strong> events, activities, and

@@ -25,6 +25,17 @@ const RELATIONSHIP_OPTIONS = [
   "other",
 ] as const;
 
+// D-162: closed set, optional/skippable -- "" (the default) is stored as
+// null ("not specified"), distinct from the explicit "prefer_not_to_say"
+// answer. Especially important to keep skippable for children (QUEUE-040).
+const GENDER_OPTIONS = [
+  ["", "Prefer not to answer / not specified"],
+  ["female", "Female"],
+  ["male", "Male"],
+  ["non_binary", "Non-binary"],
+  ["prefer_not_to_say", "Prefer not to say"],
+] as const;
+
 export function EditPersonForm({ person }: { person: PersonRow }) {
   const updateAction = updatePersonAction.bind(null, person.id);
   const [state, dispatch, pending] = useActionState(updateAction, initialState);
@@ -68,6 +79,21 @@ export function EditPersonForm({ person }: { person: PersonRow }) {
             </select>
           </div>
         )}
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="gender">Gender (optional)</Label>
+          <select
+            id="gender"
+            name="gender"
+            defaultValue={person.gender ?? ""}
+            className="border-input h-9 rounded-md border bg-transparent px-3 text-sm shadow-xs"
+          >
+            {GENDER_OPTIONS.map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </div>
         <div className="flex flex-col gap-2">
           <Label htmlFor="birthdate">Birthdate</Label>
           <Input id="birthdate" name="birthdate" type="date" defaultValue={person.birthdate ?? ""} />

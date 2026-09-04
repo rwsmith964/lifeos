@@ -33,6 +33,7 @@ import {
   timeOffEntryInsertSchema,
   childActivityInsertSchema,
   attendanceStatusSchema,
+  personGenderSchema,
 } from "@/lib/db/schemas";
 import { z } from "zod";
 import { friendlyMutationError } from "@/lib/db/errors";
@@ -532,6 +533,15 @@ export async function updatePersonAction(
     return { error: "Birthdate can't be in the future." };
   }
 
+  // D-162: closed set, optional/skippable -- "" from the select means
+  // "not specified" (stored as null), so only validate a non-empty value.
+  const genderInput = String(formData.get("gender") ?? "").trim();
+  const genderParsed = genderInput ? personGenderSchema.safeParse(genderInput) : null;
+  if (genderInput && !genderParsed?.success) {
+    return { error: "Invalid gender value." };
+  }
+  const gender = genderParsed?.success ? genderParsed.data : null;
+
   // Childcare provider address (D-060) feeds the drive-time estimate on a
   // childcare request — same "only re-geocode when the text actually
   // changed" pattern as the household owner's home address in
@@ -565,6 +575,7 @@ export async function updatePersonAction(
       full_name: fullName,
       nickname: String(formData.get("nickname") ?? "").trim() || null,
       relationship_type: existing.relationship_type === "self" ? "self" : (String(formData.get("relationshipType") ?? existing.relationship_type) as typeof existing.relationship_type),
+      gender,
       birthdate: birthdate || null,
       birth_year_known: formData.get("birthYearKnown") === "on",
       phone: String(formData.get("phone") ?? "").trim() || null,
