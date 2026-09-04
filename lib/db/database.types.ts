@@ -221,6 +221,8 @@ export type HouseholdLinkUpdate = Update<HouseholdLinkRow>;
 
 // people — THE SPINE -----------------------------------------------------
 
+export type PersonGender = "female" | "male" | "non_binary" | "prefer_not_to_say";
+
 export interface PersonRow {
   id: string;
   household_id: string;
@@ -228,6 +230,10 @@ export interface PersonRow {
   full_name: string;
   nickname: string | null;
   relationship_type: RelationshipType;
+  // D-162: optional, skippable -- null means "not specified", never
+  // defaulted or inferred. Especially important for children, per the
+  // privacy sensitivity flagged in QUEUE-040.
+  gender: PersonGender | null;
   birthdate: string | null;
   birth_year_known: boolean;
   anniversary: string | null;
@@ -255,6 +261,7 @@ export type PersonInsert = Insert<
   | "id"
   | "user_id"
   | "nickname"
+  | "gender"
   | "birthdate"
   | "birth_year_known"
   | "anniversary"
@@ -1123,12 +1130,28 @@ export type PersonWishlistItemUpdate = Update<PersonWishlistItemRow>;
 
 // person_relationships -------------------------------------------------------
 
+// D-162: closed set matching people.relationship_type's vocabulary
+// (minus 'self', which doesn't apply to a relation between two people),
+// enforced by a check constraint (see the D-162 migration) rather than
+// unrestricted free text.
+export type RelationLabel =
+  | "spouse"
+  | "partner"
+  | "child"
+  | "co_parent"
+  | "parent"
+  | "sibling"
+  | "extended_family"
+  | "friend"
+  | "colleague"
+  | "other";
+
 export interface PersonRelationshipRow {
   id: string;
   person_id: string;
   related_person_id: string | null;
   related_name: string;
-  relation_label: string;
+  relation_label: RelationLabel;
   notes: string | null;
   created_at: string;
   updated_at: string;

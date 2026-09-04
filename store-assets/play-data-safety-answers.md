@@ -28,6 +28,7 @@ only, which Play Console has a separate "service provider" carve-out for).
 | **App activity → App interactions** | No | No | No analytics SDK integrated |
 | **Device or other IDs** | No | No | No advertising/device identifiers collected |
 | **Location** | No | No | Location fields are free-text user input, not device GPS |
+| **Personal info → Other info (demographic)** | Yes | No | Optional gender field on a household member's profile (D-162), a closed set of values (female/male/non-binary/prefer not to say). Always optional and skippable for any person, including children |
 | **Financial, Health, Messages, Photos/Videos, Audio, Files/docs, Calendar (device-level), Contacts, App info/performance, Web browsing** | No | No | Not collected |
 
 ## Is all of the user data collected by your app encrypted in transit?

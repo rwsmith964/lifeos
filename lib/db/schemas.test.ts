@@ -10,6 +10,7 @@ import {
   personGiftSiteInsertSchema,
   personInsertSchema,
   personInterestInsertSchema,
+  personRelationshipInsertSchema,
   timeOffEntryInsertSchema,
   tripIdeaInsertSchema,
   userActivityInsertSchema,
@@ -72,6 +73,80 @@ describe("personInsertSchema", () => {
       household_id: "not-a-uuid",
       full_name: "Dave Wilson",
       relationship_type: "friend",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  // D-162 (QUEUE-040): gender is optional/skippable and, when provided,
+  // restricted to a closed set.
+  it("accepts a person with no gender specified", () => {
+    const result = personInsertSchema.safeParse({
+      household_id: HOUSEHOLD_ID,
+      full_name: "Dave Wilson",
+      relationship_type: "friend",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts a person with gender explicitly null", () => {
+    const result = personInsertSchema.safeParse({
+      household_id: HOUSEHOLD_ID,
+      full_name: "Dave Wilson",
+      relationship_type: "friend",
+      gender: null,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts each closed-set gender value", () => {
+    for (const gender of ["female", "male", "non_binary", "prefer_not_to_say"]) {
+      const result = personInsertSchema.safeParse({
+        household_id: HOUSEHOLD_ID,
+        full_name: "Dave Wilson",
+        relationship_type: "friend",
+        gender,
+      });
+      expect(result.success).toBe(true);
+    }
+  });
+
+  it("rejects an invalid gender value", () => {
+    const result = personInsertSchema.safeParse({
+      household_id: HOUSEHOLD_ID,
+      full_name: "Dave Wilson",
+      relationship_type: "friend",
+      gender: "unspecified",
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+// D-162 (QUEUE-048): relation_label is now a closed set instead of
+// unrestricted free text.
+describe("personRelationshipInsertSchema", () => {
+  it("accepts a valid closed-set relation_label", () => {
+    const result = personRelationshipInsertSchema.safeParse({
+      person_id: PERSON_ID,
+      related_name: "Jane Smith",
+      relation_label: "spouse",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects a free-text relation_label no longer in the closed set", () => {
+    const result = personRelationshipInsertSchema.safeParse({
+      person_id: PERSON_ID,
+      related_name: "Jane Smith",
+      relation_label: "best friend",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects 'self' as a relation_label (a person cannot be their own relative)", () => {
+    const result = personRelationshipInsertSchema.safeParse({
+      person_id: PERSON_ID,
+      related_name: "Jane Smith",
+      relation_label: "self",
     });
     expect(result.success).toBe(false);
   });

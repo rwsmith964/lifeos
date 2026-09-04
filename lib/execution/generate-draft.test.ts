@@ -24,6 +24,7 @@ function friendPerson(overrides: Partial<PersonRow> = {}): PersonRow {
     full_name: "Alex Friend",
     nickname: null,
     relationship_type: "friend",
+    gender: null,
     birthdate: null,
     birth_year_known: false,
     anniversary: null,

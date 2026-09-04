@@ -39,6 +39,7 @@ function baseSelfPerson(overrides: Partial<PersonRow> = {}): PersonRow {
     full_name: "Richard Smith",
     nickname: null,
     relationship_type: "self",
+    gender: null,
     birthdate: null,
     birth_year_known: false,
     anniversary: null,
