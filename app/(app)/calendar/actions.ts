@@ -150,6 +150,17 @@ export async function generateWeekendPlanAction(): Promise<WeekendPlanActionStat
             "None of your activities are in season (or have enough daylight) this weekend — check back closer to the date, or adjust an activity's season window.",
         };
       }
+      if (result.noCandidatesReason === "viability_unmet") {
+        // D-165 (QUEUE-006): activities and a home address both exist and
+        // something is in season, but every candidate got excluded because
+        // you told LifeOS a condition (like river flow or tide data)
+        // matters for that activity type, and no location on file has
+        // that data source set up.
+        return {
+          error:
+            "None of your activities have the condition data you said matters for them (like river flow or tide data) set up on their location yet — add it under the activity's location, or adjust which inputs matter for that activity type under Activities.",
+        };
+      }
       // Was misdirecting people to "add one under Activities" — the real
       // missing input is the household owner's home address (used to
       // compute travel time/distance to every activity), which lives on

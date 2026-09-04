@@ -48,13 +48,15 @@ for Richard and must not be lost. New entries from this engagement use `QUEUE-##
 **Reversal cost:** Low
 **Blocking:** No
 
-### QUEUE-006
+### QUEUE-006 — RESOLVED (D-165)
 **Module:** Module 2 / Leisure Planner
 **File(s):** `lib/planner/generate.ts`, `activity_type_viability_configs`
 **Question:** Should the new `activity_type_viability_configs` table actually be wired into the existing `isFishingRelevantLocation` gate in `generate.ts`, so a household's declared viability inputs affect real scoring/gating rather than being a purely declarative, unread table?
 **Assumption made:** No — v1 ships `activity_type_viability_configs` as declarative-only (a household can record and later view which inputs matter for an activity type), and the existing gate in `generate.ts` is left completely untouched, per the standing rule not to refactor existing working code. Wiring it into live gating is a larger, separate change with its own risk profile (a misconfigured household could accidentally suppress real opportunities) and is deferred to a future pass, likely alongside QUEUE-005.
 **Reversal cost:** Medium
 **Blocking:** No
+
+**Update (D-165):** Richard: "Yes, wire it into suggestions." Implemented in a new pure module `lib/planner/viability-gate.ts`: a saved, non-empty config is now authoritative over which condition inputs are fetched/considered for a candidate, and a candidate is excluded when the config names a data-backed input (river_flow/odfw/tide) that no data source on the location can supply. Discovered mid-implementation that the table has no numeric threshold fields -- only which input categories matter -- so true "hide fishing when river flow crosses X" is not implementable against the current schema; this gap is now tracked separately as QUEUE-049. See D-165 for full implementation and verification detail.
 
 ### QUEUE-007
 **Module:** Module 3 / Universal Intake + Trust Layer
@@ -454,3 +456,11 @@ in D-164 and in `pg_policies` history.
 **Reversal cost:** N/A — design-only, nothing built.
 **Blocking:** No. This does not block Part 5 or any other queued work.
 **Update (D-163):** Richard reviewed and greenlit the design's core principle (explicit opt-in per category, choose who to share with). D-149's model already supported per-recipient selection structurally (consent is per link, and a household can have multiple links); the one gap — a "share all" shortcut — was added as a design amendment (per-link "share everything with X" and per-category "share with all linked households," both as convenience wrappers around the same per-category grant path, not new consent semantics). Which category ships first and the custody per-child `scope` shape remain open per the original question above. Still design-only — implementation has its own dedicated branch/session when Richard asks to start it.
+
+### QUEUE-049
+**Module:** Module 2 / Leisure Planner — `activity_type_viability_configs` (surfaced while implementing D-165 / QUEUE-006)
+**File(s):** `activity_type_viability_configs` table, `lib/planner/viability-gate.ts`
+**Question:** Richard's original QUEUE-006 framing implied numeric threshold-based gating (his example: "hide fishing when river flow crosses X"). The existing `activity_type_viability_configs` schema only stores `relevant_inputs text[]` — which condition categories matter for an activity type — with no threshold/value fields at all. Should a future pass add per-input threshold configuration (e.g. a minimum/maximum acceptable river-flow value, tide range, etc.), or is "exclude when a declared data source is entirely missing for the location" (what D-165 actually implemented) sufficient?
+**Assumption made:** D-165 implemented the best-faithful interpretation achievable without a schema change — gating on data-source presence/absence, not on any numeric value — since inventing a threshold schema and matching UI unprompted would be a much larger, unrequested feature. Left as an open question rather than guessing at threshold ranges/units per activity type.
+**Reversal cost:** Medium — would need a new table or jsonb column for per-config threshold values, a UI to set them per activity type, and comparison logic in `viability-gate.ts`; additive, no existing behavior needs to change to add it.
+**Blocking:** No.

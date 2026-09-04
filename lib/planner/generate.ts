@@ -20,7 +20,9 @@ import { listActivitiesWithLocations } from "../db/repositories/activities";
 import { listCustodyBlocksForHouseholdInRange, listEventsInRange } from "../db/repositories/calendar";
 import { listActiveCadencesForHousehold } from "../db/repositories/contact";
 import { householdsRepo, usersRepo } from "../db/repositories/households";
+import { listViabilityConfigsForHousehold } from "../db/repositories/leisure-planner";
 import { listPeopleForHousehold, peopleRepo } from "../db/repositories/people";
+import { activityTypeKey } from "../db/schemas";
 import { getWeekendPlanForDate, weekendPlansRepo } from "../db/repositories/system";
 import { listTimeOffForPeopleInRange } from "../db/repositories/work-schedule";
 import { getNoaaTidePredictions } from "../external/noaa-tides";
@@ -33,6 +35,7 @@ import { nextSaturdayFrom, listRecentlyProposedActivityTypes, weeksSinceLastDone
 import { scoreActivityCandidate } from "./score-candidate";
 import { computeDaylightWindow, hasSufficientDaylight, isActivityInSeason } from "./seasonality";
 import { pickBestLocation } from "./travel-estimate";
+import { isViabilityUnmet, resolveViabilityInputs } from "./viability-gate";
 
 const WAKING_HOUR_START = 8;
 const WAKING_HOUR_END = 20;
@@ -53,7 +56,14 @@ export type GenerateWeekendPlanResult =
   // show a different, accurate message for each rather than always
   // pointing people at Settings/Activities when the real answer is
   // "nothing golf-shaped is in season in January."
-  | { status: "no_candidates"; noCandidatesReason: "missing_setup" | "seasonally_unavailable" };
+  // D-165 (QUEUE-006): "viability_unmet" is distinct from both -- every
+  // candidate that survived the season/daylight gates was excluded because
+  // the household declared a data-backed viability input (river flow, tide,
+  // or ODFW) for that activity type and no location on file can supply it.
+  | {
+      status: "no_candidates";
+      noCandidatesReason: "missing_setup" | "seasonally_unavailable" | "viability_unmet";
+    };
 
 export async function generateWeekendPlan(
   client: SupabaseClient,
@@ -117,6 +127,12 @@ export async function generateWeekendPlan(
 
   const cadenceByPersonId = new Map(cadenceRows.map((c) => [c.person_id, c]));
 
+  // D-165 (QUEUE-006): fetch every declared viability config for this
+  // household once, up front, rather than one query per activity inside
+  // the loop below.
+  const viabilityConfigs = await listViabilityConfigsForHousehold(client, householdId);
+  const viabilityConfigByType = new Map(viabilityConfigs.map((c) => [c.activity_type_key, c]));
+
   // Section 6.5 / docs/privacy.md: any person handed to the AI prompt goes
   // through the child-token map first, same as the brief and gift engines —
   // a preferred_companion CAN be a child (e.g. a parent's own kid listed as
@@ -132,6 +148,13 @@ export async function generateWeekendPlan(
   // rendered text) can be persisted onto weekend_plans for the accept flow.
   const scored: (ScoredActivityContext & { totalScore: number; activityId: string; locationId: string | null })[] = [];
 
+  // D-165 (QUEUE-006): tracks whether every candidate that made it past
+  // season/daylight was then excluded specifically for missing declared
+  // viability data, so the no-candidates message below can tell that
+  // apart from "nothing is in season this weekend."
+  let survivedSeasonAndDaylightCount = 0;
+  let viabilityExcludedCount = 0;
+
   for (const activity of activities) {
     // D-085 (P3-3): out-of-season activities, and needs_daylight
     // activities whose typical duration doesn't fit inside the daylight
@@ -139,10 +162,27 @@ export async function generateWeekendPlan(
     // weekend plan entirely rather than merely scored low.
     if (!isActivityInSeason(activity, saturday)) continue;
     if (!hasSufficientDaylight(activity, bestBlock, daylight)) continue;
+    survivedSeasonAndDaylightCount++;
 
     // P1-7/D-070: prefer a location we can actually route to when an
     // activity has more than one on file (e.g. Shooting).
     const location = pickBestLocation(activity.locations);
+
+    // D-165 (QUEUE-006): once a household has declared which viability
+    // inputs matter for this activity type, that declaration decides
+    // which external checks run below (replacing the old
+    // location-only heuristic) and can exclude this candidate outright
+    // when none of the location's data sources can supply any of the
+    // declared, data-backed inputs -- see lib/planner/viability-gate.ts
+    // for the full rationale, including why this can't gate on an
+    // actual condition threshold (the config only stores which inputs
+    // matter, not numeric thresholds).
+    const viabilityConfig = viabilityConfigByType.get(activityTypeKey(activity.activity_type)) ?? null;
+    const viabilityFlags = resolveViabilityInputs(viabilityConfig?.relevant_inputs, location?.external_ids);
+    if (isViabilityUnmet(viabilityFlags, location?.external_ids)) {
+      viabilityExcludedCount++;
+      continue;
+    }
 
     // D-070 (P1-8): the exact same scoring path Opportunities uses --
     // weather + travel (real coords when we have them, a tagged estimate or
@@ -167,26 +207,24 @@ export async function generateWeekendPlan(
     const result = candidate.score;
 
     const [usgs, odfw, tides] = await Promise.all([
-      location?.external_ids?.usgs_gauge
+      viabilityFlags.wantsRiverFlow && location?.external_ids?.usgs_gauge
         ? getUsgsGaugeReading(client, location.external_ids.usgs_gauge)
         : Promise.resolve(null),
-      location?.external_ids?.odfw_zone_url
+      viabilityFlags.wantsOdfw && location?.external_ids?.odfw_zone_url
         ? getOdfwReport(client, location.external_ids.odfw_zone_url)
         : Promise.resolve(null),
-      location?.external_ids?.noaa_station
+      viabilityFlags.wantsTide && location?.external_ids?.noaa_station
         ? getNoaaTidePredictions(client, location.external_ids.noaa_station, saturday)
         : Promise.resolve(null),
     ]);
     // Solunar is a pure local computation (no external call needed), but
     // major/minor "feeding periods" are only meaningful for fishing/hunting
     // — surfacing them on a golf or gym recommendation would just be
-    // confusing noise the AI has no reason to mention. Gate it on the same
-    // signal as USGS/ODFW: a location configured with fishing-relevant
-    // external_ids.
-    const isFishingRelevantLocation = Boolean(
-      location?.external_ids?.usgs_gauge || location?.external_ids?.odfw_zone_url
-    );
-    const solunar = isFishingRelevantLocation ? computeSolunarPeriods(saturday, point.lat, point.lng) : null;
+    // confusing noise the AI has no reason to mention. D-165: gated on
+    // viabilityFlags.wantsSolunar, which falls back to the original
+    // location-only heuristic when the household hasn't configured this
+    // activity type.
+    const solunar = viabilityFlags.wantsSolunar ? computeSolunarPeriods(saturday, point.lat, point.lng) : null;
 
     const overdueCompanions = findOverdueCompanions(activity.preferred_companions, cadenceByPersonId, today);
     const overdueCompanionLabels = await labelPeople(
@@ -242,7 +280,14 @@ export async function generateWeekendPlan(
   // exactly like having no activities at all rather than asking the AI to
   // narrate an empty candidate list.
   if (scored.length === 0) {
-    return { status: "no_candidates", noCandidatesReason: "seasonally_unavailable" };
+    // D-165 (QUEUE-006): every candidate that survived season/daylight was
+    // then excluded for missing declared viability data -- a more precise
+    // message than the generic seasonal one.
+    const noCandidatesReason: "seasonally_unavailable" | "viability_unmet" =
+      survivedSeasonAndDaylightCount > 0 && viabilityExcludedCount === survivedSeasonAndDaylightCount
+        ? "viability_unmet"
+        : "seasonally_unavailable";
+    return { status: "no_candidates", noCandidatesReason };
   }
 
   scored.sort((a, b) => b.totalScore - a.totalScore);
