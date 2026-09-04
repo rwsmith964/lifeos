@@ -358,21 +358,23 @@ for Richard and must not be lost. New entries from this engagement use `QUEUE-##
 **Blocking:** No
 **Resolution:** Already shipped as **D-138** ("in-app feature-flag management", Settings > Modules) — `FeatureFlags` component wired into the Settings page, gated by `canManage` (owner/adult). Confirmed via `git log` (`a48caa8`, merged `e430d82`). Entry left unmarked in this file until now; no further work needed.
 
-### QUEUE-048
+### QUEUE-048 — RESOLVED (D-162)
 **Module:** Module 1 / Relationship & Gift Engine person-detail UI (D-159)
 **File(s):** `app/(app)/people/[id]/relationship-gift-engine-forms.tsx` (`AddRelationshipForm`), `lib/db/database.types.ts` (`PersonRelationshipRow.relation_label`).
 **Question:** `relation_label` on a person relationship is free text with a `<datalist>` of common suggestions (spouse/partner/child/co-parent/parent/sibling/extended family/friend/colleague) rather than a closed enum. Free text was the fastest way to ship without blocking on every possible label a household might use, but a closed set could matter later if reporting, filtering, or gift-suggestion logic ever wants to reason about relationship type structurally (e.g. "show gift ideas grouped by relationship").
 **Assumption made:** Shipped free text with suggestions, matching the underlying schema (`related_name`/`relation_label` are both required free-text columns per D-117, unchanged this session). Did not add an enum column or migrate existing data.
 **Reversal cost:** Low today (no real data yet to migrate) but grows over time — the longer relation_label stays free text, the more real household data would need to be normalized into any future closed set.
 **Blocking:** No
+**Resolution:** Richard confirmed a closed set. Added a `person_relationships_relation_label_valid` check constraint restricting `relation_label` to the same nine categories plus `other`; replaced the free-text input + datalist with a required `<select>`. See D-162.
 
-### QUEUE-040
+### QUEUE-040 — RESOLVED (D-162)
 **Module:** Demographic interest suggestion bubbles (D-137)
 **File(s):** `lib/db/database.types.ts` (`PersonRow`), `lib/people/demographic-interests.ts`.
 **Question:** Richard's request explicitly said "age, gender, general demographics," but `PersonRow` has no gender field — only `birthdate`/`birth_year_known` and `relationship_type` exist. Should a gender field be added to `people`, and if so, is it a free-text field, a fixed enum, or an optional/skippable field (given real sensitivity around collecting gender for children in particular)? The current bubbles deliberately avoid gendering suggestions (e.g. the young-child bucket lists Spiderman and Paw Patrol together, not split "boy"/"girl" lists) so no gender data is required at all.
 **Assumption made:** Shipped age + relationship_type as the demographic signal, with non-gendered suggestion lists per age bucket. Did not add a gender column speculatively — that's a schema change with its own privacy/compliance surface (this app is already tracking App Store / Play Store data-safety disclosures per the launch-prep workstream) that deserves an explicit decision rather than a silent addition.
 **Reversal cost:** Medium — adding a gender field later is an additive nullable column (cheap schema-wise), but re-splitting the curated suggestion lists by gender, deciding the UI for an optional/skippable field, and updating the privacy/data-safety disclosure docs already drafted for the app stores is real follow-up work, not a one-line change.
 **Blocking:** No
+**Resolution:** Richard confirmed a closed set (not free text). Added a nullable `people.gender` column with a `people_gender_valid` check constraint (`female`/`male`/`non_binary`/`prefer_not_to_say`), always optional/skippable including for children. Added a `<select>` to the person create/edit forms. Updated `/privacy`, the Apple App Privacy draft, and the Play Data Safety draft to disclose it. The demographic-interest suggestion bubbles remain non-gendered — gender is not wired into `demographic-interests.ts` — this closes only the schema/UI half of the original question. See D-162.
 
 ### QUEUE-041 — RESOLVED (D-161)
 **Module:** Itinerary-aware trip planning / flight intake cascade (D-142, roadmap R-1)
