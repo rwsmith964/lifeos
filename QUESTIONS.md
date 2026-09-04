@@ -422,39 +422,35 @@ per-email lockout (D-108) already mitigates brute-force guessing independently o
 → Password Security → toggle "Leaked password protection" on. About 1 minute, no code/deploy
 required.
 
-### QUEUE-045
+### QUEUE-045 — RESOLVED (D-164)
 **Module:** Database performance / RLS policy layer (all modules — cross-cutting)
-**File(s):** none changed — this is a scoping note, not a fix. Would touch RLS policy definitions
-across `supabase/migrations/` for roughly 18 tables (`auth_rls_initplan`) and 20 tables
-(`multiple_permissive_policies`), per the Supabase performance advisor.
-**Question:** The performance advisor flags two categories of RLS inefficiency, both INFO/WARN
-(not errors, not currently causing any known slowness at this app's traffic level):
-1. `auth_rls_initplan` (18 policies) — several RLS policies call `auth.uid()`/`auth.jwt()` directly
-   instead of `(select auth.uid())`, which prevents Postgres from caching the value once per query
-   instead of re-evaluating it per row. Well-documented, mechanically safe Supabase pattern —
-   wrapping the call in a subquery does not change policy semantics or results, only query plan
-   caching.
-2. `multiple_permissive_policies` (20 tables) — some tables have more than one permissive policy
-   for the same role/action, which Postgres must OR together per row instead of evaluating one
-   policy. Consolidating these is also generally safe but requires literally combining policy
-   conditions, which is a more invasive rewrite than a mechanical subquery wrap.
-   Given RLS is this app's household-data trust boundary (per the project's own framing) and both
-   fixes span most of the schema's tables, I chose not to execute a blanket ~38-policy rewrite
-   unprompted even though the *pattern* is low-risk — the *scope* (touching nearly every table's
-   access-control definition at once) is the kind of thing worth a deliberate pass with full
-   before/after RLS-suite verification per table, not a single autonomous sweep.
-**Assumption made:** Left as-is. No functional bug exists today; this is a pure query-plan
-optimization with no user-visible effect at current scale.
-**Reversal cost:** N/A — nothing changed.
-**Blocking:** No. Worth revisiting either (a) if the RLS pglite suite (`supabase/tests/pglite/`)
-is expanded to assert row-level results per table first, giving strong regression coverage before
-a batch rewrite, or (b) if real production load ever makes RLS evaluation cost measurable (neither
-is true today — this is a pre-launch app).
+**File(s):** `supabase/migrations/20260904000003_rls_performance_advisor_fixes.sql`;
+`supabase/tests/pglite/rls.test.ts` (30 new regression tests added first, across 6 new
+`describe` blocks, before writing the migration).
+**Resolution:** Richard: "yes expand RLS test coverage and fix any performance issues." Added
+regression coverage for the six tables/policy-areas that had none (`users`, `device_tokens`,
+`external_data_cache`, `gift_shipping_windows`, `brain_dump_batches`, `household_members` DELETE),
+confirmed the full 117-test RLS suite passed against the pre-migration policies as a baseline,
+then wrote and applied a migration that: (1) wraps every literal `auth.uid()`/`auth.jwt()` in
+the 18 `auth_rls_initplan`-flagged policies (9 tables) in `(select auth.uid())`; (2) splits the
+`FOR ALL` owner/adult-manage policies on `assistant_email_config`, `contact_execution_settings`,
+and `execution_categories` into INSERT/UPDATE/DELETE-only policies so SELECT is governed by
+exactly one policy; (3) merges `household_members`' two DELETE policies (self-leave,
+owner-removes-member) into one OR'd policy. Re-ran the full suite locally post-migration
+(117/117 RLS tests, 832/832 overall) before applying to production. See D-164 for full detail.
+**Verified:** Migration applied to production Supabase (`moblcysnsaxohnslubym`) after explicit
+confirmation; `get_advisors` (type=performance) re-run post-migration confirms both
+`auth_rls_initplan` and `multiple_permissive_policies` findings are gone. Only unrelated,
+pre-existing INFO-level `unindexed_foreign_keys`/`unused_index` findings remain, out of scope.
+**Reversal cost:** Low — every original policy's `qual`/`with_check` text is preserved verbatim
+in D-164 and in `pg_policies` history.
+**Blocking:** No.
 
-### QUEUE-046
-**Module:** Cross-household sharing design (D-149) — DECISIONS.md, no code/schema/UI changed.
+### QUEUE-046 — GREENLIT, design amended (D-163), not yet implemented
+**Module:** Cross-household sharing design (D-149, amended D-163) — DECISIONS.md, no code/schema/UI changed.
 **File(s):** none changed — this is a design-doc scoping note. Would affect a future implementation of `household_link_consents`, `household_link_availability_probes`, `household_link_invites`, and the associated RLS policies described in D-149.
 **Question:** D-149 proposes an initial v1 category set (`calendar`, `custody_schedule`, `people_basic`, `activities`, `availability`) for cross-household sharing, based on what the app already models. This is not a locked spec — it's a reasonable starting taxonomy, not something the user explicitly confirmed. Two things a future implementation pass needs a decision on that this design doc intentionally left open: (1) which category (or categories) to build first — `calendar` is the cheapest to extend since `household_links`/`is_linked_household_member` already exist, but `availability` is likely the most user-facing valuable one and needs a new RPC, rate-limit table, and probe log from scratch; (2) whether `custody_schedule`'s per-child `scope` column (proposed as `jsonb`, nullable = "all applicable") is the right shape, or whether custody-relevant sharing should instead be derived automatically from existing custody-block child assignments rather than requiring a separate manual scope selection.
 **Assumption made:** None yet — no implementation started. The design doc flags this as an open question for whoever picks up the implementation pass, per the standing instruction to log rather than block on every open design choice.
 **Reversal cost:** N/A — design-only, nothing built.
-**Blocking:** No. This does not block Part 5 or any other queued work. Relevant only when/if the user greenlights implementing D-149.
+**Blocking:** No. This does not block Part 5 or any other queued work.
+**Update (D-163):** Richard reviewed and greenlit the design's core principle (explicit opt-in per category, choose who to share with). D-149's model already supported per-recipient selection structurally (consent is per link, and a household can have multiple links); the one gap — a "share all" shortcut — was added as a design amendment (per-link "share everything with X" and per-category "share with all linked households," both as convenience wrappers around the same per-category grant path, not new consent semantics). Which category ships first and the custody per-child `scope` shape remain open per the original question above. Still design-only — implementation has its own dedicated branch/session when Richard asks to start it.
