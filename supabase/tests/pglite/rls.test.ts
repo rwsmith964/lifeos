@@ -1578,6 +1578,235 @@ describe("RLS end-to-end (PGlite, real migrations + real seed data)", () => {
     });
   });
 
+  describe("household_members leave/remove (DELETE policies, QUEUE-045 regression coverage)", () => {
+    const LEAVE_HOUSEHOLD = "90000000-0000-0000-0000-000000000030";
+    const LEAVE_OWNER = "90000000-0000-0000-0000-000000000031";
+    const LEAVE_ADULT_1 = "90000000-0000-0000-0000-000000000032";
+    const LEAVE_ADULT_2 = "90000000-0000-0000-0000-000000000033";
+
+    beforeAll(async () => {
+      await asServiceRole(db, async () => {
+        await db.exec(`insert into auth.users (id, email) values ('${LEAVE_OWNER}', 'leave-owner@example.com');`);
+        await db.exec(`insert into auth.users (id, email) values ('${LEAVE_ADULT_1}', 'leave-adult-1@example.com');`);
+        await db.exec(`insert into auth.users (id, email) values ('${LEAVE_ADULT_2}', 'leave-adult-2@example.com');`);
+        await db.exec(`insert into households (id, name) values ('${LEAVE_HOUSEHOLD}', 'Leave Test Household');`);
+        await db.exec(
+          `insert into household_members (household_id, user_id, role) values ('${LEAVE_HOUSEHOLD}', '${LEAVE_OWNER}', 'owner');`
+        );
+        await db.exec(
+          `insert into household_members (household_id, user_id, role) values ('${LEAVE_HOUSEHOLD}', '${LEAVE_ADULT_1}', 'adult');`
+        );
+        await db.exec(
+          `insert into household_members (household_id, user_id, role) values ('${LEAVE_HOUSEHOLD}', '${LEAVE_ADULT_2}', 'adult');`
+        );
+      });
+    });
+
+    it("a non-owner member can delete their own membership row (self-leave)", async () => {
+      await asUser(db, LEAVE_ADULT_1, () =>
+        db.exec(`delete from household_members where household_id = '${LEAVE_HOUSEHOLD}' and user_id = '${LEAVE_ADULT_1}';`)
+      );
+      const remaining = await asServiceRole(db, () =>
+        db.query(
+          `select count(*)::int as n from household_members where household_id = '${LEAVE_HOUSEHOLD}' and user_id = '${LEAVE_ADULT_1}';`
+        )
+      );
+      expect((remaining.rows[0] as { n: number }).n).toBe(0);
+    });
+
+    it("the owner cannot delete their own membership row via either DELETE policy (must transfer or delete the household instead)", async () => {
+      const result = await asUser(db, LEAVE_OWNER, () =>
+        db.exec(`delete from household_members where household_id = '${LEAVE_HOUSEHOLD}' and user_id = '${LEAVE_OWNER}';`)
+      );
+      expect((result[0] as { rowCount: number }).rowCount).toBe(0);
+      const stillThere = await asServiceRole(db, () =>
+        db.query(
+          `select count(*)::int as n from household_members where household_id = '${LEAVE_HOUSEHOLD}' and user_id = '${LEAVE_OWNER}';`
+        )
+      );
+      expect((stillThere.rows[0] as { n: number }).n).toBe(1);
+    });
+
+    it("a non-owner member cannot remove a different member (owner-only USING clause)", async () => {
+      const result = await asUser(db, LEAVE_ADULT_2, () =>
+        db.exec(`delete from household_members where household_id = '${LEAVE_HOUSEHOLD}' and user_id = '${LEAVE_OWNER}';`)
+      );
+      expect((result[0] as { rowCount: number }).rowCount).toBe(0);
+    });
+
+    it("the owner can remove a different member", async () => {
+      await asUser(db, LEAVE_OWNER, () =>
+        db.exec(`delete from household_members where household_id = '${LEAVE_HOUSEHOLD}' and user_id = '${LEAVE_ADULT_2}';`)
+      );
+      const remaining = await asServiceRole(db, () =>
+        db.query(
+          `select count(*)::int as n from household_members where household_id = '${LEAVE_HOUSEHOLD}' and user_id = '${LEAVE_ADULT_2}';`
+        )
+      );
+      expect((remaining.rows[0] as { n: number }).n).toBe(0);
+    });
+  });
+
+  describe("users (own profile or a household-mate's profile, QUEUE-045 regression coverage)", () => {
+    it("a user can read their own profile row", async () => {
+      const self = await asUser(db, RICHARD_USER, () => db.query(`select id from users where id = '${RICHARD_USER}';`));
+      expect((self.rows[0] as { id: string }).id).toBe(RICHARD_USER);
+    });
+
+    it("a user can read a household-mate's profile row", async () => {
+      const mate = await asUser(db, RICHARD_USER, () => db.query(`select id from users where id = '${CHILD_USER}';`));
+      expect(mate.rows.length).toBe(1);
+    });
+
+    it("a user cannot read the profile of someone outside every household they belong to", async () => {
+      const outsider = await asUser(db, RICHARD_USER, () => db.query(`select id from users where id = '${OUTSIDER_USER}';`));
+      expect(outsider.rows.length).toBe(0);
+    });
+
+    it("a user cannot update someone else's profile row", async () => {
+      const result = await asUser(db, RICHARD_USER, () =>
+        db.exec(`update users set display_name = 'Hijacked' where id = '${CHILD_USER}';`)
+      );
+      expect((result[0] as { rowCount: number }).rowCount).toBe(0);
+    });
+  });
+
+  describe("device_tokens (own-only, not household-scoped, QUEUE-045 regression coverage)", () => {
+    it("a user can register their own device token and read it back; a household-mate cannot see it", async () => {
+      await asUser(db, CHILD_USER, () =>
+        db.exec(`insert into device_tokens (user_id, platform, token) values ('${CHILD_USER}', 'ios', 'child-device-token-1');`)
+      );
+
+      const ownRead = await asUser(db, CHILD_USER, () =>
+        db.query(`select count(*)::int as n from device_tokens where token = 'child-device-token-1';`)
+      );
+      expect((ownRead.rows[0] as { n: number }).n).toBe(1);
+
+      const mateRead = await asUser(db, RICHARD_USER, () =>
+        db.query(`select count(*)::int as n from device_tokens where token = 'child-device-token-1';`)
+      );
+      expect((mateRead.rows[0] as { n: number }).n, "device tokens are per-user, not household-shared").toBe(0);
+    });
+
+    it("a user cannot register a device token under someone else's user_id (WITH CHECK)", async () => {
+      await expect(
+        asUser(db, CHILD_USER, () =>
+          db.exec(`insert into device_tokens (user_id, platform, token) values ('${RICHARD_USER}', 'ios', 'forged-token');`)
+        )
+      ).rejects.toThrow();
+    });
+
+    it("a user can delete their own device token", async () => {
+      await asUser(db, CHILD_USER, () =>
+        db.exec(`delete from device_tokens where user_id = '${CHILD_USER}' and token = 'child-device-token-1';`)
+      );
+      const remaining = await asServiceRole(db, () =>
+        db.query(`select count(*)::int as n from device_tokens where token = 'child-device-token-1';`)
+      );
+      expect((remaining.rows[0] as { n: number }).n).toBe(0);
+    });
+  });
+
+  describe("external_data_cache (shared across all households, any authenticated reader, QUEUE-045 regression coverage)", () => {
+    it("any authenticated user, regardless of household, can read a cached row", async () => {
+      await asServiceRole(db, () =>
+        db.exec(
+          `insert into external_data_cache (source, cache_key, payload, expires_at) values ('weather', 'portland-or', '{"tempF": 68}', now() + interval '1 hour');`
+        )
+      );
+
+      const richardRead = await asUser(db, RICHARD_USER, () =>
+        db.query(`select count(*)::int as n from external_data_cache where cache_key = 'portland-or';`)
+      );
+      expect((richardRead.rows[0] as { n: number }).n).toBe(1);
+
+      const outsiderRead = await asUser(db, OUTSIDER_USER, () =>
+        db.query(`select count(*)::int as n from external_data_cache where cache_key = 'portland-or';`)
+      );
+      expect((outsiderRead.rows[0] as { n: number }).n, "the shared cache is intentionally not household-scoped").toBe(1);
+    });
+  });
+
+  describe("gift_shipping_windows (shared reference table, any authenticated reader, QUEUE-045 regression coverage)", () => {
+    it("any authenticated user, regardless of household, can read a shipping-window row", async () => {
+      await asServiceRole(db, () =>
+        db.exec(
+          `insert into gift_shipping_windows (category, label, shipping_window_days) values ('standard_shipping', 'Standard shipping', 7);`
+        )
+      );
+
+      const richardRead = await asUser(db, RICHARD_USER, () =>
+        db.query(`select count(*)::int as n from gift_shipping_windows where category = 'standard_shipping';`)
+      );
+      expect((richardRead.rows[0] as { n: number }).n).toBe(1);
+
+      const outsiderRead = await asUser(db, OUTSIDER_USER, () =>
+        db.query(`select count(*)::int as n from gift_shipping_windows where category = 'standard_shipping';`)
+      );
+      expect((outsiderRead.rows[0] as { n: number }).n).toBe(1);
+    });
+  });
+
+  describe("brain_dump_batches (household-readable/writable, creator or owner/adult can edit, QUEUE-045 regression coverage)", () => {
+    it("a household member can create their own batch; the child (household member) can read it; the outsider sees none", async () => {
+      const { rows } = await asUser(db, CHILD_USER, () =>
+        db.query(
+          `insert into brain_dump_batches (household_id, created_by_person_id, transcript) values ('${SEEDED_HOUSEHOLD}', '${CHILD_PERSON}', 'Buy milk and eggs') returning id;`
+        )
+      );
+      const { id } = rows[0] as { id: string };
+
+      const richardRead = await asUser(db, RICHARD_USER, () =>
+        db.query(`select count(*)::int as n from brain_dump_batches where id = '${id}';`)
+      );
+      expect((richardRead.rows[0] as { n: number }).n).toBe(1);
+
+      const outsiderRead = await asUser(db, OUTSIDER_USER, () =>
+        db.query(`select count(*)::int as n from brain_dump_batches where household_id = '${SEEDED_HOUSEHOLD}';`)
+      );
+      expect((outsiderRead.rows[0] as { n: number }).n).toBe(0);
+    });
+
+    it("a household member cannot create a batch claiming to be created by a different person", async () => {
+      await expect(
+        asUser(db, CHILD_USER, () =>
+          db.exec(
+            `insert into brain_dump_batches (household_id, created_by_person_id, transcript) values ('${SEEDED_HOUSEHOLD}', '${RICHARD_PERSON}', 'Forged batch');`
+          )
+        )
+      ).rejects.toThrow();
+    });
+
+    it("the creator can update their own batch; a different non-owner/adult member cannot", async () => {
+      const { rows } = await asUser(db, CHILD_USER, () =>
+        db.query(
+          `insert into brain_dump_batches (household_id, created_by_person_id, transcript) values ('${SEEDED_HOUSEHOLD}', '${CHILD_PERSON}', 'Pick up dry cleaning') returning id;`
+        )
+      );
+      const { id } = rows[0] as { id: string };
+
+      await asUser(db, CHILD_USER, () => db.exec(`update brain_dump_batches set parse_status = 'ready' where id = '${id}';`));
+      const reread = await asUser(db, CHILD_USER, () => db.query(`select parse_status from brain_dump_batches where id = '${id}';`));
+      expect((reread.rows[0] as { parse_status: string }).parse_status).toBe("ready");
+
+      await asUser(db, RICHARD_USER, () => db.exec(`update brain_dump_batches set parse_status = 'error' where id = '${id}';`));
+      const rereadOwner = await asUser(db, RICHARD_USER, () =>
+        db.query(`select parse_status from brain_dump_batches where id = '${id}';`)
+      );
+      expect((rereadOwner.rows[0] as { parse_status: string }).parse_status, "the owner can update any household batch").toBe("error");
+    });
+
+    it("the outsider cannot insert a batch into a household they don't belong to", async () => {
+      await expect(
+        asUser(db, OUTSIDER_USER, () =>
+          db.exec(
+            `insert into brain_dump_batches (household_id, created_by_person_id, transcript) values ('${SEEDED_HOUSEHOLD}', '${OUTSIDER_PERSON}', 'should fail');`
+          )
+        )
+      ).rejects.toThrow();
+    });
+  });
+
   describe("chores (Module 7, D-123, household-writable by any member)", () => {
     it("a household member can assign a chore; the child can complete it; the outsider sees none", async () => {
       const { rows } = await asUser(db, RICHARD_USER, () =>
