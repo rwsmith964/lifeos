@@ -9,6 +9,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CalendarEventInsert, CalendarEventRow, CalendarSyncAccountRow } from "../db/database.types";
 import {
+  listEditedSyncedEventsForAccount,
   listEventsSyncedToAccount,
   listUnsyncedLocalEventsForHousehold,
   replaceImportedEventsForFeed,
@@ -113,14 +114,18 @@ export async function pullFromSyncAccount(
 }
 
 /**
- * Push: LifeOS-native events that have never been synced anywhere yet.
- * QUEUE-017: v1 pushes each event once on creation and does not re-push
- * later edits or propagate local deletes to the remote calendar --
- * continuous bidirectional update propagation needs a change-tracking
- * signal (e.g. compare updated_at against a last-pushed-at) that the
- * "start narrow" instruction argues against building speculatively before
- * anyone has used one-shot push/pull. Assumption recorded, reversal cost
- * Medium (additive: one more nullable timestamp column + a comparison).
+ * Push: LifeOS-native events not yet synced anywhere, plus (D-166 /
+ * QUEUE-017) already-synced events edited since their last push.
+ *
+ * QUEUE-017 resolution: Richard chose blind last-write-wins -- an edited,
+ * already-synced event is re-pushed with `etag: null`, which makes
+ * putCalendarResource send `If-Match: *` instead of the last known etag,
+ * i.e. "overwrite whatever's on the remote calendar right now" rather than
+ * "only if it hasn't changed remotely since we last saw it." No
+ * conflict-detection UI, per Richard's explicit choice. Local deletes are
+ * still not propagated by this function -- that remains QUEUE-018's
+ * separate propagateDeleteToRemote hook, called from the delete action
+ * itself, unaffected by this change.
  */
 export async function pushToSyncAccount(
   client: SupabaseClient,
@@ -135,16 +140,21 @@ export async function pushToSyncAccount(
   }
 
   const windowEnd = new Date(Date.now() + IMPORT_WINDOW_DAYS * 24 * 60 * 60 * 1000);
-  let candidates;
+  let newCandidates;
+  let editedCandidates;
   try {
-    candidates = await listUnsyncedLocalEventsForHousehold(client, account.household_id, windowEnd.toISOString());
+    [newCandidates, editedCandidates] = await Promise.all([
+      listUnsyncedLocalEventsForHousehold(client, account.household_id, windowEnd.toISOString()),
+      listEditedSyncedEventsForAccount(client, account.id, windowEnd.toISOString()),
+    ]);
   } catch (error) {
     return recordPushOutcome(client, account, { ok: false, count: 0, error: describeError(error), skipped: false });
   }
 
   let pushedCount = 0;
   const errors: string[] = [];
-  for (const event of candidates) {
+
+  for (const event of newCandidates) {
     try {
       const icsText = buildIcsEventDocument(event);
       const ref = await adapter.pushEvent(account, icsText, null);
@@ -152,10 +162,31 @@ export async function pushToSyncAccount(
         synced_to_account_id: account.id,
         external_caldav_href: ref.href,
         external_caldav_etag: ref.etag,
+        synced_at: new Date().toISOString(),
       });
       pushedCount += 1;
     } catch (error) {
       // One event failing to push (e.g. a transient 5xx) shouldn't block the rest -- same per-item isolation as feed-sync/gift-scan crons.
+      errors.push(`${event.id}: ${describeError(error)}`);
+    }
+  }
+
+  for (const event of editedCandidates) {
+    if (!event.external_caldav_href) {
+      // Should not happen (an event only reaches "already synced" via the push loop above, which always records a href) but guard defensively rather than sending a pushEvent call that would create a duplicate resource.
+      errors.push(`${event.id}: previously-synced event has no known remote href to update.`);
+      continue;
+    }
+    try {
+      const icsText = buildIcsEventDocument(event);
+      const ref = await adapter.pushEvent(account, icsText, { href: event.external_caldav_href, etag: null });
+      await calendarEventsRepo.update(client, event.id, {
+        external_caldav_href: ref.href,
+        external_caldav_etag: ref.etag,
+        synced_at: new Date().toISOString(),
+      });
+      pushedCount += 1;
+    } catch (error) {
       errors.push(`${event.id}: ${describeError(error)}`);
     }
   }

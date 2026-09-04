@@ -214,6 +214,130 @@ describe("pushToSyncAccount", () => {
     const eventUpdates = calls.filter((c: FakeCall) => c.table === "calendar_events" && c.op === "update");
     expect(eventUpdates).toHaveLength(1);
   });
+
+  // D-166 / QUEUE-017: last-write-wins re-push of already-synced, edited events.
+
+  it("re-pushes an already-synced event edited after its last push, without sending an etag", async () => {
+    const adapter = {
+      provider: "apple_icloud" as const,
+      isReady: vi.fn().mockReturnValue(true),
+      listRemoteEvents: vi.fn(),
+      pushEvent: vi.fn().mockResolvedValue({ href: "/cal/existing.ics", etag: '"e2"' }),
+      deleteRemoteEvent: vi.fn(),
+    };
+    vi.mocked(adapterForAccount).mockReturnValue(adapter);
+
+    const editedEvent = {
+      id: "evt-edited",
+      title: "Piano lesson (rescheduled)",
+      description: null,
+      location: null,
+      starts_at: "2026-09-10T21:00:00.000Z",
+      ends_at: "2026-09-10T22:00:00.000Z",
+      all_day: false,
+      synced_to_account_id: "account-1",
+      external_caldav_href: "/cal/existing.ics",
+      external_caldav_etag: '"e1"',
+      synced_at: "2026-09-09T00:00:00.000Z",
+      updated_at: "2026-09-09T12:00:00.000Z",
+    };
+
+    const { client, calls } = createFakeSupabaseClient({
+      calendar_events: { rows: [editedEvent] },
+      calendar_sync_accounts: {},
+    });
+
+    const result = await pushToSyncAccount(client as never, baseAccount());
+
+    expect(result).toEqual({ ok: true, count: 1, error: null, skipped: false });
+    expect(adapter.pushEvent).toHaveBeenCalledTimes(1);
+    expect(adapter.pushEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "account-1" }),
+      expect.any(String),
+      { href: "/cal/existing.ics", etag: null }
+    );
+
+    const eventUpdate = calls.find((c: FakeCall) => c.table === "calendar_events" && c.op === "update");
+    expect(eventUpdate!.values).toMatchObject({
+      external_caldav_href: "/cal/existing.ics",
+      external_caldav_etag: '"e2"',
+    });
+    expect(eventUpdate!.values).toHaveProperty("synced_at");
+    expect(eventUpdate!.values).not.toHaveProperty("synced_to_account_id");
+  });
+
+  it("does not re-push an already-synced event that hasn't been edited since its last push", async () => {
+    const adapter = {
+      provider: "apple_icloud" as const,
+      isReady: vi.fn().mockReturnValue(true),
+      listRemoteEvents: vi.fn(),
+      pushEvent: vi.fn(),
+      deleteRemoteEvent: vi.fn(),
+    };
+    vi.mocked(adapterForAccount).mockReturnValue(adapter);
+
+    const unchangedEvent = {
+      id: "evt-unchanged",
+      title: "Piano lesson",
+      description: null,
+      location: null,
+      starts_at: "2026-09-10T20:00:00.000Z",
+      ends_at: "2026-09-10T21:00:00.000Z",
+      all_day: false,
+      synced_to_account_id: "account-1",
+      external_caldav_href: "/cal/existing.ics",
+      external_caldav_etag: '"e1"',
+      synced_at: "2026-09-09T12:00:00.000Z",
+      updated_at: "2026-09-09T00:00:00.000Z",
+    };
+
+    const { client } = createFakeSupabaseClient({
+      calendar_events: { rows: [unchangedEvent] },
+      calendar_sync_accounts: {},
+    });
+
+    const result = await pushToSyncAccount(client as never, baseAccount());
+
+    expect(result).toEqual({ ok: true, count: 0, error: null, skipped: false });
+    expect(adapter.pushEvent).not.toHaveBeenCalled();
+  });
+
+  it("records an error instead of pushing when a previously-synced row has no known href", async () => {
+    const adapter = {
+      provider: "apple_icloud" as const,
+      isReady: vi.fn().mockReturnValue(true),
+      listRemoteEvents: vi.fn(),
+      pushEvent: vi.fn(),
+      deleteRemoteEvent: vi.fn(),
+    };
+    vi.mocked(adapterForAccount).mockReturnValue(adapter);
+
+    const orphanEvent = {
+      id: "evt-no-href",
+      title: "Piano lesson",
+      description: null,
+      location: null,
+      starts_at: "2026-09-10T20:00:00.000Z",
+      ends_at: "2026-09-10T21:00:00.000Z",
+      all_day: false,
+      synced_to_account_id: "account-1",
+      external_caldav_href: null,
+      external_caldav_etag: null,
+      synced_at: "2026-09-09T00:00:00.000Z",
+      updated_at: "2026-09-09T12:00:00.000Z",
+    };
+
+    const { client } = createFakeSupabaseClient({
+      calendar_events: { rows: [orphanEvent] },
+      calendar_sync_accounts: {},
+    });
+
+    const result = await pushToSyncAccount(client as never, baseAccount());
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("evt-no-href");
+    expect(adapter.pushEvent).not.toHaveBeenCalled();
+  });
 });
 
 // QUEUE-018: local-delete -> remote-delete propagation.

@@ -25,6 +25,7 @@ function event(overrides: Partial<CalendarEventRow> = {}): CalendarEventRow {
     synced_to_account_id: null,
     external_caldav_href: null,
     external_caldav_etag: null,
+    synced_at: null,
     created_at: "2026-01-01T00:00:00.000Z",
     updated_at: "2026-01-01T00:00:00.000Z",
     ...overrides,
