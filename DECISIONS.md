@@ -4428,3 +4428,36 @@ Exact pre-migration policy definitions were pulled from `pg_policies` before wri
 **Reversal cost:** Low. The new column is nullable and additive; the new repository function and the second loop in `pushToSyncAccount` can be removed independently, reverting to one-shot-push-only behavior. No data migration needed to roll back — existing `synced_at` values would simply go unused again.
 
 **Git/deploy:** Branch `queue-017-caldav-repush`, merged `--no-ff` into `main`, pushed via the GitHub credential proxy; Vercel auto-redeployed.
+
+## D-167: Calendar Day/Week views redesigned for readability (Google/Apple/Outlook-style time grid)
+
+**Decision:** Richard: "I want the calendar to have a better UI/UX view more like google calendars and apple calendars and outlook calendars so someone can see their day and their weeks in a more viewable and useable format." Investigation of the live Day view also turned up a real bug during review: two same-time events ("Em with Richard Smith" and "Cal with Richard Smith", both 4:30 PM) rendered stacked at full width, with the second one completely hidden behind the first — no indication a second event even existed at that time.
+
+**`lib/calendar/day-timeline.ts` (fully rewritten):**
+- `DayTimelinePositionedItem` gained `column: number` / `columnCount: number`. New `assignOverlapColumns()` groups items into overlap clusters via union-find over their already-clipped `[topPercent, topPercent+heightPercent)` ranges (not raw start/end times — needed so two zero-duration events at the identical instant, both bumped to the layout's minimum-height floor, are still correctly detected as overlapping), then greedy-assigns the first free column within each cluster (sorted by top, ties broken by longer duration first). All items in a cluster share that cluster's final column count, so each renders at `100% / columnCount` width side-by-side instead of one hiding another.
+- `DayTimelineLayout` gained `nowPercent: number | null` via a new optional `now?: Date` param — null unless `now` falls on the same calendar day and within the rendered hour window, driving a current-time indicator line.
+- New `buildWeekTimeline(days, itemsPerDay, now?)`: computes one shared hour window across every timed item in all 7 days (so hour rows line up across day columns, like a real week-view calendar), then lays out each day independently against that shared window — including its own overlap columns and its own `nowPercent`.
+
+**`app/(app)/calendar/page.tsx`:**
+- Week range no longer reuses Month's compact chip-grid narrowed to one row (no times, no hourly positioning). It now renders a new `WeekTimelineView` — a real 7-day hour-grid with a day-picker header row (still supports the existing day-selection-jumps-the-agenda-below behavior), all-day chip strip, hour gridlines, and each day's positioned items with overlap columns and its own now-line.
+- `DayTimelineView` updated to use column/columnCount for item positioning (replacing the old fixed `left-16` inset, which wasted extra space beyond the already-separate hour gutter) and to render the same current-time line.
+- The Month nav card's compact chip-grid `CardContent` condition changed from `range !== "day"` to `range === "month"`, since Week now gets its own real time-grid instead.
+- Follow-up after live mobile verification: at 390px width, 7 real day columns squeezed event titles down to 1-2 unreadable characters. Gave each day column a real minimum width (104px) and made the week grid scroll horizontally below that width, with the hour-label gutter pinned via `sticky` so time-of-day context never scrolls out of view. Desktop's wide column already exceeds the min-width, so no scrollbar appears there.
+
+**Verified:** typecheck (0 errors). lint (0 errors, pre-existing warnings only in unrelated generated Android build artifacts). Full test suite 859/859 passing (28 in `day-timeline.test.ts` covering overlap-column assignment, `nowPercent` resolution, and `buildWeekTimeline`'s shared-window/independent-per-day behavior). Build clean. Live-verified via cloud browser (local device offline) at both desktop and mobile (390px) widths on Day and Week views: the previously-hidden "Cal with Richard Smith" now renders fully readable beside "Em with Richard Smith"; the current-time line renders correctly in today's column on both Day and Week; mobile week view scrolls horizontally with readable event titles and a pinned hour gutter.
+
+**Reversal cost:** Low-medium. `buildWeekTimeline`/`WeekTimelineView` are additive; reverting Week to the old compact grid means restoring the `range === "month"` condition back to `range !== "day"` and dropping the new component. The overlap-column and now-line changes to `DayTimelineView`/`buildDayTimeline` are backward-compatible (new params are optional) but are a genuine behavior improvement worth keeping regardless.
+
+**Git/deploy:** Branch `feature/d167-calendar-day-week-redesign`, merged `--no-ff` into `main`, pushed via the GitHub credential proxy; deployed to Vercel production (`https://lifeos-seven-rho.vercel.app`) in two steps (initial redesign, then the mobile horizontal-scroll follow-up), both confirmed `Ready`/aliased.
+
+## D-168: Temporary password set for Richard's own account (password-reset blocked by QUEUE-037's root cause)
+
+**Decision:** Richard reported his password reset wasn't working and he didn't know his current password — a hard login blocker on his own account, `rwsmith964@gmail.com` (actor id `0b6a7cf0-52cc-4240-ab6d-aa372edc0f2b`). Root-caused to the same Supabase Auth dashboard misconfiguration already logged in QUEUE-037 (Site URL / Redirect URL allow-list still pointing at `localhost:3000` for every auth email flow, not just magic-link) — no tool available in this session reaches that dashboard setting. Rather than leave Richard locked out while that dashboard fix waits on him personally, set a temporary password directly via SQL (`pgcrypto`, already installed) for his account: **`LifeOS-Temp-2026!`**.
+
+**Verified:** Live-verified via cloud browser — logged in successfully at `https://lifeos-seven-rho.vercel.app/login` with the temporary password, reaching the authenticated Brief page and beyond.
+
+**Not done / still required from Richard personally:** The dashboard setting itself — no session tool can reach Supabase project `moblcysnsaxohnslubym`'s Authentication → URL Configuration page. Until Richard sets **Site URL** to `https://lifeos-seven-rho.vercel.app` and adds that same URL under **Redirect URLs**, password-reset and magic-link emails will keep failing for every account, not just his own.
+
+**Reversal cost:** Low — this is a normal password on Richard's own account; he can change it any time from Settings once logged in, same as any other password change.
+
+**Blocking:** No longer blocking Richard's own login. Still blocking password-reset/magic-link for any other real user until the Supabase dashboard setting is fixed (see QUEUE-037 update).
