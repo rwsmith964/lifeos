@@ -33,7 +33,15 @@ import { usersRepo } from "@/lib/db/repositories/households";
 import { isFeatureEnabled } from "@/lib/flags";
 import { detectScheduleConflictsForHousehold, resolveTravelLegsForHousehold } from "@/lib/scheduling/detect-conflicts";
 import type { TravelConflictWarning } from "@/lib/scheduling/travel-conflicts";
-import { buildDayTimeline, type DayTimelineItemLike, type DayTimelineTravelLeg } from "@/lib/calendar/day-timeline";
+import {
+  buildDayTimeline,
+  buildWeekTimeline,
+  type DayTimelineItemLike,
+  type DayTimelineLayout,
+  type DayTimelinePositionedItem,
+  type DayTimelineTravelLeg,
+  type WeekTimelineLayout,
+} from "@/lib/calendar/day-timeline";
 import { listWorkSchedulesForPeople, listTimeOffForPeopleInRange } from "@/lib/db/repositories/work-schedule";
 import { getWeekendPlanForDate } from "@/lib/db/repositories/system";
 import { listOpenOpportunitiesWithSubjectForHouseholdInDateRange } from "@/lib/db/repositories/opportunities";
@@ -98,22 +106,72 @@ const CHIP_KIND_STYLES: Record<string, string> = {
   custody: "bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300",
 };
 
-// D-133: day-view hour-positioned timeline. Pure presentational component
-// over the DB-free layout math in lib/calendar/day-timeline.ts -- all the
-// "where does this pixel go" work already happened there, this just draws
-// the hour ruler, positions each item's block, and drops a small travel
-// pill into any gap with a resolved drive-time estimate.
-function DayTimelineView({
-  timeline,
-  day,
-}: {
-  timeline: import("@/lib/calendar/day-timeline").DayTimelineLayout;
-  day: Date;
-}) {
+// D-167: shared hour-grid geometry between the single-day timeline and the
+// new week timeline, so both read exactly the same pixel math and never
+// drift out of alignment with each other.
+const TIMELINE_PIXELS_PER_HOUR = 56;
+const TIMELINE_HOUR_GUTTER_PX = 44;
+
+// D-167: renders one item block within a single day's track, using the
+// column/columnCount the layout already assigned so time-overlapping items
+// sit side-by-side instead of one silently hiding another (the bug that
+// hid "Em with Richard Smith" behind "Cal with Richard Smith" at the same
+// time). `compact` drops the inline time label for the narrower week-view
+// columns, where there usually isn't room for it.
+function TimelineItemBlock({ item, dayStart, compact }: { item: DayTimelinePositionedItem; dayStart: Date; compact?: boolean }) {
+  const widthPercent = 100 / item.columnCount;
+  const leftPercent = item.column * widthPercent;
+  return (
+    <div
+      className={cn(
+        "absolute overflow-hidden rounded-sm border px-1 py-0.5 text-[11px] leading-tight",
+        CHIP_KIND_STYLES[item.kind] ?? "bg-muted text-foreground"
+      )}
+      style={{
+        top: `${item.topPercent}%`,
+        height: `${item.heightPercent}%`,
+        left: `calc(${leftPercent}% + 1px)`,
+        width: `calc(${widthPercent}% - 2px)`,
+        minHeight: "18px",
+      }}
+      title={`${item.title} · ${item.startsAt < dayStart ? "In progress" : format(item.startsAt, "h:mm a")}`}
+    >
+      <span className="font-medium">{item.title}</span>
+      {!compact && (
+        <>
+          {" "}
+          <span className="text-[10px] opacity-80">
+            {item.startsAt < dayStart ? "In progress" : format(item.startsAt, "h:mm a")}
+          </span>
+        </>
+      )}
+    </div>
+  );
+}
+
+// D-167: the red "now" line Google/Apple/Outlook all show across the
+// current time -- only rendered when the layout resolved a nowPercent for
+// this particular day (i.e. `now` fell on this calendar day, inside the
+// rendered hour window).
+function NowIndicatorLine({ nowPercent }: { nowPercent: number }) {
+  return (
+    <div className="pointer-events-none absolute left-0 right-0 z-10 flex items-center" style={{ top: `${nowPercent}%` }}>
+      <div className="-ml-[3px] size-[7px] shrink-0 rounded-full bg-red-500" />
+      <div className="h-px flex-1 bg-red-500" />
+    </div>
+  );
+}
+
+// D-133/D-167: day-view hour-positioned timeline. Pure presentational
+// component over the DB-free layout math in lib/calendar/day-timeline.ts --
+// all the "where does this pixel go" work already happened there, this
+// just draws the hour ruler, positions each item's block (now side-by-side
+// when items overlap), drops a small travel pill into any gap with a
+// resolved drive-time estimate, and shows the current-time line.
+function DayTimelineView({ timeline, day }: { timeline: DayTimelineLayout; day: Date }) {
   const totalHours = timeline.endHour - timeline.startHour;
   const dayStart = startOfDay(day);
-  const pixelsPerHour = 56;
-  const trackHeight = totalHours * pixelsPerHour;
+  const trackHeight = totalHours * TIMELINE_PIXELS_PER_HOUR;
 
   return (
     <Card>
@@ -131,7 +189,7 @@ function DayTimelineView({
           </div>
         )}
         <div className="relative flex" style={{ height: `${trackHeight}px` }}>
-          <div className="relative w-12 shrink-0 text-right text-[10px] text-muted-foreground">
+          <div className="relative shrink-0 text-right text-[10px] text-muted-foreground" style={{ width: `${TIMELINE_HOUR_GUTTER_PX}px` }}>
             {timeline.hourLabels.map((label, index) => (
               <span key={label} className="absolute right-1.5 -translate-y-1/2" style={{ top: `${(index / totalHours) * 100}%` }}>
                 {label}
@@ -152,20 +210,113 @@ function DayTimelineView({
               </div>
             ))}
             {timeline.positioned.map((item) => (
-              <div
-                key={item.id}
+              <TimelineItemBlock key={item.id} item={item} dayStart={dayStart} />
+            ))}
+            {timeline.nowPercent != null && <NowIndicatorLine nowPercent={timeline.nowPercent} />}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// D-167: week view -- the primary gap this decision closes. Previously
+// "week" reused month view's compact chip-grid markup narrowed to one row
+// (no times, no hourly positioning, nothing resembling Google/Apple/
+// Outlook's week view). This renders a real 7-day time grid sharing one
+// hour window (from buildWeekTimeline) so hour rows line up across every
+// day column, with each day's header a link that selects that day (moving
+// the agenda list below to it), matching the existing day-cell navigation
+// pattern from the old month/week grid.
+function WeekTimelineView({
+  timeline,
+  selectedDay,
+  today,
+  monthLabel,
+  viewQuery,
+}: {
+  timeline: WeekTimelineLayout;
+  selectedDay: Date;
+  today: Date;
+  monthLabel: string;
+  viewQuery: string;
+}) {
+  const totalHours = timeline.endHour - timeline.startHour;
+  const trackHeight = totalHours * TIMELINE_PIXELS_PER_HOUR;
+  const hasAllDay = timeline.days.some((d) => d.allDay.length > 0);
+
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-2">
+        {/* Day headers double as the day picker the old grid provided --
+            click a day to select it and jump the agenda list below to it. */}
+        <div className="flex" style={{ paddingLeft: `${TIMELINE_HOUR_GUTTER_PX}px` }}>
+          {timeline.days.map((d) => {
+            const key = format(d.date, DAY_PARAM_FORMAT);
+            const selected = isSameDay(d.date, selectedDay);
+            return (
+              <Link
+                key={key}
+                href={`/calendar?month=${monthLabel}&day=${key}${viewQuery}&range=week#selected-day`}
                 className={cn(
-                  "absolute right-1 left-16 overflow-hidden rounded-sm border px-1.5 py-0.5 text-xs",
-                  CHIP_KIND_STYLES[item.kind] ?? "bg-muted text-foreground"
+                  "flex flex-1 flex-col items-center gap-0.5 rounded-md py-1 text-[11px]",
+                  selected && "bg-primary text-primary-foreground",
+                  !selected && isSameDay(d.date, today) && "font-semibold text-primary"
                 )}
-                style={{ top: `${item.topPercent}%`, height: `${item.heightPercent}%`, minHeight: "18px" }}
               >
-                <span className="font-medium">{item.title}</span>{" "}
-                <span className="text-[10px] opacity-80">
-                  {item.startsAt < dayStart ? "In progress" : format(item.startsAt, "h:mm a")}
-                </span>
+                <span>{format(d.date, "EEE")}</span>
+                <span className="text-sm font-medium">{format(d.date, "d")}</span>
+              </Link>
+            );
+          })}
+        </div>
+        {hasAllDay && (
+          <div className="flex gap-1 border-b pb-2" style={{ paddingLeft: `${TIMELINE_HOUR_GUTTER_PX}px` }}>
+            {timeline.days.map((d) => (
+              <div key={format(d.date, DAY_PARAM_FORMAT)} className="flex flex-1 flex-col gap-0.5 overflow-hidden">
+                {d.allDay.map((item) => (
+                  <span
+                    key={item.id}
+                    className={cn(
+                      "truncate rounded-sm px-1 py-0.5 text-[9px]",
+                      CHIP_KIND_STYLES[item.kind] ?? "bg-muted text-foreground"
+                    )}
+                  >
+                    {item.title}
+                  </span>
+                ))}
               </div>
             ))}
+          </div>
+        )}
+        <div className="relative flex" style={{ height: `${trackHeight}px` }}>
+          <div className="relative shrink-0 text-right text-[10px] text-muted-foreground" style={{ width: `${TIMELINE_HOUR_GUTTER_PX}px` }}>
+            {timeline.hourLabels.map((label, index) => (
+              <span key={label} className="absolute right-1.5 -translate-y-1/2" style={{ top: `${(index / totalHours) * 100}%` }}>
+                {label}
+              </span>
+            ))}
+          </div>
+          <div className="relative flex flex-1">
+            {timeline.hourLabels.map((label, index) => (
+              <div
+                key={label}
+                className="pointer-events-none absolute left-0 w-full border-t border-dashed border-muted"
+                style={{ top: `${(index / totalHours) * 100}%` }}
+              />
+            ))}
+            {timeline.days.map((d) => {
+              const key = format(d.date, DAY_PARAM_FORMAT);
+              const dayStart = startOfDay(d.date);
+              return (
+                <div key={key} className="relative flex-1 border-l first:border-l-0">
+                  {d.positioned.map((item) => (
+                    <TimelineItemBlock key={item.id} item={item} dayStart={dayStart} compact />
+                  ))}
+                  {d.nowPercent != null && <NowIndicatorLine nowPercent={d.nowPercent} />}
+                </div>
+              );
+            })}
           </div>
         </div>
       </CardContent>
@@ -542,22 +693,38 @@ export default async function CalendarPage({
   const selectedDayKey = format(selectedDay, DAY_PARAM_FORMAT);
   const selectedDayItems = byDay.get(selectedDayKey) ?? [];
 
-  // D-133: day-view hour-positioned timeline. work_shift items only carry
-  // a bare date (no real time -- see lib/calendar/work-schedule.ts's known
-  // limitation, QUEUE note below), so they're forced into the all-day
-  // strip alongside birthdays/time off rather than positioned at a
-  // misleading midnight slot. Custody items keep their real times and DO
-  // get positioned, since a same-day handover is genuinely time-of-day
-  // information worth seeing on the timeline.
-  const dayTimelineItems: DayTimelineItemLike[] = selectedDayItems.map((item) => ({
-    id: item.id,
-    kind: item.kind,
-    title: item.title,
-    startsAt: item.startsAt,
-    endsAt: item.endsAt,
-    allDay: item.allDay || item.kind === "work_shift",
-  }));
-  const dayTimeline = range === "day" ? buildDayTimeline(selectedDay, dayTimelineItems, dayTimelineTravelLegs) : null;
+  // D-133/D-167: day- and week-view hour-positioned timelines share this
+  // conversion. work_shift items only carry a bare date (no real time --
+  // see lib/calendar/work-schedule.ts's known limitation, QUEUE note
+  // below), so they're forced into the all-day strip alongside birthdays/
+  // time off rather than positioned at a misleading midnight slot. Custody
+  // items keep their real times and DO get positioned, since a same-day
+  // handover is genuinely time-of-day information worth seeing on the
+  // timeline.
+  function toTimelineItems(dayItems: DayItem[]): DayTimelineItemLike[] {
+    return dayItems.map((item) => ({
+      id: item.id,
+      kind: item.kind,
+      title: item.title,
+      startsAt: item.startsAt,
+      endsAt: item.endsAt,
+      allDay: item.allDay || item.kind === "work_shift",
+    }));
+  }
+  const dayTimelineItems = toTimelineItems(selectedDayItems);
+  const dayTimeline = range === "day" ? buildDayTimeline(selectedDay, dayTimelineItems, dayTimelineTravelLegs, now) : null;
+  // D-167: week view's real time-grid, replacing the old compact chip-grid
+  // single-row rendering. Shares one hour window across every day column
+  // (via buildWeekTimeline) so hour rows line up the way Google/Apple/
+  // Outlook's week view does.
+  const weekTimeline =
+    range === "week"
+      ? buildWeekTimeline(
+          gridDays,
+          gridDays.map((day) => toTimelineItems(byDay.get(format(day, DAY_PARAM_FORMAT)) ?? [])),
+          now
+        )
+      : null;
 
   const viewQuery = view === "custody" ? "&view=custody" : "";
   const rangeQuery = range !== "month" ? `&range=${range}` : "";
@@ -790,13 +957,13 @@ export default async function CalendarPage({
         </details>
       )}
 
-      {/* D-065: day range skips the grid entirely -- with only one day in
-          the window there's nothing a grid adds over the header itself, so
-          the Card below renders just the prev/title/next row and the
-          selected-day agenda list underneath does all the work. Week range
-          reuses this exact same grid markup unmodified: gridDays is just a
-          7-element array in that case, which grid-cols-7 renders as a
-          single row for free. */}
+      {/* D-065/D-167: day AND week range now both skip this compact chip
+          grid -- day always did (there's nothing a grid adds over the
+          header itself for a single day), and week used to reuse this
+          exact markup narrowed to one row (no times, no hourly
+          positioning). Week gets its own real time-grid instead
+          (WeekTimelineView, rendered below in the #selected-day area,
+          matching where DayTimelineView already renders for day range). */}
       {/* Desktop mockup A/B: at lg+ the month grid and the selected-day
           agenda sit side by side instead of stacked, so picking a day
           doesn't require scrolling past the calendar to see it. */}
@@ -815,7 +982,7 @@ export default async function CalendarPage({
             </Link>
           </Button>
         </CardHeader>
-        {range !== "day" && (
+        {range === "month" && (
           <CardContent className="flex flex-col gap-1">
             <div className="grid grid-cols-7 gap-1 text-center text-[10px] text-muted-foreground">
               {WEEKDAY_LABELS.map((label, i) => (
@@ -827,11 +994,11 @@ export default async function CalendarPage({
                 const key = format(day, DAY_PARAM_FORMAT);
                 const dayItems = byDay.get(key) ?? [];
                 // Month view dims leading/trailing days from adjacent
-                // months that only exist to fill out the grid shape. Week
-                // view has no such filler days -- every cell is a real day
-                // in the current week even when the week crosses a month
-                // boundary, so none of them should read as "out of range".
-                const inMonth = range === "week" ? true : isSameMonth(day, monthDate);
+                // months that only exist to fill out the grid shape. This
+                // block only renders for range === "month" now (D-167: week
+                // moved to its own real time-grid, WeekTimelineView), so
+                // there's no longer a week-view "no filler days" case here.
+                const inMonth = isSameMonth(day, monthDate);
                 const selected = isSameDay(day, selectedDay);
                 // D-132: month cell now shows real inline chips (up to 2
                 // lines of "time + title") instead of a plain 3-dot summary
@@ -918,6 +1085,9 @@ export default async function CalendarPage({
       <div id="selected-day" className="flex flex-col gap-2 scroll-mt-4">
         {range !== "day" && <p className="text-xs font-medium text-muted-foreground">{format(selectedDay, "EEEE, MMMM d")}</p>}
         {dayTimeline && <DayTimelineView timeline={dayTimeline} day={selectedDay} />}
+        {weekTimeline && (
+          <WeekTimelineView timeline={weekTimeline} selectedDay={selectedDay} today={today} monthLabel={monthLabel} viewQuery={viewQuery} />
+        )}
         {selectedDayItems.length === 0 ? (
           <Card>
             <CardContent className="text-sm text-muted-foreground">
