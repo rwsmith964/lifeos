@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildDayTimeline, computeTimelineWindow, DEFAULT_WINDOW_END_HOUR, DEFAULT_WINDOW_START_HOUR } from "./day-timeline";
+import {
+  buildDayTimeline,
+  buildWeekTimeline,
+  computeTimelineWindow,
+  DEFAULT_WINDOW_END_HOUR,
+  DEFAULT_WINDOW_START_HOUR,
+} from "./day-timeline";
 
 const DAY = new Date(2026, 8, 2); // Sept 2, 2026 (local)
 
@@ -136,5 +142,153 @@ describe("buildDayTimeline", () => {
     expect(layout.hourLabels[0]).toBe("7 AM");
     expect(layout.hourLabels[layout.hourLabels.length - 1]).toBe("9 PM");
     expect(layout.hourLabels).toHaveLength(21 - 7 + 1);
+  });
+
+  describe("overlap columns (D-167)", () => {
+    it("gives a single item column 0 of 1", () => {
+      const layout = buildDayTimeline(DAY, [{ id: "evt-1", kind: "event", title: "Solo", startsAt: at(9), endsAt: at(10) }]);
+      expect(layout.positioned[0]).toMatchObject({ column: 0, columnCount: 1 });
+    });
+
+    it("splits two zero-duration events at the exact same instant into separate columns", () => {
+      // Regression for the bug where "Em with Richard Smith" was completely
+      // hidden behind "Cal with Richard Smith", both at 4:30 PM.
+      const layout = buildDayTimeline(DAY, [
+        { id: "cal", kind: "event", title: "Cal with Richard Smith", startsAt: at(16, 30), endsAt: at(16, 30) },
+        { id: "em", kind: "event", title: "Em with Richard Smith", startsAt: at(16, 30), endsAt: at(16, 30) },
+      ]);
+      const cal = layout.positioned.find((p) => p.id === "cal")!;
+      const em = layout.positioned.find((p) => p.id === "em")!;
+      expect(cal.columnCount).toBe(2);
+      expect(em.columnCount).toBe(2);
+      expect(new Set([cal.column, em.column])).toEqual(new Set([0, 1]));
+    });
+
+    it("keeps sequential non-overlapping events each in their own single column", () => {
+      const layout = buildDayTimeline(DAY, [
+        { id: "evt-1", kind: "event", title: "First", startsAt: at(9), endsAt: at(10) },
+        { id: "evt-2", kind: "event", title: "Second", startsAt: at(10), endsAt: at(11) },
+      ]);
+      expect(layout.positioned.every((p) => p.column === 0 && p.columnCount === 1)).toBe(true);
+    });
+
+    it("gives a partially-overlapping trio three columns", () => {
+      const layout = buildDayTimeline(DAY, [
+        { id: "a", kind: "event", title: "A", startsAt: at(9), endsAt: at(11) },
+        { id: "b", kind: "event", title: "B", startsAt: at(9, 30), endsAt: at(10, 30) },
+        { id: "c", kind: "event", title: "C", startsAt: at(10), endsAt: at(12) },
+      ]);
+      const columnCounts = new Set(layout.positioned.map((p) => p.columnCount));
+      expect(columnCounts).toEqual(new Set([3]));
+      const columns = layout.positioned.map((p) => p.column).sort();
+      expect(columns).toEqual([0, 1, 2]);
+    });
+
+    it("keeps two separate, non-overlapping clusters on the same day independent", () => {
+      const layout = buildDayTimeline(DAY, [
+        { id: "a", kind: "event", title: "Morning A", startsAt: at(9), endsAt: at(10) },
+        { id: "b", kind: "event", title: "Morning B", startsAt: at(9), endsAt: at(10) },
+        { id: "c", kind: "event", title: "Afternoon solo", startsAt: at(14), endsAt: at(15) },
+      ]);
+      const c = layout.positioned.find((p) => p.id === "c")!;
+      expect(c.columnCount).toBe(1);
+      const a = layout.positioned.find((p) => p.id === "a")!;
+      const b = layout.positioned.find((p) => p.id === "b")!;
+      expect(a.columnCount).toBe(2);
+      expect(b.columnCount).toBe(2);
+    });
+  });
+
+  describe("nowPercent (D-167)", () => {
+    it("is null when now isn't supplied", () => {
+      const layout = buildDayTimeline(DAY, [{ id: "evt-1", kind: "event", title: "X", startsAt: at(9), endsAt: at(10) }]);
+      expect(layout.nowPercent).toBeNull();
+    });
+
+    it("is null when now falls on a different calendar day", () => {
+      const layout = buildDayTimeline(
+        DAY,
+        [{ id: "evt-1", kind: "event", title: "X", startsAt: at(9), endsAt: at(10) }],
+        [],
+        new Date(2026, 8, 3, 12, 0)
+      );
+      expect(layout.nowPercent).toBeNull();
+    });
+
+    it("is null when now is outside the rendered hour window", () => {
+      const layout = buildDayTimeline(DAY, [{ id: "evt-1", kind: "event", title: "X", startsAt: at(9), endsAt: at(10) }], [], at(23));
+      expect(layout.nowPercent).toBeNull();
+    });
+
+    it("positions now proportionally within the window on the matching day", () => {
+      const layout = buildDayTimeline(DAY, [{ id: "evt-1", kind: "event", title: "X", startsAt: at(9), endsAt: at(10) }], [], at(14));
+      // window 7am-9pm (14h); 2pm is 7h in => 50%
+      expect(layout.nowPercent).toBeCloseTo(50, 5);
+    });
+  });
+});
+
+describe("buildWeekTimeline", () => {
+  function dayAt(offsetDays: number, hour: number, minute = 0): Date {
+    return new Date(2026, 8, 7 + offsetDays, hour, minute, 0, 0);
+  }
+  function weekDays(): Date[] {
+    return Array.from({ length: 7 }, (_, i) => new Date(2026, 8, 7 + i));
+  }
+
+  it("shares one hour window across every day, expanded to fit the earliest/latest item in the whole week", () => {
+    const days = weekDays();
+    const itemsPerDay: { id: string; kind: string; title: string; startsAt: Date; endsAt: Date }[][] = days.map(() => []);
+    itemsPerDay[0] = [{ id: "early", kind: "event", title: "Early swim", startsAt: dayAt(0, 5, 30), endsAt: dayAt(0, 6) }];
+    itemsPerDay[3] = [{ id: "late", kind: "event", title: "Late call", startsAt: dayAt(3, 22), endsAt: dayAt(3, 23) }];
+
+    const layout = buildWeekTimeline(days, itemsPerDay);
+    expect(layout.startHour).toBe(4); // floor(5.5)-1
+    expect(layout.endHour).toBe(24); // ceil(23)+1 clamped
+  });
+
+  it("positions each day's items independently within the shared window", () => {
+    const days = weekDays();
+    const itemsPerDay = days.map((_, i) =>
+      i === 1 ? [{ id: "tue-evt", kind: "event", title: "Tuesday thing", startsAt: dayAt(1, 9), endsAt: dayAt(1, 10) }] : []
+    );
+    const layout = buildWeekTimeline(days, itemsPerDay);
+    expect(layout.days).toHaveLength(7);
+    expect(layout.days[1].positioned).toHaveLength(1);
+    expect(layout.days[1].positioned[0].id).toBe("tue-evt");
+    expect(layout.days[0].positioned).toHaveLength(0);
+  });
+
+  it("applies overlap columns within each day independently", () => {
+    const days = weekDays();
+    const itemsPerDay = days.map((_, i) =>
+      i === 2
+        ? [
+            { id: "a", kind: "event", title: "A", startsAt: dayAt(2, 16, 30), endsAt: dayAt(2, 16, 30) },
+            { id: "b", kind: "event", title: "B", startsAt: dayAt(2, 16, 30), endsAt: dayAt(2, 16, 30) },
+          ]
+        : []
+    );
+    const layout = buildWeekTimeline(days, itemsPerDay);
+    expect(layout.days[2].positioned.every((p) => p.columnCount === 2)).toBe(true);
+  });
+
+  it("computes nowPercent only for the day matching now", () => {
+    const days = weekDays();
+    const itemsPerDay = days.map(() => []);
+    const layout = buildWeekTimeline(days, itemsPerDay, dayAt(2, 14));
+    expect(layout.days[2].nowPercent).not.toBeNull();
+    expect(layout.days[0].nowPercent).toBeNull();
+    expect(layout.days[1].nowPercent).toBeNull();
+  });
+
+  it("separates all-day items per day", () => {
+    const days = weekDays();
+    const itemsPerDay = days.map((_, i) =>
+      i === 4 ? [{ id: "bday", kind: "birthday", title: "Birthday", startsAt: dayAt(4, 0), endsAt: dayAt(4, 0), allDay: true }] : []
+    );
+    const layout = buildWeekTimeline(days, itemsPerDay);
+    expect(layout.days[4].allDay).toHaveLength(1);
+    expect(layout.days[4].positioned).toHaveLength(0);
   });
 });
