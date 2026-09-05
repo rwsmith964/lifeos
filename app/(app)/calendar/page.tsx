@@ -111,6 +111,11 @@ const CHIP_KIND_STYLES: Record<string, string> = {
 // drift out of alignment with each other.
 const TIMELINE_PIXELS_PER_HOUR = 56;
 const TIMELINE_HOUR_GUTTER_PX = 44;
+// D-167: minimum day-column width in WeekTimelineView, wide enough for a
+// short event title without truncating to 1-2 characters on mobile. The
+// grid scrolls horizontally below this rather than squeezing columns
+// narrower (see WeekTimelineView's gridMinWidth).
+const TIMELINE_WEEK_DAY_MIN_PX = 104;
 
 // D-167: renders one item block within a single day's track, using the
 // column/columnCount the layout already assigned so time-overlapping items
@@ -244,79 +249,103 @@ function WeekTimelineView({
   const totalHours = timeline.endHour - timeline.startHour;
   const trackHeight = totalHours * TIMELINE_PIXELS_PER_HOUR;
   const hasAllDay = timeline.days.some((d) => d.allDay.length > 0);
+  // D-167: narrow (mobile) viewports can't fit 7 real day columns without
+  // squeezing event titles down to 1-2 unreadable characters -- rather
+  // than accept that truncation, give each day column a real minimum
+  // width and let the whole grid scroll horizontally, with the hour
+  // gutter pinned via `sticky` so the time-of-day reference never scrolls
+  // out of view. Desktop's wide column already exceeds this min-width, so
+  // the scrollbar never appears there.
+  const gridMinWidth = TIMELINE_HOUR_GUTTER_PX + timeline.days.length * TIMELINE_WEEK_DAY_MIN_PX;
 
   return (
     <Card>
-      <CardContent className="flex flex-col gap-2">
-        {/* Day headers double as the day picker the old grid provided --
-            click a day to select it and jump the agenda list below to it. */}
-        <div className="flex" style={{ paddingLeft: `${TIMELINE_HOUR_GUTTER_PX}px` }}>
-          {timeline.days.map((d) => {
-            const key = format(d.date, DAY_PARAM_FORMAT);
-            const selected = isSameDay(d.date, selectedDay);
-            return (
-              <Link
-                key={key}
-                href={`/calendar?month=${monthLabel}&day=${key}${viewQuery}&range=week#selected-day`}
-                className={cn(
-                  "flex flex-1 flex-col items-center gap-0.5 rounded-md py-1 text-[11px]",
-                  selected && "bg-primary text-primary-foreground",
-                  !selected && isSameDay(d.date, today) && "font-semibold text-primary"
-                )}
-              >
-                <span>{format(d.date, "EEE")}</span>
-                <span className="text-sm font-medium">{format(d.date, "d")}</span>
-              </Link>
-            );
-          })}
-        </div>
-        {hasAllDay && (
-          <div className="flex gap-1 border-b pb-2" style={{ paddingLeft: `${TIMELINE_HOUR_GUTTER_PX}px` }}>
-            {timeline.days.map((d) => (
-              <div key={format(d.date, DAY_PARAM_FORMAT)} className="flex flex-1 flex-col gap-0.5 overflow-hidden">
-                {d.allDay.map((item) => (
-                  <span
-                    key={item.id}
-                    className={cn(
-                      "truncate rounded-sm px-1 py-0.5 text-[9px]",
-                      CHIP_KIND_STYLES[item.kind] ?? "bg-muted text-foreground"
-                    )}
-                  >
-                    {item.title}
-                  </span>
-                ))}
-              </div>
-            ))}
-          </div>
-        )}
-        <div className="relative flex" style={{ height: `${trackHeight}px` }}>
-          <div className="relative shrink-0 text-right text-[10px] text-muted-foreground" style={{ width: `${TIMELINE_HOUR_GUTTER_PX}px` }}>
-            {timeline.hourLabels.map((label, index) => (
-              <span key={label} className="absolute right-1.5 -translate-y-1/2" style={{ top: `${(index / totalHours) * 100}%` }}>
-                {label}
-              </span>
-            ))}
-          </div>
-          <div className="relative flex flex-1">
-            {timeline.hourLabels.map((label, index) => (
-              <div
-                key={label}
-                className="pointer-events-none absolute left-0 w-full border-t border-dashed border-muted"
-                style={{ top: `${(index / totalHours) * 100}%` }}
-              />
-            ))}
+      <CardContent className="flex flex-col gap-2 overflow-x-auto">
+        <div style={{ minWidth: `${gridMinWidth}px` }}>
+          {/* Day headers double as the day picker the old grid provided --
+              click a day to select it and jump the agenda list below to it. */}
+          <div className="flex">
+            <div className="sticky left-0 shrink-0 bg-card" style={{ width: `${TIMELINE_HOUR_GUTTER_PX}px` }} />
             {timeline.days.map((d) => {
               const key = format(d.date, DAY_PARAM_FORMAT);
-              const dayStart = startOfDay(d.date);
+              const selected = isSameDay(d.date, selectedDay);
               return (
-                <div key={key} className="relative flex-1 border-l first:border-l-0">
-                  {d.positioned.map((item) => (
-                    <TimelineItemBlock key={item.id} item={item} dayStart={dayStart} compact />
-                  ))}
-                  {d.nowPercent != null && <NowIndicatorLine nowPercent={d.nowPercent} />}
-                </div>
+                <Link
+                  key={key}
+                  href={`/calendar?month=${monthLabel}&day=${key}${viewQuery}&range=week#selected-day`}
+                  className={cn(
+                    "flex flex-1 flex-col items-center gap-0.5 rounded-md py-1 text-[11px]",
+                    selected && "bg-primary text-primary-foreground",
+                    !selected && isSameDay(d.date, today) && "font-semibold text-primary"
+                  )}
+                  style={{ minWidth: `${TIMELINE_WEEK_DAY_MIN_PX}px` }}
+                >
+                  <span>{format(d.date, "EEE")}</span>
+                  <span className="text-sm font-medium">{format(d.date, "d")}</span>
+                </Link>
               );
             })}
+          </div>
+          {hasAllDay && (
+            <div className="flex gap-1 border-b pb-2">
+              <div className="sticky left-0 shrink-0 bg-card" style={{ width: `${TIMELINE_HOUR_GUTTER_PX}px` }} />
+              {timeline.days.map((d) => (
+                <div
+                  key={format(d.date, DAY_PARAM_FORMAT)}
+                  className="flex flex-1 flex-col gap-0.5 overflow-hidden"
+                  style={{ minWidth: `${TIMELINE_WEEK_DAY_MIN_PX}px` }}
+                >
+                  {d.allDay.map((item) => (
+                    <span
+                      key={item.id}
+                      className={cn(
+                        "truncate rounded-sm px-1 py-0.5 text-[9px]",
+                        CHIP_KIND_STYLES[item.kind] ?? "bg-muted text-foreground"
+                      )}
+                    >
+                      {item.title}
+                    </span>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="relative flex" style={{ height: `${trackHeight}px` }}>
+            <div
+              className="sticky left-0 z-20 shrink-0 bg-card text-right text-[10px] text-muted-foreground"
+              style={{ width: `${TIMELINE_HOUR_GUTTER_PX}px` }}
+            >
+              {timeline.hourLabels.map((label, index) => (
+                <span key={label} className="absolute right-1.5 -translate-y-1/2" style={{ top: `${(index / totalHours) * 100}%` }}>
+                  {label}
+                </span>
+              ))}
+            </div>
+            <div className="relative flex flex-1">
+              {timeline.hourLabels.map((label, index) => (
+                <div
+                  key={label}
+                  className="pointer-events-none absolute left-0 w-full border-t border-dashed border-muted"
+                  style={{ top: `${(index / totalHours) * 100}%` }}
+                />
+              ))}
+              {timeline.days.map((d) => {
+                const key = format(d.date, DAY_PARAM_FORMAT);
+                const dayStart = startOfDay(d.date);
+                return (
+                  <div
+                    key={key}
+                    className="relative flex-1 border-l first:border-l-0"
+                    style={{ minWidth: `${TIMELINE_WEEK_DAY_MIN_PX}px` }}
+                  >
+                    {d.positioned.map((item) => (
+                      <TimelineItemBlock key={item.id} item={item} dayStart={dayStart} compact />
+                    ))}
+                    {d.nowPercent != null && <NowIndicatorLine nowPercent={d.nowPercent} />}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       </CardContent>
