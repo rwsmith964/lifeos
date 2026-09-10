@@ -181,6 +181,69 @@ account, confirmed the authenticated shell (still using the pre-redesign sidebar
 3) already renders every existing card/button through the new token system with no visual
 breakage, matching the intended "legacy bridge" effect from Step 1.
 
+## Self-verification tooling (per Richard's guidance mid-run)
+
+Richard shared external guidance recommending a screenshot-based self-check loop rather than
+trusting a self-report that a screen "looks right" — built `scripts/shot.mjs`: starts the dev
+server if needed, logs in once (`LIFEOS_SHOT_EMAIL`/`LIFEOS_SHOT_PASSWORD` in `.env.local`, cached
+Playwright storage state at `docs/shots/.auth-state.json`, both gitignored), navigates to a route,
+saves a screenshot to `docs/shots/<name>.png`. Two real bugs hit and fixed while building it: (1)
+every real route in this app is session-gated, which the first draft didn't handle at all — added
+the login+cache step; (2) Git Bash's MSYS path-conversion mangled a bare `/` route argument into a
+Windows path (`node scripts/shot.mjs today /` silently became `.../today C:/Program Files/Git/`)
+— worth remembering for every future invocation: prefix with `MSYS_NO_PATHCONV=1` when the route
+argument is `/` or starts with `/`. Verified working end to end: real screenshot of the (still
+pre-redesign) Today page saved and inspected.
+
+The brief's three reference images (`docs/design/today.png`/`people.png`/`calendar.png`, RQ1) still
+don't exist in the repo — Richard says he's providing them in an upcoming message. Until they
+land, Today/People/Calendar get built from the brief's text spec (Part 2 + Part 3 anatomy) with
+`shot.mjs` used as a self-consistency check (screenshot → compare against the written spec, not a
+pixel target → fix → repeat). Once the real images arrive, re-run the comparison against them
+specifically for those three screens.
+
+## Reference images received (mid-Step-3) — captured in full detail, not yet saved to disk
+
+Richard pasted 6 images inline in chat: People (dark, x2 identical), Calendar week view (dark),
+Plan (dark), Gifts (**light** mode — the first live look at the light palette), Today (**mobile**
+only, dark). No desktop Today image was included. These are NOT yet files on disk — no matching
+PNG found anywhere searchable (checked temp dirs, `.claude`, scratchpad) — only visible as inline
+chat content this turn, which will not survive a compaction. Asked Richard to also save the actual
+files into `docs/design/` for persistence and for `scripts/shot.mjs` pixel comparison later. Wrote
+down everything visible below so this turn's read of them isn't lost even if the files never land.
+
+**Confirms/refines vs. the brief text and my Step 1/2 token choices:**
+- My custody-you (teal) / custody-mel (purple/violet) hex choices visually match the reference
+  almost exactly — no change needed.
+- **Rhythm is a 3-tier system, not the binary "settled or slipping" the brief's People section
+  literally says**: the People table shows green (settled, e.g. "2 of 7 days", "11 of 30 days"),
+  **amber/warning** (e.g. Em "5 weeks, 1:1" — approaching but not yet over cadence), and red
+  (slipping, e.g. "7 of 5 days" — already over). The mobile Today headline ("Two people are
+  slipping") only counts the red ones, confirming amber is a real, distinct third state, not a
+  rendering quirk. `RhythmCell` (built in Step 2) currently only supports settled/slipping —
+  **needs a third `warning` state added before People (Step 5) is built.** Not logging this as an
+  RQ since it's the image adding detail the brief's text didn't rule out, not contradicting it.
+- Today's category tags confirmed exactly as the brief states: "Reach out" = slipping tint,
+  "Decide" = custody-you tint (not a generic action tint) — visible directly in the mobile shot.
+- Notification bell + avatar confirmed top-right of header, exactly as Part 2 says.
+- Command bar copy confirmed verbatim: "Ask, add, or dump a thought…" with a search icon, mic
+  icon, and a ⌘K chip.
+- Mobile bottom tab bar confirmed: Today · People · capture (raised circular button) · Calendar ·
+  Plan — Gifts is not in it, matching Part 6's "Gifts moves into an overflow or the People tab."
+- Gifts' empty-state group (Em, "nothing yet") uses almost the brief's exact Part 5 example
+  copy verbatim ("Tell me three things she is into and I will have a shortlist by the weekend"),
+  confirming that example was meant literally, not just illustratively.
+- Weekend Plan's empty slots show two inline next-best options as ghost buttons suffixed with
+  their own score ("Little Man date · 88", "Indoor range · 74") — a concrete interaction pattern
+  the brief's text only described loosely ("offer the two next-best options inline").
+- Activity library rail: a ruled-out activity shows no score at all (not a greyed "0" or dash-only
+  number) — just the name + reason, no numeral slot.
+- Gift idea cards use a simple tinted icon/line-illustration thumbnail band (fishing hook, coffee
+  cup, trophy, golf cart, truck, person icon), not photos.
+- Cal's group (no fixed occasion, "just because") uses **Save/Drop** buttons on its idea cards,
+  while Fritz's group (a real upcoming occasion) uses **Buy/Drop** — the verb changes based on
+  whether there's an active occasion driving the purchase, not a fixed per-card verb pair.
+
 ## Current step
 
 Step 3 (Part 9) — Shell: sidebar, header command bar, ⌘K overlay, notification and avatar

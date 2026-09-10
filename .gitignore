@@ -47,3 +47,7 @@ next-env.d.ts
 
 .vercel
 .env*.local
+
+# redesign self-verification screenshots (scripts/shot.mjs) -- WIP visual
+# artifacts and a cached Playwright auth session, neither belongs in git
+/docs/shots/
