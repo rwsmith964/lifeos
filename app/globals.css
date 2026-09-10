@@ -32,21 +32,33 @@
   --radius-input: 11px;
   --radius-card: 13.5px;
   --radius-sheet: 17px;
+  /* RQ3 (QUESTIONS.md): both of these are explicit literal numbers in
+     Part 3's component-anatomy spec (table row, priority-card icon well)
+     that don't land on the stated 6/9/11/13-14/17 scale -- kept as their
+     own tokens rather than silently rounded to the nearest scale value. */
+  --radius-table-row: 12px;
+  --radius-icon-well: 10px;
 
-  /* Spacing scale (4/8/12/18/26/34), named rather than bare-numeric:
-     Tailwind v4's default spacing scale already treats any bare integer
-     utility (p-18, gap-26, …) as `18 * var(--spacing)` under its own
-     numeric multiplier system, so reusing the raw numbers as key names
-     here would silently collide with that existing scale everywhere it's
-     already used in this codebase (gap-4, px-6, pb-36, …). Named keys
-     avoid that collision while still resolving through a token, and
-     coexist with the numeric scale for anything not yet migrated. */
-  --spacing-2xs: 4px;
-  --spacing-xs: 8px;
-  --spacing-sm: 12px;
-  --spacing-md: 18px;
-  --spacing-lg: 26px;
-  --spacing-xl: 34px;
+  /* Spacing scale (4/8/12/18/26/34). Named by literal pixel value, not by
+     t-shirt size: an earlier version of this file used --spacing-2xs,
+     -sm, -md, -lg and -xl, which silently broke every "max-w-sm", "w-lg"
+     and similar utility app-wide (login page's card collapsed to a ~12px
+     width, live-verified broken in the browser before this fix). Root
+     cause: Tailwind v4 shares one namespace across every spacing-derived
+     sizing utility -- padding, gap, width, height, max-width, min-width,
+     size, and more -- and its own default preset already defines sm, md,
+     lg and xl under that exact shared namespace for max-width-style
+     scales, so my same-named keys overwrote those instead of just adding
+     new ones. Bare integers were already ruled out for the same reason
+     (Tailwind's numeric multiplier scale). This px-suffixed naming can't
+     collide with either: Tailwind has no built-in 18px or 34px key in
+     this shared namespace. */
+  --spacing-4px: 4px;
+  --spacing-8px: 8px;
+  --spacing-12px: 12px;
+  --spacing-18px: 18px;
+  --spacing-26px: 26px;
+  --spacing-34px: 34px;
 
   /* Control heights, on the same spacing-consuming namespace so they're
      usable as h-control-compact etc. */
@@ -392,6 +404,18 @@
   --text-tag--line-height: 1.3;
   --text-tag--letter-spacing: 0.09em;
   --text-tag--font-weight: 800;
+
+  /* Two sizes used in Part 3's component-anatomy spec (avatar initials,
+     table-row rhythm label) but not listed in the main type table -- added
+     as their own tokens for the same "resolves through a token" reason as
+     everything else, rather than an inline arbitrary value. */
+  --text-avatar-initials: 12.5px;
+  --text-avatar-initials--line-height: 1;
+  --text-avatar-initials--font-weight: 800;
+
+  --text-rhythm-label: 12.5px;
+  --text-rhythm-label--line-height: 1.2;
+  --text-rhythm-label--font-weight: 700;
 }
 
 body {

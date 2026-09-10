@@ -41,7 +41,22 @@ used only for destructive buttons and inline error states, never for `slipping`.
 specified token), cheap to re-tune later, and the whole point of picking it now is exactly to keep
 "error" and "relationship slipping" from reading as the same colour, which the brief requires.
 
----
+### RQ3
+**Where:** `components/ui/button.tsx`, table row anatomy (Part 3 — Component anatomy)
+**What I need to know:** Two small internal inconsistencies in Part 3. (a) The Button spec says
+"Destructive: slipping-tinted background and text," but Part 5 ("Errors use a destructive
+treatment, never the slipping colour") and Part 7 ("errors get their own destructive treatment")
+both explicitly require destructive/error UI to be visually distinct from `slipping`. (b) The
+Table row spec gives an explicit "radius 12" for the row itself, but the Geometry section's radius
+scale only defines 13-14 for cards ("Nothing off this scale") — 12 isn't on it.
+**What I did instead:** (a) Treated Part 5/7's explicit, twice-stated rule as authoritative over
+Part 3's one incidental phrase — the destructive button variant uses the RQ2 `destructive` token,
+never `slipping`. (b) Used the literal `12px` Part 3 gives for the table row specifically (a
+directly-stated number for this exact component beats inferring it from the general scale), added
+as its own `--radius-table-row: 12px` token rather than silently rounding to the nearest scale
+value.
+**Cost of getting it wrong:** Low for both — (a) is a straightforward colour-token swap if the
+intent was actually literal; (b) is a 1-2px visual difference on one component's corner radius.
 
 ## Build Brief Queue (QUEUE-###)
 

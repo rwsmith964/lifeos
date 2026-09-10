@@ -2,13 +2,16 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
+// Redesign (docs/redesign-brief.md Part 3): radius-input (11px), control
+// height (44px touch / 36px default, same md: breakpoint pattern as
+// Button), surface/line/ink tokens, focus ring in the action colour.
 function Input({ className, type, ...props }: React.ComponentProps<"input">) {
   return (
     <input
       type={type}
       data-slot="input"
       className={cn(
-        "border-input flex h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-base shadow-xs transition-colors outline-none file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
+        "flex h-control-touch md:h-control-default w-full min-w-0 rounded-input border border-line bg-surface px-3 font-sans text-body text-ink outline-none motion-safe-transition file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-meta focus-visible:ring-2 focus-visible:ring-action/50 focus-visible:border-line-strong disabled:cursor-not-allowed disabled:opacity-50",
         className
       )}
       {...props}

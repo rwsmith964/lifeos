@@ -118,7 +118,70 @@ though `usePalette()` is ready for it), and the WCAG contrast audit of all three
 hasn't run — the soft-tint mix percentages in particular are an approximation flagged for that
 pass, not a verified-passing value yet.
 
+## Step 2 decisions (primitives)
+
+- **Restyle prop VALUES, don't rename them.** `components/ui/*` primitives (Button, Card, Badge,
+  Input, …) are used across ~15+ routes outside the brief's five named screens (Household,
+  Opportunities, Packing, Execution, Ambient, Brain Dump, childcare, trip ideas, notifications,
+  onboarding, auth pages, …). Renaming a variant/size prop (e.g. `default` → `primary`) would break
+  every one of those call sites' typecheck, forcing a mechanical edit across the whole app just to
+  keep it compiling — well beyond "do not change ... the API surface ... except where a section
+  explicitly moves." Every primitive keeps its exact pre-redesign prop *values*; only the CSS each
+  value resolves to changes, now built from the new tokens and matching Part 3's anatomy as closely
+  as the existing API allows. `Button`'s `outline`/`ghost` (previously visually distinct) now both
+  render Part 3's one specified non-primary treatment, since Part 3 only describes one.
+- Breakpoint mapping for the whole redesign: the brief's 768px/1280px breakpoints are Tailwind v4's
+  *default* `md`/`xl` exactly (`--breakpoint-md: 48rem`, `--breakpoint-xl: 80rem`) — confirmed, no
+  custom breakpoints needed. Base (no prefix) = phone (<768), `md:` = "no rail" tier (768-1279),
+  `xl:` = full desktop (≥1280) throughout every component and the Step 10 responsive pass.
+- Control-height responsiveness (44px minimum below 768px, Part 8 Definition of Done) is baked
+  into primitives now rather than deferred to Step 10 — e.g. `Button`'s default/lg sizes are
+  `h-control-touch md:h-control-default`. Cheap to do once at the primitive level; expensive to
+  retrofit onto every screen individually later.
+
+## Step 2 — done
+
+Restyled (API-compatible, see decision above): `Button`, `Badge` (the brief's "Tag"), `Card`/
+`CardTitle`/`CardDescription`, `Input`, `Textarea`, `Label`. Built new: `PriorityCard` (Today's
+core unit — always requires an `actions` prop, so a card literally cannot exist without one, per
+Part 7's "a card without an action doesn't belong"), `RailCard`, `Avatar`, `TableRow` +
+`RhythmCell` (People's row anatomy), `SegmentedControl` (generalized from the pre-existing
+`theme-toggle.tsx` pattern, not yet migrated onto it), `EmptyState`, `Skeleton`.
+
+**Real bug found and fixed via live verification, not caught by typecheck/lint/build:** the
+initial spacing-scale token names (`--spacing-2xs/-xs/-sm/-md/-lg/-xl`) silently broke every
+`max-w-sm`, `w-lg`, and similar utility across the *entire app* — Tailwind v4 shares one namespace
+across every spacing-derived sizing utility (padding, gap, width, height, max-width, min-width,
+size, …), and its own default preset already defines `sm`/`md`/`lg`/`xl` under that exact
+namespace for max-width-style scales. My same-named keys overwrote those instead of adding new
+ones. First caught visually: the login page's card collapsed to a ~12px width in a live dev-server
+screenshot. Confirmed via direct computed-style inspection (`max-w-sm` resolving to `12px`
+instead of its real value). Fixed by renaming the whole scale to pixel-suffixed keys
+(`--spacing-4px` … `--spacing-34px`), which can't collide with any word-based Tailwind default.
+None of the Step 2 components had actually consumed the broken names yet (confirmed by grep before
+fixing), so the fix was contained entirely to `globals.css` with zero component changes needed.
+**Lesson for the rest of this run:** always live-verify a token/CSS change in the browser, not just
+typecheck/lint/build — none of those three caught this; only rendered output did.
+
+A second, unrelated syntax bug was introduced *while writing the fix's own explanatory comment*:
+the comment literally contained the substring `*/` (from writing wildcard utility patterns like
+"p-*/gap-*/w-*" slash-separated), which prematurely closed the CSS comment block and broke parsing
+CSS-syntax-error style (unclosed bracket, confirmed via a real build error in the dev server and a
+brace/comment-balance check). Rewrote the comment to avoid any `*` immediately followed by `/`.
+Worth remembering for the rest of this run: CSS comments in this file describe utility-class
+patterns often enough that this could recur — check for `*/` inside comment bodies specifically
+when a comment mentions multiple wildcard-style Tailwind classes.
+
+**Verified:** `pnpm typecheck`/`pnpm lint`/`pnpm build` all clean after both fixes. `pnpm test`:
+854/859, same pre-existing 5 failures as Step 1 (unrelated, unchanged). **Live-verified in the
+browser** (not just build-checked): started the dev server, confirmed the login page renders
+correctly (correct card width, correct warm-evening-desk dark palette colours, correct Manrope
+font, correct focus ring in the action colour on the password field), signed in with the real
+account, confirmed the authenticated shell (still using the pre-redesign sidebar/nav — that's Step
+3) already renders every existing card/button through the new token system with no visual
+breakage, matching the intended "legacy bridge" effect from Step 1.
+
 ## Current step
 
-Step 2 (Part 9) — rebuild the primitives: button, tag, card, rail card, input, table row,
-segmented control, avatar, empty state, skeleton. Starting now.
+Step 3 (Part 9) — Shell: sidebar, header command bar, ⌘K overlay, notification and avatar
+placement, nav reorder. Starting now. Target file: `app/(app)/layout.tsx`.
