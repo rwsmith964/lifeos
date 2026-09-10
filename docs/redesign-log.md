@@ -244,7 +244,52 @@ down everything visible below so this turn's read of them isn't lost even if the
   while Fritz's group (a real upcoming occasion) uses **Buy/Drop** — the verb changes based on
   whether there's an active occasion driving the purchase, not a fixed per-card verb pair.
 
+## Step 3 — done
+
+Rebuilt `app/(app)/layout.tsx` entirely. Sidebar: 244px full (xl+, ≥1280), 72px icon-only rail with
+labels-on-hover (md-xl, 768-1279), hidden below md (phone gets a bottom tab bar instead) — Part 6's
+three tiers, confirmed against Tailwind v4's default `md`/`xl` breakpoints (768px/1280px exactly,
+no custom breakpoints needed). New nav: Today/People/Calendar/Plan/Gifts, same routes as before
+(`/activities` is now labelled "Plan" — not a new route, matching Part 2's table). Settings moved
+into a new `AvatarMenu` (hand-rolled popover, click-outside + Escape, matching the existing
+no-external-dependency convention already used by `dialog.tsx`) at the bottom of the sidebar.
+Notifications moved to a bell in the header's top-right.
+
+Quick Capture's trigger moved from a single floating corner button to two places — a persistent
+header command bar (`components/capture/command-bar.tsx`, Part 3's exact anatomy: search icon,
+placeholder, mic icon, ⌘K chip) on md+, and a raised circular mic button centred in the phone's
+bottom tab bar (`components/capture/mobile-capture-button.tsx`) below md — plus a global ⌘K/Ctrl+K
+shortcut and Escape-to-close from anywhere. The actual capture logic (turn history, dictation,
+the `/api/capture` call, clarification/error handling) is the pre-existing `capture-button.tsx`
+lifted verbatim into `capture-panel.tsx` and mounted once by a new `CaptureProvider` context, so
+every trigger opens the same instance and the keyboard shortcut has something to open regardless
+of which page is active. Old `capture-button.tsx` deleted (fully superseded, confirmed unused
+first).
+
+**Two real bugs found via live screenshot verification (`scripts/shot.mjs`), neither caught by
+typecheck/lint/build:**
+1. Passed the nav icons' component references (`Sun`, `Users`, etc.) as props into
+   `MobileCaptureButton`, a Client Component — React RSC boundaries forbid passing functions/
+   component references as props across server→client (only serializable data, including
+   already-rendered JSX elements, crosses that boundary). Manifested as a full-page crash caught by
+   `global-error.tsx` in the browser but invisible to `pnpm build` (the route is fully dynamic, so
+   build never actually renders it — only a live request does). Fixed by pre-rendering the icons to
+   JSX in the server component and passing `icon: ReactNode` instead of `icon: ComponentType`.
+2. `scripts/shot.mjs` itself needed a fix mid-use: Next's dev-mode error overlay (distinct from the
+   real app) can render full-screen over the sandbox's known benign "eval() blocked" console error,
+   hiding the actual page from the screenshot — added an Escape-key-then-close-button dismissal step
+   before capturing, matching what a real user would just do.
+
+**Verified:** `pnpm typecheck`/`lint`/`test` (854/859, same pre-existing 5)/`build` all clean.
+**Live-verified via real screenshots** (desktop 1440×980 and phone 390×844) of Today, then a
+regression check on People/Calendar/Gifts (still pre-redesign content, correctly unchanged) to
+confirm the new shell doesn't break any page it wraps. Desktop: sidebar, command bar, and bell all
+render correctly and closely match the reference images. Mobile: header (logo/bell/avatar) and
+bottom tab bar (Today·People·capture·Calendar·Plan) match the reference mobile shot closely.
+
 ## Current step
 
-Step 3 (Part 9) — Shell: sidebar, header command bar, ⌘K overlay, notification and avatar
-placement, nav reorder. Starting now. Target file: `app/(app)/layout.tsx`.
+Step 4 (Part 9) — Today. Target files: `app/(app)/page.tsx` and new components for the priority
+stack + right rail. Using the reference mobile screenshot (desktop reference wasn't provided) plus
+Part 2/3 text. Will use `scripts/shot.mjs` to verify against actual rendered output at each
+iteration, per Richard's guidance.

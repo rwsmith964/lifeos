@@ -1,115 +1,128 @@
 import Link from "next/link";
-import { Bell, CalendarDays, Compass, Gift, Home, Settings, Users } from "lucide-react";
+import { Bell, CalendarDays, Compass, Gift, Sun, Users } from "lucide-react";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { listUnreadNotifications } from "@/lib/db/repositories/system";
 import { APP_NAME } from "@/lib/constants";
 import { Badge } from "@/components/ui/badge";
-import { CaptureButton } from "@/components/capture/capture-button";
+import { Avatar } from "@/components/ui/avatar";
+import { AvatarMenu } from "@/components/ui/avatar-menu";
+import { CaptureProvider } from "@/components/capture/capture-provider";
+import { CommandBar } from "@/components/capture/command-bar";
+import { MobileCaptureButton } from "@/components/capture/mobile-capture-button";
 import { AppLockGate } from "@/components/native/app-lock-gate";
 import { SignOutButton } from "./sign-out-button";
 
+// Redesign (Part 2 — Information architecture): five destinations
+// replacing the old six. Settings moved into the avatar menu; Notifications
+// moved into the header bell; Quick capture moved into the header command
+// bar / mobile tab-bar button (see components/capture/*). Route paths are
+// unchanged (Activities' route still serves what's now labelled "Plan" --
+// the brief absorbs Activities into Plan as a relabel + rebuild, not a new
+// route, per Part 2's table).
 const NAV_ITEMS = [
-  { href: "/", label: "Brief", icon: Home },
+  { href: "/", label: "Today", icon: Sun },
   { href: "/people", label: "People", icon: Users },
-  { href: "/gifts", label: "Gifts", icon: Gift },
   { href: "/calendar", label: "Calendar", icon: CalendarDays },
-  { href: "/activities", label: "Activities", icon: Compass },
-  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/activities", label: "Plan", icon: Compass },
+  { href: "/gifts", label: "Gifts", icon: Gift },
 ] as const;
+
+// Mobile bottom tab bar drops Gifts (Part 6: "Gifts moves into an overflow
+// or the People tab") and splits around the centred capture button. Icons
+// are pre-rendered to JSX here (not passed as bare component references)
+// since MobileCaptureButton is a Client Component -- see its own doc
+// comment for why that distinction matters.
+const MOBILE_NAV_ITEMS = NAV_ITEMS.map((item) => ({
+  href: item.href,
+  label: item.label,
+  icon: <item.icon className="size-5" />,
+}));
+const MOBILE_NAV_LEFT = MOBILE_NAV_ITEMS.slice(0, 2);
+const MOBILE_NAV_RIGHT = MOBILE_NAV_ITEMS.slice(2, 4);
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const { supabase, household, selfPerson } = await requireHouseholdContext();
   const unread = await listUnreadNotifications(supabase, selfPerson.id);
+  const displayName = selfPerson.nickname || selfPerson.full_name;
 
   return (
     <AppLockGate>
-      <div className="flex min-h-dvh w-full flex-col lg:flex-row">
-        {/* Desktop sidebar (lg+ only). Mobile/tablet below lg is completely
-            untouched: same top header, same fixed bottom nav. */}
-        <aside className="hidden lg:flex lg:w-60 lg:shrink-0 lg:flex-col lg:border-r lg:bg-muted/30">
-          <div className="px-5 py-5">
-            <p className="text-sm font-semibold">{APP_NAME}</p>
-            <p className="text-xs text-muted-foreground">{household.name}</p>
-          </div>
-          <nav className="flex flex-1 flex-col gap-1 px-3">
-            {NAV_ITEMS.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
-              >
-                <item.icon className="size-5" />
-                {item.label}
-              </Link>
-            ))}
-          </nav>
-          <div className="flex items-center justify-between border-t px-3 py-3">
-            <Link
-              href="/notifications"
-              aria-label={unread.length > 0 ? `Notifications (${unread.length} unread)` : "Notifications"}
-              className="relative inline-flex p-2 text-muted-foreground hover:text-foreground"
-            >
-              <Bell className="size-5" />
-              {unread.length > 0 && (
-                <Badge className="absolute -top-1 -right-1 h-4 min-w-4 justify-center rounded-full px-1 text-[10px]">
-                  {unread.length}
-                </Badge>
-              )}
-            </Link>
-            <SignOutButton />
-          </div>
-        </aside>
-
-        <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col lg:mx-0 lg:max-w-none lg:flex-1">
-          <header className="flex items-center justify-between border-b px-4 py-3 lg:hidden">
-            <div>
-              <p className="text-sm font-semibold">{APP_NAME}</p>
-              <p className="text-xs text-muted-foreground">{household.name}</p>
+      <CaptureProvider>
+        <div className="flex min-h-dvh w-full bg-ground">
+          {/* Sidebar: hidden below md (768), 72px icon rail 768-1279, full
+              244px at xl+ (1280) -- Part 6's three breakpoints exactly. */}
+          <aside className="hidden md:flex md:w-[72px] md:shrink-0 md:flex-col md:border-r md:border-line md:bg-surface xl:w-[244px]">
+            <div className="flex items-center gap-2 px-3 py-5 xl:px-5">
+              <span className="font-sans text-card-headline font-bold text-ink xl:hidden" aria-hidden="true">
+                {APP_NAME[0]}
+              </span>
+              <div className="hidden xl:block">
+                <p className="font-sans text-card-headline text-ink">{APP_NAME}</p>
+                <p className="font-sans text-metadata text-meta">{household.name}</p>
+              </div>
             </div>
-            <div className="flex items-center gap-1">
-              <Link
-                href="/notifications"
-                aria-label={unread.length > 0 ? `Notifications (${unread.length} unread)` : "Notifications"}
-                className="relative inline-flex p-2 text-muted-foreground hover:text-foreground"
-              >
-                <Bell className="size-5" />
-                {unread.length > 0 && (
-                  <Badge className="absolute -top-1 -right-1 h-4 min-w-4 justify-center rounded-full px-1 text-[10px]">
-                    {unread.length}
-                  </Badge>
-                )}
-              </Link>
-              <SignOutButton />
+            <nav className="flex flex-1 flex-col gap-1 px-2 xl:px-3">
+              {NAV_ITEMS.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  title={item.label}
+                  className="flex items-center gap-3 rounded-control px-3 py-2 font-sans text-body text-ink-2 motion-safe-transition hover:bg-surface-2 hover:text-ink"
+                >
+                  <item.icon className="size-5 shrink-0" />
+                  <span className="hidden xl:inline">{item.label}</span>
+                </Link>
+              ))}
+            </nav>
+            <div className="border-t border-line p-2 xl:p-3">
+              <AvatarMenu name={displayName} householdName={household.name} className="xl:block">
+                <SignOutButton />
+              </AvatarMenu>
             </div>
-          </header>
+          </aside>
 
-          {/* D-079 (P2-1): bottom padding matches the capture button's full
-              footprint (bottom-24 offset + size-12/48px height = 144px = pb-36)
-              so no page's own bottom-right controls (calendar event delete,
-              gift budget Remove, activity Remove, etc.) render underneath the
-              floating button when a list scrolls all the way down. Desktop
-              (lg+) drops that reserved space since the capture button no
-              longer floats bottom-right there. */}
-          <main className="flex-1 overflow-y-auto pb-36 lg:pb-8">
-            <div className="lg:mx-auto lg:max-w-6xl lg:px-8 lg:py-6">{children}</div>
-          </main>
+          <div className="flex min-h-dvh w-full flex-1 flex-col">
+            {/* Header: 72px, hairline border below (Part 3 -- Layout). */}
+            <header className="flex h-[72px] items-center gap-3 border-b border-line px-4 md:px-[34px]">
+              <div className="md:hidden">
+                <p className="font-sans text-card-headline text-ink">{APP_NAME}</p>
+              </div>
+              <CommandBar className="hidden md:flex" />
+              <div className="ml-auto flex items-center gap-2">
+                <Link
+                  href="/notifications"
+                  aria-label={unread.length > 0 ? `Notifications (${unread.length} unread)` : "Notifications"}
+                  className="relative inline-flex size-control-default items-center justify-center rounded-control border border-line text-ink-2 motion-safe-transition hover:border-line-strong hover:text-ink"
+                >
+                  <Bell className="size-5" />
+                  {unread.length > 0 && (
+                    <Badge
+                      variant="slipping"
+                      className="absolute -top-1.5 -right-1.5 h-[18px] min-w-[18px] justify-center px-1"
+                    >
+                      {unread.length}
+                    </Badge>
+                  )}
+                </Link>
+                {/* Mobile only: sidebar's AvatarMenu isn't rendered below md,
+                    so a plain link to Settings covers that same destination. */}
+                <Link href="/settings" aria-label="Settings" className="md:hidden">
+                  <Avatar name={displayName} size={36} />
+                </Link>
+              </div>
+            </header>
 
-          <CaptureButton />
+            <main className="flex-1 overflow-y-auto pb-24 md:pb-8">
+              <div className="mx-auto max-w-6xl px-4 py-[26px] md:px-[34px]">{children}</div>
+            </main>
 
-          <nav className="fixed bottom-0 mx-auto flex w-full max-w-md items-stretch border-t bg-background lg:hidden">
-            {NAV_ITEMS.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="flex flex-1 flex-col items-center gap-1 py-2 text-muted-foreground hover:text-foreground"
-              >
-                <item.icon className="size-5" />
-                <span className="text-[11px]">{item.label}</span>
-              </Link>
-            ))}
-          </nav>
+            <MobileCaptureButton
+              leftItems={MOBILE_NAV_LEFT}
+              rightItems={MOBILE_NAV_RIGHT}
+            />
+          </div>
         </div>
-      </div>
+      </CaptureProvider>
     </AppLockGate>
   );
 }

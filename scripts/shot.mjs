@@ -147,6 +147,19 @@ async function main() {
   // fallback face, not the real one.
   await page.waitForTimeout(500);
 
+  // Next.js dev mode's own error overlay (distinct from the real app) can
+  // render full-screen over a benign console error this sandbox always
+  // throws (eval() blocked by CSP -- a dev-tooling quirk, not a real bug;
+  // confirmed production builds are unaffected). Dismiss it so the
+  // screenshot shows the actual page, the same way a real user would just
+  // ignore/close it rather than have it block their view.
+  await page.keyboard.press("Escape").catch(() => {});
+  const overlayCloseButton = page.locator('[aria-label="Close"]').first();
+  if (await overlayCloseButton.isVisible().catch(() => false)) {
+    await overlayCloseButton.click().catch(() => {});
+  }
+  await page.waitForTimeout(200);
+
   await page.screenshot({ path: outPath, fullPage: false });
   await context.close();
   await browser.close();
