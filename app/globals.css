@@ -3,64 +3,296 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ============================================================================
+ * LifeOS redesign token layer — docs/redesign-brief.md Parts 3–4.
+ * See docs/redesign-log.md for the reasoning behind every naming decision
+ * made in this file (spacing-scale names, radius names, the extra
+ * `destructive` token, the soft-tint derivation formula).
+ *
+ * Layering: role tokens (ground/surface/ink/action/…) are defined per
+ * palette × light/dark below. The pre-existing shadcn token names
+ * (--background, --foreground, --card, --primary, …) are kept and
+ * re-pointed at the new role tokens rather than deleted, so every screen
+ * not yet individually rebuilt in a later redesign step still renders
+ * correctly and already inherits the new colour system the moment this
+ * file lands. New components (Step 2 onward) use the role token names
+ * directly and should never reference the old shadcn names.
+ * ============================================================================ */
+
+/* ==============================================================================
+ * Geometry / spacing / motion (Part 3, Part 5) — constant across every
+ * palette and light/dark mode, so these go directly in a plain @theme
+ * block with literal values (not @theme inline, which exists specifically
+ * to re-resolve a token whose *value* changes per :root/.dark/[data-palette]
+ * selector context — colour and font tokens below need that; these don't).
+ * ============================================================================== */
+@theme {
+  --radius-chip: 6px;
+  --radius-control: 9px;
+  --radius-input: 11px;
+  --radius-card: 13.5px;
+  --radius-sheet: 17px;
+
+  /* Spacing scale (4/8/12/18/26/34), named rather than bare-numeric:
+     Tailwind v4's default spacing scale already treats any bare integer
+     utility (p-18, gap-26, …) as `18 * var(--spacing)` under its own
+     numeric multiplier system, so reusing the raw numbers as key names
+     here would silently collide with that existing scale everywhere it's
+     already used in this codebase (gap-4, px-6, pb-36, …). Named keys
+     avoid that collision while still resolving through a token, and
+     coexist with the numeric scale for anything not yet migrated. */
+  --spacing-2xs: 4px;
+  --spacing-xs: 8px;
+  --spacing-sm: 12px;
+  --spacing-md: 18px;
+  --spacing-lg: 26px;
+  --spacing-xl: 34px;
+
+  /* Control heights, on the same spacing-consuming namespace so they're
+     usable as h-control-compact etc. */
+  --spacing-control-compact: 30px;
+  --spacing-control-default: 36px;
+  --spacing-control-touch: 44px;
+
+  /* Motion (Part 5): 120-180ms ease-out, applied via .motion-safe-transition
+     below rather than generated as a Tailwind utility, since a transition
+     needs its reduced-motion override to live in the same rule. */
+  --ease-out-brief: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-brief: 150ms;
+}
+
 :root {
-  /* D-079 (P2-5): without an explicit color-scheme, browsers render native
-     form controls (checkboxes, selects, date/time pickers, scrollbars)
-     using light OS chrome regardless of this app's own dark CSS theme --
-     that's the light-grey checkbox / unstyled-select clash the bug report
-     describes. Setting color-scheme per theme class fixes every native
-     control app-wide from this one place, no per-input styling needed. */
   color-scheme: light;
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+
+  /* Legacy shadcn radius scale, re-based close to "control" sizing so any
+     not-yet-migrated component (rounded-md/lg/xl) still looks coherent
+     alongside the new token-driven components. */
+  --radius: 9px;
+
+  /* ==========================================================================
+   * Role tokens — warm-evening-desk, light. Default palette (Part 4).
+   * ========================================================================== */
+  --ground: #f7f3ec;
+  --surface: #ffffff;
+  --surface-2: #f2ede4;
+  --line: #e5ded2;
+  --line-strong: #d8cfc0;
+  --ink: #1b1815;
+  --ink-2: #625b51;
+  --ink-3: #6e6659;
+  --meta: #8e877d;
+  --action: #b96a22;
+  --on-action: #fff8ef;
+  --settled: #5f7d51;
+  --slipping: #a9452f;
+  --custody-you: #3a6f75;
+  --custody-mel: #7a5a83;
+  /* RQ2 (QUESTIONS.md): no destructive/error token exists in Part 4's
+     palette tables, despite Part 5/7 requiring errors to be visually
+     distinct from `slipping`. Added as an extra role token, same pattern
+     as every other role, used only for destructive buttons/inline errors. */
+  --destructive: #c4342f;
+  --on-destructive: #fff8ef;
 }
 
 .dark {
   color-scheme: dark;
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+
+  /* warm-evening-desk, dark */
+  --ground: #131211;
+  --surface: #1b1917;
+  --surface-2: #211f1d;
+  --line: #292724;
+  --line-strong: #322f2b;
+  --ink: #f1ece4;
+  --ink-2: #b5aea4;
+  --ink-3: #a39c92;
+  --meta: #7e776e;
+  --action: #e08a3c;
+  --on-action: #1a1206;
+  --settled: #7c9a72;
+  --slipping: #c4634a;
+  --custody-you: #4e8a90;
+  --custody-mel: #96759f;
+  --destructive: #e5484d;
+  --on-destructive: #1a1206;
+}
+
+/* ==============================================================================
+ * sunrise-citrus — brightest, light-first (Part 4). Light is this palette's
+ * primary mode: when the resolved theme is "system" and the OS reports no
+ * explicit preference, next-themes' own system-resolution already treats
+ * an unmatched prefers-color-scheme query as light (matchMedia(dark).matches
+ * === false -> light) — confirmed against next-themes' actual behaviour, so
+ * no extra override code was needed to satisfy this half of the brief.
+ * ============================================================================== */
+[data-palette="sunrise-citrus"] {
+  color-scheme: light;
+  --ground: #fff8ef;
+  --surface: #ffffff;
+  --surface-2: #fff3e4;
+  --line: #f0e1ce;
+  --line-strong: #e3d2bb;
+  --ink: #2a1e15;
+  --ink-2: #6b5b4c;
+  --ink-3: #7d6c5b;
+  --meta: #96836f;
+  --action: #e0631a;
+  --on-action: #fff8ef;
+  --settled: #2f9968;
+  --slipping: #d24440;
+  --custody-you: #1d8fb0;
+  --custody-mel: #b8529a;
+  --destructive: #d6293b;
+  --on-destructive: #fff8ef;
+}
+
+[data-palette="sunrise-citrus"].dark {
+  color-scheme: dark;
+  --ground: #1b1512;
+  --surface: #261e19;
+  --surface-2: #2e241e;
+  --line: #3a2c24;
+  --line-strong: #493831;
+  --ink: #fbf1e6;
+  --ink-2: #cbb6a5;
+  --ink-3: #b29b89;
+  --meta: #9c8878;
+  --action: #f97a2e;
+  --on-action: #2a1206;
+  --settled: #45b87f;
+  --slipping: #ec5b57;
+  --custody-you: #33a8c7;
+  --custody-mel: #d06bb4;
+  --destructive: #ff5c5c;
+  --on-destructive: #2a1206;
+}
+
+/* ==============================================================================
+ * harbor-bright — marigold on harbour blue (Part 4).
+ * ============================================================================== */
+[data-palette="harbor-bright"] {
+  color-scheme: light;
+  --ground: #f3f8fa;
+  --surface: #ffffff;
+  --surface-2: #ebf3f6;
+  --line: #dbe7ed;
+  --line-strong: #c7d8e0;
+  --ink: #0f1d25;
+  --ink-2: #4c6674;
+  --ink-3: #5a7482;
+  --meta: #5f7a88;
+  --action: #c98600;
+  --on-action: #fffdf6;
+  --settled: #1d9b77;
+  --slipping: #d9503f;
+  --custody-you: #1b8496;
+  --custody-mel: #8e52b8;
+  --destructive: #d6234a;
+  --on-destructive: #fffdf6;
+}
+
+[data-palette="harbor-bright"].dark {
+  color-scheme: dark;
+  --ground: #0f1a21;
+  --surface: #16242d;
+  --surface-2: #1c2c36;
+  --line: #233743;
+  --line-strong: #2f4757;
+  --ink: #edf4f7;
+  --ink-2: #a9c0cb;
+  --ink-3: #8fa8b5;
+  --meta: #718a98;
+  --action: #ffc13b;
+  --on-action: #241800;
+  --settled: #4ecba0;
+  --slipping: #ff7a6b;
+  --custody-you: #3ec0d6;
+  --custody-mel: #c58be8;
+  --destructive: #ff4d6d;
+  --on-destructive: #241800;
+}
+
+/* ==============================================================================
+ * Derived soft tints (Part 4 — Derived tints). Computed live from whichever
+ * role token is currently active, so a single generic rule covers all three
+ * palettes × both modes without hand-computing 30 pairs of hex values.
+ * "Soft background: the role colour at ~12% opacity over ground in dark,
+ * ~10% over surface in light." Soft foreground: the role colour mixed
+ * toward `ink` far enough to read as text on that background — logged as
+ * an approximation (not a real contrast-ratio computation) to be checked
+ * in the Part 9 Step 12 accessibility/contrast pass; adjust the mix
+ * percentage there, never the role colour itself, if a pairing fails AA.
+ * ============================================================================== */
+:root {
+  --action-soft-bg: color-mix(in oklab, var(--action) 10%, var(--surface));
+  --action-soft-fg: color-mix(in oklab, var(--action) 80%, var(--ink));
+  --settled-soft-bg: color-mix(in oklab, var(--settled) 10%, var(--surface));
+  --settled-soft-fg: color-mix(in oklab, var(--settled) 80%, var(--ink));
+  --slipping-soft-bg: color-mix(in oklab, var(--slipping) 10%, var(--surface));
+  --slipping-soft-fg: color-mix(in oklab, var(--slipping) 80%, var(--ink));
+  --custody-you-soft-bg: color-mix(in oklab, var(--custody-you) 10%, var(--surface));
+  --custody-you-soft-fg: color-mix(in oklab, var(--custody-you) 80%, var(--ink));
+  --custody-mel-soft-bg: color-mix(in oklab, var(--custody-mel) 10%, var(--surface));
+  --custody-mel-soft-fg: color-mix(in oklab, var(--custody-mel) 80%, var(--ink));
+  --destructive-soft-bg: color-mix(in oklab, var(--destructive) 10%, var(--surface));
+  --destructive-soft-fg: color-mix(in oklab, var(--destructive) 80%, var(--ink));
+}
+
+.dark {
+  --action-soft-bg: color-mix(in oklab, var(--action) 12%, var(--ground));
+  --action-soft-fg: color-mix(in oklab, var(--action) 78%, var(--ink));
+  --settled-soft-bg: color-mix(in oklab, var(--settled) 12%, var(--ground));
+  --settled-soft-fg: color-mix(in oklab, var(--settled) 78%, var(--ink));
+  --slipping-soft-bg: color-mix(in oklab, var(--slipping) 12%, var(--ground));
+  --slipping-soft-fg: color-mix(in oklab, var(--slipping) 78%, var(--ink));
+  --custody-you-soft-bg: color-mix(in oklab, var(--custody-you) 12%, var(--ground));
+  --custody-you-soft-fg: color-mix(in oklab, var(--custody-you) 78%, var(--ink));
+  --custody-mel-soft-bg: color-mix(in oklab, var(--custody-mel) 12%, var(--ground));
+  --custody-mel-soft-fg: color-mix(in oklab, var(--custody-mel) 78%, var(--ink));
+  --destructive-soft-bg: color-mix(in oklab, var(--destructive) 12%, var(--ground));
+  --destructive-soft-fg: color-mix(in oklab, var(--destructive) 78%, var(--ink));
+}
+
+/* ==============================================================================
+ * Legacy shadcn token bridge — kept so every not-yet-rebuilt component
+ * (bg-background, text-muted-foreground, border, bg-primary, …) already
+ * renders through the new colour system. Delete this block once every
+ * screen in Part 9 Steps 2–9 has been rebuilt against the role tokens
+ * directly (tracked in docs/redesign-log.md).
+ * ============================================================================== */
+:root,
+.dark {
+  --background: var(--ground);
+  --foreground: var(--ink);
+  --card: var(--surface);
+  --card-foreground: var(--ink);
+  --popover: var(--surface);
+  --popover-foreground: var(--ink);
+  --primary: var(--action);
+  --primary-foreground: var(--on-action);
+  --secondary: var(--surface-2);
+  --secondary-foreground: var(--ink);
+  --muted: var(--surface-2);
+  --muted-foreground: var(--meta);
+  --accent: var(--surface-2);
+  --accent-foreground: var(--ink);
+  --destructive-foreground: var(--on-destructive);
+  --border: var(--line);
+  --input: var(--line);
+  --ring: var(--action);
 }
 
 @theme inline {
+  /* Legacy shadcn radius scale only -- --radius-chip/-control/-input/-card/
+     -sheet and the whole spacing scale are already registered directly by
+     the plain @theme block above and must not be repeated here (that would
+     be a genuine self-reference: same key, same :root scope). */
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -80,8 +312,86 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+
+  /* Role tokens (Part 4) as Tailwind utilities: bg-ground, text-ink-2,
+     border-line, bg-action text-on-action, etc. */
+  --color-ground: var(--ground);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-meta: var(--meta);
+  --color-action: var(--action);
+  --color-on-action: var(--on-action);
+  --color-settled: var(--settled);
+  --color-slipping: var(--slipping);
+  --color-custody-you: var(--custody-you);
+  --color-custody-mel: var(--custody-mel);
+
+  --color-action-soft-bg: var(--action-soft-bg);
+  --color-action-soft-fg: var(--action-soft-fg);
+  --color-settled-soft-bg: var(--settled-soft-bg);
+  --color-settled-soft-fg: var(--settled-soft-fg);
+  --color-slipping-soft-bg: var(--slipping-soft-bg);
+  --color-slipping-soft-fg: var(--slipping-soft-fg);
+  --color-custody-you-soft-bg: var(--custody-you-soft-bg);
+  --color-custody-you-soft-fg: var(--custody-you-soft-fg);
+  --color-custody-mel-soft-bg: var(--custody-mel-soft-bg);
+  --color-custody-mel-soft-fg: var(--custody-mel-soft-fg);
+  --color-destructive-soft-bg: var(--destructive-soft-bg);
+  --color-destructive-soft-fg: var(--destructive-soft-fg);
+
+  /* Fonts (Part 3 — Type). --font-sans is Tailwind's generic UI default;
+     --font-serif is deliberately NOT the default, only applied where Part 3
+     specifies (display headline, page title, figure-style numerals), so
+     ordinary body text can never accidentally pick up the serif face. */
+  --font-sans: var(--font-manrope);
+  --font-serif: var(--font-instrument-serif);
+
+  /* Type scale (Part 3 table) as paired Tailwind text utilities --
+     text-headline, text-page-title, etc. -- each bundling size, line
+     height, letter spacing and weight from one class. Uppercase +
+     text-wrap:pretty are applied per-component, not part of the token
+     (they're not colour/size/spacing values the Definition of Done governs). */
+  --text-headline: 40px;
+  --text-headline--line-height: 1.08;
+  --text-headline--letter-spacing: -0.018em;
+  --text-headline--font-weight: 400;
+
+  --text-page-title: 34px;
+  --text-page-title--line-height: 1;
+  --text-page-title--letter-spacing: -0.015em;
+  --text-page-title--font-weight: 400;
+
+  --text-card-headline: 17px;
+  --text-card-headline--line-height: 1.3;
+  --text-card-headline--letter-spacing: -0.015em;
+  --text-card-headline--font-weight: 700;
+
+  --text-body: 14.5px;
+  --text-body--line-height: 1.5;
+  --text-body--font-weight: 500;
+
+  --text-row-label: 14.5px;
+  --text-row-label--line-height: 1.2;
+  --text-row-label--font-weight: 700;
+
+  --text-metadata: 12px;
+  --text-metadata--line-height: 1.4;
+  --text-metadata--font-weight: 600;
+
+  --text-section-label: 10.5px;
+  --text-section-label--line-height: 1.3;
+  --text-section-label--letter-spacing: 0.11em;
+  --text-section-label--font-weight: 800;
+
+  --text-tag: 10.5px;
+  --text-tag--line-height: 1.3;
+  --text-tag--letter-spacing: 0.09em;
+  --text-tag--font-weight: 800;
 }
 
 body {
@@ -89,15 +399,38 @@ body {
   color: var(--foreground);
 }
 
-/* D-081 (P2-5 follow-up): color-scheme (above) fixes native control chrome
-   (backgrounds/text) but does NOT set the checked-state fill browsers use
-   for checkboxes/radios -- that stays OS-default blue unless accent-color
-   is set explicitly, which is why checkboxes still looked unstyled after
-   the color-scheme fix. One rule, themed via the existing --primary token,
-   fixes every checkbox/radio app-wide without touching each raw input. */
+/* D-079 (P2-5): without an explicit color-scheme, browsers render native
+   form controls (checkboxes, selects, date/time pickers, scrollbars) using
+   light OS chrome regardless of this app's own dark CSS theme -- the
+   color-scheme declarations on :root/.dark/[data-palette] above fix every
+   native control app-wide from one place, no per-input styling needed. */
+
+/* D-081 (P2-5 follow-up): color-scheme fixes native control chrome
+   (backgrounds/text) but not the checked-state fill browsers use for
+   checkboxes/radios -- that stays OS-default blue unless accent-color is
+   set explicitly. Themed via the action token so it follows the active
+   palette like everything else. */
 input[type="checkbox"],
 input[type="radio"] {
-  accent-color: var(--primary);
+  accent-color: var(--action);
+}
+
+/* Part 5 — Motion: transitions only on colour/opacity/transform, 120-180ms
+   ease-out, dropped entirely under reduced motion. Scoped to an opt-in
+   utility class rather than a blanket `*` transition (a global transition
+   rule fights layout-affecting utilities and third-party widgets in ways
+   that are hard to predict); components apply `.motion-safe-transition`
+   deliberately where Part 5 calls for a transition. */
+.motion-safe-transition {
+  transition-property: color, background-color, border-color, opacity, transform;
+  transition-duration: var(--duration-brief);
+  transition-timing-function: var(--ease-out-brief);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .motion-safe-transition {
+    transition: none;
+  }
 }
 
 @layer base {
@@ -105,6 +438,11 @@ input[type="radio"] {
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-sans;
+  }
+  h1,
+  h2,
+  h3 {
+    text-wrap: pretty;
   }
 }

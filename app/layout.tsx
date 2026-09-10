@@ -1,18 +1,26 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Instrument_Serif, Manrope } from "next/font/google";
 import "./globals.css";
 import { APP_NAME } from "@/lib/constants";
 import { ServiceWorkerRegistration } from "./service-worker-registration";
 import { ThemeProvider } from "@/components/theme-provider";
+import { PaletteProvider } from "@/components/palette-provider";
 import { ToastProvider } from "@/components/ui/toast";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Redesign (docs/redesign-brief.md Part 3): Manrope is the UI face (variable
+// weight covers every role from Body/500 to Tag/800 in one load); Instrument
+// Serif is used only for display headlines and figure-style numerals, never
+// as a blanket default, so it's exposed as --font-serif and NOT mapped to
+// Tailwind's generic --font-sans. Geist/Geist_Mono removed per the brief.
+const manrope = Manrope({
+  variable: "--font-manrope",
   subsets: ["latin"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const instrumentSerif = Instrument_Serif({
+  variable: "--font-instrument-serif",
+  weight: "400",
+  style: ["normal", "italic"],
   subsets: ["latin"],
 });
 
@@ -54,15 +62,17 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${manrope.variable} ${instrumentSerif.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-          <ToastProvider>
-            {children}
-            <ServiceWorkerRegistration />
-          </ToastProvider>
+          <PaletteProvider defaultPalette="warm-evening-desk">
+            <ToastProvider>
+              {children}
+              <ServiceWorkerRegistration />
+            </ToastProvider>
+          </PaletteProvider>
         </ThemeProvider>
       </body>
     </html>

@@ -4,6 +4,45 @@ Questions that genuinely cannot be decided without Richard's input, per Section 
 
 ---
 
+## Redesign Brief Queue (RQ#)
+
+Entries below use the format mandated by `docs/redesign-brief.md` Part 1: sequential `RQ#`
+numbering (prefixed to avoid colliding with the pre-existing `Q-XXX` and `QUEUE-###` sections
+below, both untouched), logged instead of stopping to ask. `// TODO(RQ#)` markers appear at the
+corresponding code site.
+
+### RQ1
+**Where:** `docs/design/` (Part 0)
+**What I need to know:** The brief says three reference screenshots (`today.png`, `people.png`,
+`calendar.png`) live in `docs/design/`. The directory doesn't exist and no images were attached —
+only the brief text was provided.
+**What I did instead:** Proceeding on Part 3's text specs alone, which the brief itself says win
+over the images on any disagreement. No screen is being built from a pixel reference; all layout,
+spacing, and component anatomy come from Part 3's exact measurements.
+**Cost of getting it wrong:** Medium — the built screens may not match the intended visual
+composition/hierarchy as closely as they would with the reference images, even though every
+numeric spec is followed. If the real images are added to `docs/design/` later, worth a follow-up
+visual comparison pass against Today/People/Calendar specifically.
+
+### RQ2
+**Where:** `app/globals.css` (Part 4 — Colour)
+**What I need to know:** Part 5 ("Errors use a destructive treatment, never the slipping colour")
+and Part 7 ("Errors get their own destructive treatment") both require error/destructive UI to be
+visually distinct from `slipping`, but none of the three palette tables in Part 4 define a
+`destructive`/`error` token — only `action`/`settled`/`slipping`/`custody-you`/`custody-mel` are
+specified.
+**What I did instead:** Added one extra token per palette, `destructive` (dark/light, both modes),
+chosen to read as an unambiguous "stop" red distinct from each palette's more muted/earthy
+`slipping` tone: warm-evening-desk `#E5484D`/`#C4342F`, sunrise-citrus `#FF5C5C`/`#D6293B`,
+harbor-bright `#FF4D6D`/`#D6234A`. Wired the same way as every other role token (CSS custom
+property per palette/mode, `@theme inline` re-export, a `destructive`-soft derived tint pair) —
+used only for destructive buttons and inline error states, never for `slipping`.
+**Cost of getting it wrong:** Low — this is purely additive (one new token name, doesn't touch any
+specified token), cheap to re-tune later, and the whole point of picking it now is exactly to keep
+"error" and "relationship slipping" from reading as the same colour, which the brief requires.
+
+---
+
 ## Build Brief Queue (QUEUE-###)
 
 Entries below use the format mandated by the "Build Brief — Competitive Parity + Moat Extension"
