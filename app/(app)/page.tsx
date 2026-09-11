@@ -1,6 +1,7 @@
 import { addDays, format, formatDistanceToNow, startOfDay } from "date-fns";
+import type { ReactNode } from "react";
 import Link from "next/link";
-import { AlertTriangle, CalendarClock, CheckSquare, Cloud, Gift, Mic, Sparkles, Users, Zap } from "lucide-react";
+import { AlertTriangle, Cloud, Compass, Mic, Users, Zap } from "lucide-react";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { getZonedNow } from "@/lib/timezones";
 import { generateDailyBrief } from "@/lib/brief/generate";
@@ -11,22 +12,36 @@ import { usersRepo } from "@/lib/db/repositories/households";
 import { briefsRepo, getBriefForPersonAndDate } from "@/lib/db/repositories/system";
 import { listCustodyBlocksForHouseholdInRange, listEventsInRange } from "@/lib/db/repositories/calendar";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
+import { listActiveCadencesForHousehold } from "@/lib/db/repositories/contact";
+import { listActiveSuggestionsForHousehold } from "@/lib/db/repositories/gifts";
 import { listOpenOpportunitiesWithSubjectForHousehold } from "@/lib/db/repositories/opportunities";
 import { getPresentedOpportunities } from "@/lib/opportunities/present";
 import { BRIEF_CONTRIBUTORS, composeBrief, itemsForCategory } from "@/lib/brief/contributors";
+import { evaluateCadence } from "@/lib/contact/cadence";
+import { scanUpcomingOccasions, occasionTypeDisplayLabel } from "@/lib/gifts/occasions";
+import { buildTodayPriorityItems, type PriorityItem } from "@/lib/brief/today-priority-items";
 import type { BriefContent } from "@/lib/brief/schema";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
+import { Button } from "@/components/ui/button";
+import { PriorityCard } from "@/components/ui/priority-card";
+import { RailCard } from "@/components/ui/rail-card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { RegenerateBriefButton } from "./regenerate-brief-button";
+
+const OCCASION_SCAN_HORIZON_DAYS = 90;
+const RELATIONSHIP_BAR_LIMIT = 8;
+
+const TAG_META: Record<PriorityItem["tag"], { label: string; variant: "slipping" | "custody-you" | "neutral"; icon: ReactNode }> = {
+  reach_out: { label: "Reach out", variant: "slipping", icon: <Users className="size-5" /> },
+  decide: { label: "Decide", variant: "custody-you", icon: <Compass className="size-5" /> },
+  quick: { label: "Quick", variant: "neutral", icon: <Zap className="size-5" /> },
+};
 
 export default async function BriefPage() {
   const { supabase, household, selfPerson, timezone } = await requireHouseholdContext();
 
   // D-143: household-local today, not a bare `new Date()` -- the server
   // runs in UTC, so an un-zoned reference date reads as tomorrow once the
-  // user's local evening has passed midnight UTC (this is what generated
-  // the wrong day's brief for the same reason the calendar showed the
-  // wrong date).
+  // user's local evening has passed midnight UTC.
   const today = getZonedNow(timezone);
   const todayDateStr = format(today, "yyyy-MM-dd");
 
@@ -34,9 +49,8 @@ export default async function BriefPage() {
   if (!brief) {
     // briefs has no insert policy for regular users by design (only the
     // service role — the cron job — is allowed to write brief rows; see
-    // migration 20260820000012). This on-demand fallback (for a user who
-    // opens the app before their household's brief_time has fired) needs
-    // the same elevated client to perform that first insert.
+    // migration 20260820000012). This on-demand fallback needs the same
+    // elevated client to perform that first insert.
     const serviceRoleClient = createSupabaseServiceRoleClient();
     const result = await generateDailyBrief(serviceRoleClient, household.id, selfPerson.id, today);
     brief = await briefsRepo.getById(supabase, result.briefId);
@@ -44,36 +58,17 @@ export default async function BriefPage() {
 
   const content = brief?.content_json as BriefContent | undefined;
 
-  // D-151: weather silently disappeared with zero explanation when the
-  // brief's weather field is null (see KNOWN-ISSUES.md / DECISIONS.md D-150
-  // for the gap this closes). The most common cause by far is the D-050
-  // home-address gate never being set, so mirror the weekend-plan
-  // contributor's existing pattern (app/(app)/calendar/actions.ts) of
-  // naming the actual fix (Settings > Home address) instead of just
-  // omitting the section. Checks the viewer's own record, which matches
-  // the common single-owner-household case this app is built around.
-  // Guard against a null user_id -- non-self people can have one, and an
-  // empty/undefined id passed to a uuid column would error, not just miss.
   const viewerHasHomeAddress = selfPerson.user_id
     ? (await usersRepo.getById(supabase, selfPerson.user_id))?.home_lat != null
     : false;
 
-  // D-061: opportunities are detected by a separate cron and stored
-  // directly in their own table, not threaded through the AI-generated
-  // content_json/brief schema — deliberate simplification so this section
-  // never depends on the brief's AI-generation budget or timing.
+  const householdPeople = await listPeopleForHousehold(supabase, household.id);
+  const householdPeopleByName = new Map(householdPeople.map((p) => [p.full_name, p]));
+
+  // D-061/P1-6/D-070: same threshold/dedupe/tiering the Opportunities page and Calendar nudge use.
   const rawOpportunities = await listOpenOpportunitiesWithSubjectForHousehold(supabase, household.id);
-  // P1-6/D-070: same threshold/dedupe/tiering the Opportunities page and
-  // Calendar nudge use, so this card never shows something that wouldn't
-  // also show up there.
   const legacyTopOpportunities = getPresentedOpportunities(rawOpportunities).flat.slice(0, 2);
 
-  // Module 8 (brief_registration_v2, D-1XX): with the flag on, Opportunities
-  // and Household route through the generic contributor/compose pipeline
-  // instead of each having its own bespoke query+slice here. Behind the
-  // flag so a household that hasn't opted in sees byte-identical output to
-  // before this module shipped (QUEUE-031 -- the AI-generated sections
-  // below are unaffected either way, flag on or off).
   const registrationV2 = await isFeatureEnabled(supabase, household.id, "brief_registration_v2");
   const composedItems = registrationV2
     ? composeBrief(
@@ -88,24 +83,10 @@ export default async function BriefPage() {
     : [];
   const composedOpportunities = itemsForCategory(composedItems, "opportunities");
   const composedHousehold = itemsForCategory(composedItems, "household");
-  const topOpportunities = registrationV2 ? composedOpportunities : legacyTopOpportunities;
+  const topOpportunities = registrationV2
+    ? composedOpportunities.map((o) => ({ id: o.id, headline: o.title, reasoning: o.detail ?? "" }))
+    : legacyTopOpportunities.map((o) => ({ id: o.id, headline: o.headline, reasoning: o.reasoning }));
 
-  // D-048 (tappability): brief content stores each person by their real
-  // full_name (lib/ai/context.ts's labelFor), never a stable id — the brief
-  // is plain rendered text, not structured with foreign keys. Resolve a
-  // link by exact full_name match against the household's own people, and
-  // only when that name is unique in the household; a same-named duplicate
-  // (rare, but possible for e.g. two grandparents sharing a first name)
-  // falls back to plain text rather than risk linking to the wrong person.
-  const householdPeople = content ? await listPeopleForHousehold(supabase, household.id) : [];
-
-  // P1-13: detect whether anything the brief was built from (today/
-  // tomorrow's events and custody blocks, or the household's people —
-  // e.g. a birthdate edit) has changed since brief.generated_at, so we
-  // can hint that it's out of date instead of silently serving a stale
-  // cache next to fresher data. Same window generateDailyBrief itself
-  // reads (today through +2 days) so this never flags a change the
-  // brief wouldn't have cared about anyway.
   let isStale = false;
   if (brief && content) {
     const windowStart = startOfDay(today);
@@ -117,229 +98,206 @@ export default async function BriefPage() {
     isStale = isBriefStale(brief.generated_at, [...recentEvents, ...recentCustodyBlocks, ...householdPeople]);
   }
 
-  const idByUniqueName = new Map<string, string>();
-  const seenNames = new Set<string>();
-  for (const p of householdPeople) {
-    if (seenNames.has(p.full_name)) {
-      idByUniqueName.delete(p.full_name);
-    } else {
-      seenNames.add(p.full_name);
-      idByUniqueName.set(p.full_name, p.id);
-    }
+  // Redesign right-rail data -- "Coming up" (Part 2): existing occasion-scan
+  // logic (lib/gifts/occasions.ts, already used by the Gifts feature),
+  // cross-referenced against existing active gift suggestions to show a
+  // real ready/not-ready status per occasion, not new business logic.
+  const [activeSuggestions, activeCadences] = await Promise.all([
+    listActiveSuggestionsForHousehold(supabase, household.id),
+    listActiveCadencesForHousehold(supabase, household.id),
+  ]);
+  const upcomingOccasions = scanUpcomingOccasions(householdPeople, today, OCCASION_SCAN_HORIZON_DAYS).slice(0, 4);
+  const suggestionCountByPerson = new Map<string, number>();
+  for (const s of activeSuggestions) {
+    suggestionCountByPerson.set(s.person_id, (suggestionCountByPerson.get(s.person_id) ?? 0) + 1);
   }
+  const peopleById = new Map(householdPeople.map((p) => [p.id, p]));
+
+  // "Relationships holding" (Part 2): a household-level rollup over the
+  // same cadence data the People page's own rhythm column will use (Step
+  // 5) -- computed here as a simple health percentage per active
+  // relationship, not a new tracked metric.
+  const relationshipBars = activeCadences
+    .map((c) => {
+      const status = evaluateCadence(c, today);
+      const person = peopleById.get(c.person_id);
+      const healthPct =
+        status.daysSinceLastContact == null
+          ? 0
+          : Math.max(0, Math.min(100, 100 - (status.daysSinceLastContact / Math.max(c.target_interval_days, 1)) * 100));
+      return { personId: c.person_id, name: person?.nickname || person?.full_name || "Someone", isOverdue: status.isOverdue, healthPct };
+    })
+    .filter((b) => b.personId)
+    .slice(0, RELATIONSHIP_BAR_LIMIT);
+  const settledCount = relationshipBars.filter((b) => !b.isOverdue).length;
 
   if (!content) {
     return (
       <div className="p-4">
-        <p className="text-sm text-muted-foreground">Couldn&apos;t generate today&apos;s brief. Try again shortly.</p>
+        <p className="font-sans text-body text-ink-2">Couldn&apos;t generate today&apos;s brief. Try again shortly.</p>
       </div>
     );
   }
 
-  // P1-13: a human-friendly relative time, matching the phrasing already
-  // used in the notifications list ("about 9 hours ago") — never a raw
-  // ISO timestamp per the ground rule against showing raw dates.
-  const generatedAtLabel = brief
-    ? formatDistanceToNow(new Date(brief.generated_at), { addSuffix: true })
-    : null;
+  const priorityItems = buildTodayPriorityItems({
+    content,
+    householdPeopleByName,
+    opportunities: topOpportunities,
+    household: composedHousehold.map((h) => ({ id: h.id, title: h.title, detail: h.detail ?? undefined, href: h.href ?? undefined })),
+  });
+  const lowPriorityCount = Math.max(0, rawOpportunities.length - topOpportunities.length);
+
+  const generatedAtLabel = brief ? formatDistanceToNow(new Date(brief.generated_at), { addSuffix: true }) : null;
 
   return (
-    <div className="flex flex-col gap-4 p-4">
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <p className="text-xs text-muted-foreground">{format(today, "EEEE, MMMM d")}</p>
-          <h1 className="text-xl font-semibold">{content.headline}</h1>
-          {generatedAtLabel && (
-            <p className="mt-0.5 text-xs text-muted-foreground">Updated {generatedAtLabel}</p>
-          )}
+    <div className="flex flex-col gap-[26px] xl:flex-row xl:items-start">
+      <div className="flex min-w-0 flex-1 flex-col gap-[18px]">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="font-sans text-metadata text-meta">
+              {format(today, "EEEE, MMMM d")}
+              {content.weather && ` · ${content.weather.summary}`}
+            </p>
+            <h1 className="font-serif text-headline text-ink text-pretty">{content.headline}</h1>
+            {generatedAtLabel && <p className="mt-1 font-sans text-metadata text-meta">Updated {generatedAtLabel}</p>}
+          </div>
+          <RegenerateBriefButton />
         </div>
-        <RegenerateBriefButton />
-      </div>
 
-      {isStale && (
-        <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
-          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-          <p>
-            Your calendar or household info has changed since this brief was written — tap{" "}
-            <span className="font-medium">Refresh brief</span> above to update it.
-          </p>
-        </div>
-      )}
+        {isStale && (
+          <div className="flex items-start gap-2 rounded-input border border-slipping/30 bg-slipping-soft-bg px-3 py-2.5 font-sans text-body text-slipping-soft-fg">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+            <p>
+              Your calendar or household info has changed since this brief was written — tap{" "}
+              <span className="font-bold">Rebuild</span> above to update it.
+            </p>
+          </div>
+        )}
 
-      {/* D-066: brain dump's other entry point, alongside the link inside
-          the Quick Capture panel (components/capture/capture-button.tsx) —
-          surfaced here too since it's a full-page flow that benefits from
-          more visibility than a bottom-sheet link alone. */}
-      <Link href="/brain-dump">
-        <Card className="transition-colors hover:bg-muted/50">
-          <CardContent className="flex items-center gap-3 py-2">
-            <Mic className="size-4 text-muted-foreground" />
+        {/* D-066: brain dump's other entry point, alongside the link inside
+            the capture overlay. */}
+        <Link href="/brain-dump">
+          <div className="flex items-center gap-3 rounded-card border border-line bg-surface px-[22px] py-[15px] motion-safe-transition hover:border-line-strong">
+            <Mic className="size-4 text-meta" />
             <div>
-              <p className="text-sm font-medium">Brain dump</p>
-              <p className="text-xs text-muted-foreground">Record a long note and I&apos;ll sort it into the right places</p>
+              <p className="font-sans text-body font-bold text-ink">Brain dump</p>
+              <p className="font-sans text-metadata text-meta">Record a long note and I&apos;ll sort it into the right places</p>
             </div>
-          </CardContent>
-        </Card>
-      </Link>
+          </div>
+        </Link>
 
-      {/* Desktop mockup A/B: at lg+ these cards flow into a 2-column grid
-          instead of one long single-column stack, so the extra width is
-          actually used instead of just widening empty margins. */}
-      <div className="flex flex-col gap-4 lg:grid lg:grid-cols-2 lg:items-start lg:gap-5">
-        {content.today.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <CalendarClock className="size-4" /> Today
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-2">
-              {content.today.map((item, i) => (
-                <div key={i} className="text-sm">
-                  <span className="font-medium">{item.time ?? "All day"}</span> — {item.title}
-                  {item.note && <span className="text-muted-foreground"> ({item.note})</span>}
-                </div>
-              ))}
-            </CardContent>
-          </Card>
+        {priorityItems.length > 0 ? (
+          <div className="flex flex-col gap-3">
+            {priorityItems.map((item) => {
+              const meta = TAG_META[item.tag];
+              return (
+                <PriorityCard
+                  key={item.id}
+                  icon={meta.icon}
+                  tagLabel={meta.label}
+                  tagVariant={meta.variant}
+                  metadata={item.metadata}
+                  headline={item.headline}
+                  detail={item.detail}
+                  actions={
+                    <>
+                      <Button asChild size="sm">
+                        <Link href={item.primaryAction.href}>{item.primaryAction.label}</Link>
+                      </Button>
+                      {item.ghostActions.map((action) => (
+                        <Button key={action.href} asChild variant="ghost" size="sm">
+                          <Link href={action.href}>{action.label}</Link>
+                        </Button>
+                      ))}
+                    </>
+                  }
+                />
+              );
+            })}
+          </div>
+        ) : (
+          <EmptyState message="Nothing needs you today. Everything is settled and the calendar is clear." />
         )}
 
-        {content.headsUp.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <Gift className="size-4" /> Heads up
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-2">
-              {content.headsUp.map((item, i) => (
-                <div key={i} className="text-sm">
-                  <span className="font-medium">{item.title}</span>
-                  <p className="text-muted-foreground">{item.detail}</p>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        )}
-
-        {content.people.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <Users className="size-4" /> People
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-2">
-              {content.people.map((item, i) => {
-                const personId = idByUniqueName.get(item.personLabel);
-                return (
-                  <div key={i} className="text-sm">
-                    {personId ? (
-                      <Link href={`/people/${personId}`} className="font-medium underline-offset-2 hover:underline">
-                        {item.personLabel}
-                      </Link>
-                    ) : (
-                      <span className="font-medium">{item.personLabel}</span>
-                    )}
-                    <span className="text-muted-foreground">: {item.reason}</span>
-                  </div>
-                );
-              })}
-            </CardContent>
-          </Card>
-        )}
-
-        {topOpportunities.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <Zap className="size-4" /> Opportunities
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-2">
-              {registrationV2
-                ? composedOpportunities.map((item) => (
-                    <div key={item.id} className="text-sm">
-                      <span className="font-medium">{item.title}</span>
-                      {item.detail && <p className="text-muted-foreground">{item.detail}</p>}
-                    </div>
-                  ))
-                : legacyTopOpportunities.map((opp) => (
-                    <div key={opp.id} className="text-sm">
-                      <span className="font-medium">{opp.headline}</span>
-                      <p className="text-muted-foreground">{opp.reasoning}</p>
-                    </div>
-                  ))}
-              <Link href="/opportunities" className="text-sm underline-offset-2 hover:underline">
-                See all opportunities
-              </Link>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Module 8 (brief_registration_v2): only ever appears when the flag
-            is on AND the household contributor (Module 7) actually had
-            something to say -- e.g. household_layer off, or on with nothing
-            due, both mean this card doesn't render at all. */}
-        {composedHousehold.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <CheckSquare className="size-4" /> Household
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-2">
-              {composedHousehold.map((item) => (
-                <div key={item.id} className="text-sm">
-                  {item.href ? (
-                    <Link href={item.href} className="font-medium underline-offset-2 hover:underline">
-                      {item.title}
-                    </Link>
-                  ) : (
-                    <span className="font-medium">{item.title}</span>
-                  )}
-                  {item.detail && <p className="text-muted-foreground">{item.detail}</p>}
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        )}
-
-        {content.suggestion && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <Sparkles className="size-4" /> Suggestion
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm font-medium">{content.suggestion.title}</p>
-              <p className="text-sm text-muted-foreground">{content.suggestion.detail}</p>
-            </CardContent>
-          </Card>
-        )}
+        <p className="font-sans text-metadata text-meta">
+          That is everything.{" "}
+          {lowPriorityCount > 0
+            ? `${lowPriorityCount} low-priority item${lowPriorityCount === 1 ? "" : "s"} ${lowPriorityCount === 1 ? "is" : "are"} waiting in Plan.`
+            : "Nothing low-priority is waiting either."}
+        </p>
       </div>
 
-      {content.weather ? (
-        <>
-          <Separator />
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+      <div className="flex w-full flex-col gap-[18px] xl:w-[342px] xl:shrink-0">
+        <RailCard sectionLabel="Your day">
+          {content.today.length > 0 ? (
+            content.today.map((item, i) => (
+              <div key={i} className="font-sans text-body">
+                <span className="font-bold text-ink">{item.time ?? "All day"}</span>{" "}
+                <span className="text-ink-2">— {item.title}</span>
+                {item.note && <p className="font-sans text-metadata text-meta">{item.note}</p>}
+              </div>
+            ))
+          ) : (
+            <p className="font-sans text-body text-ink-2">Nothing else on the calendar for the rest of today.</p>
+          )}
+        </RailCard>
+
+        <RailCard sectionLabel="Coming up">
+          {upcomingOccasions.length > 0 ? (
+            upcomingOccasions.map((occ, i) => {
+              const person = peopleById.get(occ.personId);
+              const suggestionCount = suggestionCountByPerson.get(occ.personId) ?? 0;
+              return (
+                <div key={i} className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="font-sans text-body font-bold text-ink">
+                      {person?.nickname || person?.full_name} — {occasionTypeDisplayLabel(occ.occasionType)}
+                    </p>
+                    <p className="font-sans text-metadata text-meta">{format(occ.occasionDate, "MMM d")}</p>
+                  </div>
+                  <span className="font-sans text-metadata text-meta">
+                    {suggestionCount > 0 ? `${suggestionCount} idea${suggestionCount === 1 ? "" : "s"}` : "No ideas yet"}
+                  </span>
+                </div>
+              );
+            })
+          ) : (
+            <p className="font-sans text-body text-ink-2">Nothing on the horizon in the next {OCCASION_SCAN_HORIZON_DAYS} days.</p>
+          )}
+        </RailCard>
+
+        <RailCard sectionLabel="Relationships holding">
+          {relationshipBars.length > 0 ? (
+            <>
+              <div className="flex h-12 items-end gap-1.5">
+                {relationshipBars.map((bar) => (
+                  <div
+                    key={bar.personId}
+                    title={bar.name}
+                    className={`w-full rounded-[3px] ${bar.isOverdue ? "bg-slipping" : "bg-settled"}`}
+                    style={{ height: `${Math.max(8, bar.healthPct)}%` }}
+                  />
+                ))}
+              </div>
+              <p className="font-sans text-body text-ink-2">
+                {settledCount} of {relationshipBars.length} relationships on track.
+              </p>
+            </>
+          ) : (
+            <p className="font-sans text-body text-ink-2">No contact rhythms set up yet.</p>
+          )}
+        </RailCard>
+
+        {content.weather ? (
+          <div className="flex items-center gap-2 font-sans text-metadata text-meta">
             <Cloud className="size-4" />
             {content.weather.summary}
             {content.weather.highF != null && ` · High ${Math.round(content.weather.highF)}°F`}
             {content.weather.lowF != null && ` · Low ${Math.round(content.weather.lowF)}°F`}
           </div>
-        </>
-      ) : (
-        // D-151: previously rendered nothing at all when weather was
-        // unavailable, with no way for the user to tell whether that meant
-        // "nothing to show" or "something's missing" -- matches the
-        // messaging weekend-plan generation already gives for the same
-        // underlying D-050 home-address gate.
-        !viewerHasHomeAddress && (
-          <>
-            <Separator />
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        ) : (
+          !viewerHasHomeAddress && (
+            <div className="flex items-center gap-2 font-sans text-metadata text-meta">
               <Cloud className="size-4" />
               Add your home address under{" "}
               <Link href="/settings" className="underline-offset-2 hover:underline">
@@ -347,9 +305,9 @@ export default async function BriefPage() {
               </Link>{" "}
               to see today&apos;s weather here.
             </div>
-          </>
-        )
-      )}
+          )
+        )}
+      </div>
     </div>
   );
 }

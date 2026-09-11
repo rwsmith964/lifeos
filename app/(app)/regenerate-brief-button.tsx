@@ -30,11 +30,11 @@ export function RegenerateBriefButton() {
       >
         {pending ? (
           <>
-            <Loader2 className="size-3 animate-spin" /> Refreshing…
+            <Loader2 className="size-3 animate-spin" /> Rebuilding…
           </>
         ) : (
           <>
-            <RefreshCw className="size-3" /> Refresh brief
+            <RefreshCw className="size-3" /> Rebuild
           </>
         )}
       </Button>

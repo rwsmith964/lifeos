@@ -287,9 +287,48 @@ confirm the new shell doesn't break any page it wraps. Desktop: sidebar, command
 render correctly and closely match the reference images. Mobile: header (logo/bell/avatar) and
 bottom tab bar (Today·People·capture·Calendar·Plan) match the reference mobile shot closely.
 
+## Step 4 — done
+
+Rebuilt `app/(app)/page.tsx`. The old page rendered brief content as separate cards grouped *by
+content type* (Today/Heads up/People/Opportunities/Household/Suggestion); the redesign wants one
+ranked stack of actionable items instead. New pure transform
+`lib/brief/today-priority-items.ts` (`buildTodayPriorityItems`) converts the same already-computed
+data (nothing new fetched for this part — `content.people`/`headsUp`/`suggestion`, the existing
+opportunities pipeline, the existing Module 8 household contributor) into `PriorityItem[]`, tagged
+`reach_out`/`decide`/`quick` and ranked reach-out first, matching Part 2's fixed tag-colour mapping
+and the mobile reference's card order. Every item carries a real href-backed action (Part 7: "a
+card without an action doesn't belong") — reach-out items link to `sms:{phone}` when a phone
+number is on file, else the person's own page; nothing fabricates a capability (real SMS sending)
+the app doesn't have.
+
+Right rail (342px, `RailCard`): "Your day" reuses `content.today` (now here instead of a main-column
+card) with an explicit empty-day line; "Coming up" is new — `lib/gifts/occasions.ts`'s existing
+`scanUpcomingOccasions` (already used by the Gifts feature) cross-referenced against existing
+active gift suggestions for a real ready/not-ready count, not new business logic; "Relationships
+holding" is a new household-level rollup over `listActiveCadencesForHousehold` +
+`evaluateCadence` (both pre-existing), rendered as a small settled/slipping bar per person plus a
+one-sentence read. Closing line's low-priority count is `rawOpportunities.length -
+topOpportunities.length` — a real number from data already being fetched, not invented.
+
+**Deviation, logged not asked (matches Part 1's protocol):** Part 2's header spec says "'Brief
+built HH:MM AM'"; the one reference image available (mobile) shows date + weather in the eyebrow
+instead, with no "Brief built" phrase visible, and no desktop Today reference exists to check
+against. Kept the existing `generatedAtLabel` ("Updated 16 hours ago", relative time, already
+computed) as its own line below the headline, and put weather in the eyebrow per the image. Not
+logged as a numbered RQ (pure layout latitude within an already-ambiguous, unimageed area — no
+functional risk either way).
+
+**Verified:** typecheck/lint/test (854/859, pre-existing)/build all clean. **Live-verified** at
+1440×1100 and 390×844 against Richard's real household data (not seed/demo data): tags, icon
+wells, and card ranking all render correctly; the relationship bar chart correctly shows "0 of 2
+on track" reflecting that both Jackie and Fritz are genuinely overdue in this real account;
+"Coming up" correctly shows empty (no birthdates on file for anyone within 90 days in this real
+household — expected, not a bug, since the reference mockup's occasion data was fictional demo
+content).
+
 ## Current step
 
-Step 4 (Part 9) — Today. Target files: `app/(app)/page.tsx` and new components for the priority
-stack + right rail. Using the reference mobile screenshot (desktop reference wasn't provided) plus
-Part 2/3 text. Will use `scripts/shot.mjs` to verify against actual rendered output at each
-iteration, per Richard's guidance.
+Step 5 (Part 9) — People. Target: rebuild the People page as a table (Person/Rhythm/Last contact/
+Next thing/action) with tabs (Circle/Kids & custody/Childcare/Archive) and a detail pane, per the
+reference image and Part 2/3 text. `RhythmCell` needs its three-tier settled/warning/slipping
+update first (noted after the reference images arrived, still pending).
