@@ -411,7 +411,57 @@ duplicate header; Agenda groups real items by day correctly. Weather strip did n
 for this household in this pass -- consistent with the same home-address gate already observed
 empty on the Today page this session, not a new bug specific to Calendar.
 
+## Step 7 — done
+
+Rebuilt `app/(app)/activities/page.tsx` (route unchanged, now labelled "Plan" in nav per Step 3) as
+"This weekend" — the weekend planner is now the page, the activity library moved to a right rail,
+per Part 2's table.
+
+**Key design decision, not obvious from the brief's text alone:** Part 2 wants each day to show "a
+list of scored proposals" with a real numeral score and attribute chips. The existing weekend-plan
+system (`generateWeekendPlan`/`weekend_plans` table) only ever persisted a *single* AI-narrated
+recommendation with no numeric score exposed anywhere in the UI — rebuilding its internals to
+expose per-candidate scores would mean touching real business logic, which the brief says not to do
+except where a section explicitly moves. Found a better fit already sitting in the codebase: the
+opportunity-detection engine (D-061/D-070, `listOpenOpportunitiesWithSubjectForHouseholdInDateRange`
++ `getPresentedOpportunities`) already computes and persists a real per-candidate `score`, already
+dedupes/tiers/caps them, and already backs the Opportunities page and Calendar's weekend nudge with
+the exact same data — this became the proposals list instead, so every score/tier/reasoning shown
+is real, not new business logic. New `plan-proposal-card.tsx`'s "Add to {Day}" / "Swap" buttons
+reuse the existing `updateOpportunityStatusAction` (acted_on/dismissed) rather than inventing new
+statuses; "acted_on" already writes `last_done_at`, the real signal that feeds future scoring, which
+is the closest existing match to "commit to this for the weekend." The single-recommendation
+weekend-plan system isn't removed — its Generate/Regenerate and Accept buttons are still on the page
+(a small callout above the day sections), so nothing that worked before stopped working.
+
+Other new pieces, all reusing pre-existing data: a weather banner (same NWS adapter/scoring as
+Calendar's week-view strip) shown only when the forecast is bad enough to matter; custody state in
+the header ("Kids with Richard Smith"), reusing the same custody-block query Calendar uses; a
+"Dinners this week" strip reading real `meal_plans` rows (Module 7/household_layer, gated on that
+flag same as everywhere else it appears) with a real recipe-title lookup, not placeholder data.
+Right rail: the full pre-existing activity library (enjoyment/duration/locations/season/last-done,
+mark-done/edit/deactivate all intact) plus each activity's "live score" — the real opportunity score
+for that activity this week if one was detected, else an honest "not scored" rather than a fake
+number — followed by the pre-existing activity-type settings (viability configs, gear checklists)
+and Trip Ideas section, both relocated into the rail, not dropped.
+
+**Scope simplification, logged not treated as an RQ:** Part 2's "Empty slots are dashed and offer
+the two next-best options inline" isn't built — when a day has no opportunity clearing the existing
+`STANDOUT_MIN_SCORE` threshold, this shows a plain empty state rather than surfacing below-threshold
+candidates as fake "next-best" options, since the presentation layer (`getPresentedOpportunities`)
+deliberately doesn't expose a below-threshold ranking today. Real, not fabricated, and this weekend's
+real data (nothing detected yet for Sat/Sun) confirms the empty-state path renders correctly.
+
+**Verified:** typecheck/lint/test(854/859, pre-existing)/build all clean. **Live-verified** at
+1440px against real household data: the weekend header shows the real custody state, the activity
+library shows all six real activities with real locations/last-done dates, the dinners strip shows
+real "0 of 7 planned," and the empty-state proposal cards render correctly for both days (no
+opportunities currently stand out this week in the real account — an honest result, not a bug).
+Did not get to live-verify a populated `PlanProposalCard` (score numeral + chips) against a live
+scored opportunity, since none exists in the account this week — worth a follow-up check once a
+real opportunity is detected.
+
 ## Current step
 
-Step 7 (Part 9) — Plan (Activities absorbed into it). No reference image exists for this screen
-per the original brief; building from Part 2's text alone.
+Step 8 (Part 9) — Gifts. Target: replace the chronological idea feed with groups by person/
+occasion, a 90-day timeline, order-by dates and budget bars per group, matching the reference image.
