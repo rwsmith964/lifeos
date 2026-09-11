@@ -587,6 +587,40 @@ stack their right rail below `xl` (built correctly in Steps 7-8); Calendar's wee
 keeps scrolling internally at every width without leaking into the page. No other responsive
 regressions found in this pass.
 
+**Step 10 addendum:** re-read Part 6's full text (not just the summary in Part 9's step list) while
+starting Step 11 and caught two more concrete 768-1279px-tier requirements the first pass missed
+because they weren't overflow bugs -- they were missing layout adaptations:
+
+- "On Today it becomes a horizontal row of two or three compact cards above the priority stack."
+  Previously the right rail (Your day / Coming up / Relationships holding) just stacked in normal
+  flow below the priority stack at this tier (same DOM order as desktop, no `xl:` gate). Added a new
+  three-card compact row (`app/(app)/page.tsx`), shown only below `xl` and positioned above the
+  priority stack, reusing the exact same data the full rail already computes (`content.today`,
+  `upcomingOccasions`, `relationshipBars`/`settledCount`) -- condensed to one line each, not new
+  logic. The full rail is now gated `hidden xl:flex` so the two never show at once. Minor accepted
+  loss: the weather/home-address nudge line (bottom of the full rail) has no compact-row equivalent
+  below `xl` -- the weather summary is still visible in the header eyebrow at every width, so this
+  is a redundant line disappearing, not a loss of information.
+- "On People the detail pane becomes a slide-over sheet." Previously the detail pane was just an
+  always-visible inline column that appeared below the table at every width under `xl`, pushing
+  the page taller rather than becoming an overlay. Built a new hand-rolled `components/ui/sheet.tsx`
+  (portal + focus trap + Escape-to-close, mirroring the existing `ConfirmDialog` pattern in
+  `dialog.tsx` -- this codebase has no Radix/external dialog dependency to build on) and wired
+  `people-table-client.tsx` so a row click opens the sheet below `xl` (detected via
+  `matchMedia("(min-width: 1280px)")`, matching the same cutoff used everywhere else for this rail)
+  while the always-visible inline pane (now `hidden xl:block`) still handles desktop, unchanged. The
+  detail-pane content itself was extracted into one shared `PersonDetailPaneContent` so the two
+  presentations can never drift out of sync with each other.
+
+**Verified:** typecheck/lint/build clean; test suite unchanged at the pre-existing 854/859.
+**Live-verified** at 1024px: Today shows the new compact three-card row above the priority stack
+with real data (matches the People page's own "2 slipping" count); at 1440px the full rail is back
+and the compact row is gone. People: at 1024px the table now spans full width with no inline pane;
+clicking a row opens the sheet (confirmed via its computed class going from `translate-x-full` to
+`translate-x-0`) showing the same real person data as the desktop pane; Escape closes it
+(`translate-x-full` again); at 1440px the sheet stays permanently closed and the inline pane renders
+instead, confirmed via the `isDesktop` gate.
+
 ## Current step
 
 Step 11 (Part 9) — States pass: loading, empty, error, read-only, everywhere.

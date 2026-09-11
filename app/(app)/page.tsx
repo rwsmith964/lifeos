@@ -169,6 +169,38 @@ export default async function BriefPage() {
           </div>
         )}
 
+        {/* Redesign Part 6 (768-1279px tier): "The right rail's content
+            moves inline. On Today it becomes a horizontal row of two or
+            three compact cards above the priority stack." Same data as
+            the full right rail below (content.today / upcomingOccasions /
+            relationshipBars), just condensed to one line each -- shown
+            only below xl, where the full rail (further down this file) is
+            hidden instead. */}
+        <div className="flex flex-col gap-2 sm:flex-row xl:hidden">
+          <div className="flex-1 rounded-card border border-line bg-surface px-4 py-3">
+            <p className="font-sans text-section-label uppercase text-meta">Your day</p>
+            <p className="mt-1 font-sans text-body text-ink">
+              {content.today.length > 0
+                ? `${content.today[0]!.time ?? "All day"} — ${content.today[0]!.title}${content.today.length > 1 ? ` +${content.today.length - 1} more` : ""}`
+                : "Nothing else today."}
+            </p>
+          </div>
+          <div className="flex-1 rounded-card border border-line bg-surface px-4 py-3">
+            <p className="font-sans text-section-label uppercase text-meta">Coming up</p>
+            <p className="mt-1 font-sans text-body text-ink">
+              {upcomingOccasions.length > 0
+                ? `${peopleById.get(upcomingOccasions[0]!.personId)?.nickname || peopleById.get(upcomingOccasions[0]!.personId)?.full_name} — ${occasionTypeDisplayLabel(upcomingOccasions[0]!.occasionType)}, ${format(upcomingOccasions[0]!.occasionDate, "MMM d")}`
+                : `Nothing in the next ${OCCASION_SCAN_HORIZON_DAYS} days.`}
+            </p>
+          </div>
+          <div className="flex-1 rounded-card border border-line bg-surface px-4 py-3">
+            <p className="font-sans text-section-label uppercase text-meta">Relationships</p>
+            <p className="mt-1 font-sans text-body text-ink">
+              {relationshipBars.length > 0 ? `${settledCount} of ${relationshipBars.length} on track.` : "No rhythms set up yet."}
+            </p>
+          </div>
+        </div>
+
         {/* D-066: brain dump's other entry point, alongside the link inside
             the capture overlay. */}
         <Link href="/brain-dump">
@@ -222,7 +254,7 @@ export default async function BriefPage() {
         </p>
       </div>
 
-      <div className="flex w-full flex-col gap-[18px] xl:w-[342px] xl:shrink-0">
+      <div className="hidden w-full flex-col gap-[18px] xl:flex xl:w-[342px] xl:shrink-0">
         <RailCard sectionLabel="Your day">
           {content.today.length > 0 ? (
             content.today.map((item, i) => (
