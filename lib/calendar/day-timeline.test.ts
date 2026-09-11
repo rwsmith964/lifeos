@@ -45,12 +45,12 @@ describe("buildDayTimeline", () => {
     const layout = buildDayTimeline(DAY, [
       { id: "evt-1", kind: "event", title: "Lunch", startsAt: at(11), endsAt: at(12) },
     ]);
-    expect(layout.startHour).toBe(7);
-    expect(layout.endHour).toBe(21);
-    // window is 7am-9pm (14h = 840min); 11am is 4h (240min) in => 240/840 = 28.57%
+    expect(layout.startHour).toBe(6);
+    expect(layout.endHour).toBe(22);
+    // window is 6am-10pm (16h = 960min); 11am is 5h (300min) in => 300/960 = 31.25%
     expect(layout.positioned).toHaveLength(1);
-    expect(layout.positioned[0].topPercent).toBeCloseTo((4 / 14) * 100, 1);
-    expect(layout.positioned[0].heightPercent).toBeCloseTo((1 / 14) * 100, 1);
+    expect(layout.positioned[0].topPercent).toBeCloseTo((5 / 16) * 100, 1);
+    expect(layout.positioned[0].heightPercent).toBeCloseTo((1 / 16) * 100, 1);
   });
 
   it("separates all-day items into their own bucket instead of positioning them", () => {
@@ -71,11 +71,12 @@ describe("buildDayTimeline", () => {
 
   it("expands the window to fit an early outlier rather than clipping it off-screen", () => {
     const layout = buildDayTimeline(DAY, [{ id: "evt-1", kind: "event", title: "Early", startsAt: at(3), endsAt: at(8) }]);
-    // window expands to fit (floor(3)-1=2 .. 21) -- a 19-hour window -- so
-    // the event's 1-hour head start (3am - 2am window start) lands just
-    // inside the top of the window, not clipped to a hard 0%.
+    // window expands to fit (floor(3)-1=2 .. the default 22 end, unaffected
+    // by this outlier) -- a 20-hour window -- so the event's 1-hour head
+    // start (3am - 2am window start) lands just inside the top of the
+    // window, not clipped to a hard 0%.
     expect(layout.startHour).toBe(2);
-    expect(layout.positioned[0].topPercent).toBeCloseTo((1 / 19) * 100, 5);
+    expect(layout.positioned[0].topPercent).toBeCloseTo((1 / 20) * 100, 5);
   });
 
   it("clips an event that started the previous day to the window's top edge, not a negative percent", () => {
@@ -139,9 +140,9 @@ describe("buildDayTimeline", () => {
 
   it("produces one hour label per hour boundary in the window, inclusive", () => {
     const layout = buildDayTimeline(DAY, [{ id: "evt-1", kind: "event", title: "Meeting", startsAt: at(9), endsAt: at(10) }]);
-    expect(layout.hourLabels[0]).toBe("7 AM");
-    expect(layout.hourLabels[layout.hourLabels.length - 1]).toBe("9 PM");
-    expect(layout.hourLabels).toHaveLength(21 - 7 + 1);
+    expect(layout.hourLabels[0]).toBe("6 AM");
+    expect(layout.hourLabels[layout.hourLabels.length - 1]).toBe("10 PM");
+    expect(layout.hourLabels).toHaveLength(22 - 6 + 1);
   });
 
   describe("overlap columns (D-167)", () => {

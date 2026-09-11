@@ -32,6 +32,9 @@ import { listPeopleForHousehold, peopleRepo } from "@/lib/db/repositories/people
 import { usersRepo } from "@/lib/db/repositories/households";
 import { isFeatureEnabled } from "@/lib/flags";
 import { detectScheduleConflictsForHousehold, resolveTravelLegsForHousehold } from "@/lib/scheduling/detect-conflicts";
+import { getNwsForecast } from "@/lib/external/nws";
+import { scoreWeatherSuitability, parseWindMph } from "@/lib/planner/weather-score";
+import { buildWeekCustodyRibbon, type WeekCustodyBand } from "@/lib/calendar/week-custody-ribbon";
 import type { TravelConflictWarning } from "@/lib/scheduling/travel-conflicts";
 import {
   buildDayTimeline,
@@ -50,7 +53,7 @@ import { birthdaysInRange, birthdayTitle } from "@/lib/calendar/birthdays";
 import { workShiftsInRange, timeOffInRange, workShiftTitle, timeOffTitle } from "@/lib/calendar/work-schedule";
 import { buildChildColorMap, buildParentColorMap } from "@/lib/custody/colors";
 import { buildMonthCellChips, buildMonthCellCustodyBars, type CustodyBlockLike } from "@/lib/calendar/month-cell";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { RenderedMarkdown } from "@/components/ui/rendered-markdown";
 import { Button } from "@/components/ui/button";
@@ -158,11 +161,14 @@ function TimelineItemBlock({ item, dayStart, compact }: { item: DayTimelinePosit
 // current time -- only rendered when the layout resolved a nowPercent for
 // this particular day (i.e. `now` fell on this calendar day, inside the
 // rendered hour window).
+// Redesign (Part 2 — Calendar): "A thin current-time line in the action
+// colour on today's column" -- was a hardcoded red-500, now the palette's
+// action token so it follows whichever of the three palettes is active.
 function NowIndicatorLine({ nowPercent }: { nowPercent: number }) {
   return (
     <div className="pointer-events-none absolute left-0 right-0 z-10 flex items-center" style={{ top: `${nowPercent}%` }}>
-      <div className="-ml-[3px] size-[7px] shrink-0 rounded-full bg-red-500" />
-      <div className="h-px flex-1 bg-red-500" />
+      <div className="-ml-[3px] size-[7px] shrink-0 rounded-full bg-action" />
+      <div className="h-px flex-1 bg-action" />
     </div>
   );
 }
@@ -239,16 +245,29 @@ function WeekTimelineView({
   today,
   monthLabel,
   viewQuery,
+  custodyBands,
+  weatherByDay,
+  peopleById,
+  layerEntries,
 }: {
   timeline: WeekTimelineLayout;
   selectedDay: Date;
   today: Date;
   monthLabel: string;
   viewQuery: string;
+  custodyBands: WeekCustodyBand[];
+  weatherByDay: Map<string, { tempF: number | null; shortForecast: string; rulesOutOutdoor: boolean }>;
+  peopleById: Map<string, string>;
+  layerEntries: { label: string; swatch: React.ReactNode }[];
 }) {
   const totalHours = timeline.endHour - timeline.startHour;
   const trackHeight = totalHours * TIMELINE_PIXELS_PER_HOUR;
   const hasAllDay = timeline.days.some((d) => d.allDay.length > 0);
+  const custodyColorClasses = ["bg-custody-you-soft-bg text-custody-you-soft-fg", "bg-custody-mel-soft-bg text-custody-mel-soft-fg"];
+  const custodyColorByPerson = new Map<string, string>();
+  [...new Set(custodyBands.map((b) => b.responsiblePersonId))].forEach((personId, i) => {
+    custodyColorByPerson.set(personId, custodyColorClasses[i % custodyColorClasses.length]);
+  });
   // D-167: narrow (mobile) viewports can't fit 7 real day columns without
   // squeezing event titles down to 1-2 unreadable characters -- rather
   // than accept that truncation, give each day column a real minimum
@@ -262,21 +281,69 @@ function WeekTimelineView({
     <Card>
       <CardContent className="flex flex-col gap-2 overflow-x-auto">
         <div style={{ minWidth: `${gridMinWidth}px` }}>
+          {/* Redesign (Part 2): "Custody ribbon above the day headers:
+              continuous named bands." One row per child with a custody
+              schedule; each band spans the columns it covers and carries
+              its own name + handover-time label, replacing the old
+              unlabelled per-day frame bars. */}
+          {custodyBands.length > 0 && (
+            <div className="mb-2 flex flex-col gap-1">
+              {[...new Set(custodyBands.map((b) => b.childPersonId))].map((childId) => (
+                <div key={childId} className="flex" style={{ paddingLeft: `${TIMELINE_HOUR_GUTTER_PX}px` }}>
+                  {/* Absolutely positioned by day index (percent-of-week
+                      left/width), not flex document order -- a band only
+                      covering e.g. Fri-Sat must sit under those columns,
+                      not just flow to the start of the row. Bug caught by
+                      live screenshot verification: an earlier flex-flow
+                      version stacked every band at the left regardless of
+                      which days it actually covered. */}
+                  <div className="relative h-6 flex-1">
+                    {custodyBands
+                      .filter((b) => b.childPersonId === childId)
+                      .map((band) => {
+                        const spanDays = band.endDayIndex - band.startDayIndex + 1;
+                        const leftPercent = (band.startDayIndex / timeline.days.length) * 100;
+                        const widthPercent = (spanDays / timeline.days.length) * 100;
+                        const label =
+                          band.endDayIndex < timeline.days.length - 1 && band.handoverAt
+                            ? `${peopleById.get(band.responsiblePersonId) ?? "Someone"} — through ${format(band.handoverAt, "EEE h:mm a")}`
+                            : `${peopleById.get(band.responsiblePersonId) ?? "Someone"}`;
+                        return (
+                          <div
+                            key={`${band.childPersonId}-${band.startDayIndex}`}
+                            className={cn(
+                              "absolute inset-y-0 truncate rounded-chip px-2 py-1 font-sans text-metadata font-bold",
+                              custodyColorByPerson.get(band.responsiblePersonId) ?? "bg-surface-2 text-ink-2"
+                            )}
+                            style={{ left: `calc(${leftPercent}% + 1px)`, width: `calc(${widthPercent}% - 2px)` }}
+                            title={`${peopleById.get(childId) ?? "Child"}: ${label}`}
+                          >
+                            {peopleById.get(childId) ?? "Child"}: {label}
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Day headers double as the day picker the old grid provided --
               click a day to select it and jump the agenda list below to it. */}
           <div className="flex">
-            <div className="sticky left-0 shrink-0 bg-card" style={{ width: `${TIMELINE_HOUR_GUTTER_PX}px` }} />
+            <div className="sticky left-0 shrink-0 bg-surface" style={{ width: `${TIMELINE_HOUR_GUTTER_PX}px` }} />
             {timeline.days.map((d) => {
               const key = format(d.date, DAY_PARAM_FORMAT);
               const selected = isSameDay(d.date, selectedDay);
+              const isWeekend = d.date.getDay() === 0 || d.date.getDay() === 6;
               return (
                 <Link
                   key={key}
                   href={`/calendar?month=${monthLabel}&day=${key}${viewQuery}&range=week#selected-day`}
                   className={cn(
-                    "flex flex-1 flex-col items-center gap-0.5 rounded-md py-1 text-[11px]",
-                    selected && "bg-primary text-primary-foreground",
-                    !selected && isSameDay(d.date, today) && "font-semibold text-primary"
+                    "flex flex-1 flex-col items-center gap-0.5 rounded-control py-1 font-sans text-[11px]",
+                    selected ? "bg-action text-on-action" : isWeekend ? "bg-surface-2" : "",
+                    !selected && isSameDay(d.date, today) && "font-bold text-action"
                   )}
                   style={{ minWidth: `${TIMELINE_WEEK_DAY_MIN_PX}px` }}
                 >
@@ -286,6 +353,30 @@ function WeekTimelineView({
               );
             })}
           </div>
+
+          {/* Redesign (Part 2): "Weather strip between day headers and the
+              grid: one temp and condition per day, with days whose weather
+              rules out outdoor plans rendered in the slipping colour." */}
+          <div className="flex border-b border-line pb-1.5">
+            <div className="sticky left-0 shrink-0 bg-surface" style={{ width: `${TIMELINE_HOUR_GUTTER_PX}px` }} />
+            {timeline.days.map((d) => {
+              const key = format(d.date, DAY_PARAM_FORMAT);
+              const weather = weatherByDay.get(key);
+              return (
+                <div
+                  key={key}
+                  className={cn(
+                    "flex flex-1 items-center justify-center gap-1 truncate font-sans text-[10px]",
+                    weather?.rulesOutOutdoor ? "text-slipping" : "text-meta"
+                  )}
+                  style={{ minWidth: `${TIMELINE_WEEK_DAY_MIN_PX}px` }}
+                >
+                  {weather ? `${Math.round(weather.tempF ?? 0)}° ${weather.shortForecast}` : "—"}
+                </div>
+              );
+            })}
+          </div>
+
           {hasAllDay && (
             <div className="flex gap-1 border-b pb-2">
               <div className="sticky left-0 shrink-0 bg-card" style={{ width: `${TIMELINE_HOUR_GUTTER_PX}px` }} />
@@ -332,10 +423,12 @@ function WeekTimelineView({
               {timeline.days.map((d) => {
                 const key = format(d.date, DAY_PARAM_FORMAT);
                 const dayStart = startOfDay(d.date);
+                // Redesign (Part 2): "Weekend columns get a subtly darker ground."
+                const isWeekend = d.date.getDay() === 0 || d.date.getDay() === 6;
                 return (
                   <div
                     key={key}
-                    className="relative flex-1 border-l first:border-l-0"
+                    className={cn("relative flex-1 border-l first:border-l-0", isWeekend && "bg-surface-2/40")}
                     style={{ minWidth: `${TIMELINE_WEEK_DAY_MIN_PX}px` }}
                   >
                     {d.positioned.map((item) => (
@@ -347,6 +440,18 @@ function WeekTimelineView({
               })}
             </div>
           </div>
+        </div>
+
+        {/* Redesign (Part 2): "Sidebar gains a Layers legend." Kept inline
+            with the week grid itself, rather than the page's own sidebar --
+            see the note where this component is called for why. */}
+        <div className="flex flex-wrap gap-3 border-t border-line pt-2">
+          {layerEntries.map((entry) => (
+            <div key={entry.label} className="flex items-center gap-1.5 font-sans text-metadata text-meta">
+              {entry.swatch}
+              {entry.label}
+            </div>
+          ))}
         </div>
       </CardContent>
     </Card>
@@ -389,10 +494,12 @@ function parseDayParam(raw: string | undefined, monthDate: Date, now: Date): Dat
 // the gridStart/gridEnd branch below), so this stays a plain string union
 // rather than a new enum/table -- there's no new data here, only a
 // different slice of the same computed day items.
-type CalendarRange = "month" | "week" | "day";
+// Redesign (Part 2): "Agenda" is a new fourth granularity (a flat
+// chronological list), and the default changed from month to week.
+type CalendarRange = "month" | "week" | "day" | "agenda";
 
 function parseRangeParam(raw: string | undefined): CalendarRange {
-  return raw === "week" || raw === "day" ? raw : "month";
+  return raw === "month" || raw === "day" || raw === "agenda" ? raw : "week";
 }
 
 interface DayItem {
@@ -447,7 +554,11 @@ export default async function CalendarPage({
   // gridDays, so narrowing these three is the entire behavior change;
   // nothing past this block needs to know which range is active.
   const gridStart =
-    range === "day" ? startOfDay(selectedDay) : range === "week" ? startOfWeek(selectedDay) : startOfWeek(startOfMonth(monthDate));
+    range === "day"
+      ? startOfDay(selectedDay)
+      : range === "week" || range === "agenda"
+        ? startOfWeek(selectedDay)
+        : startOfWeek(startOfMonth(monthDate));
   // D-066 fix: Day view's gridEnd was previously startOfDay(selectedDay)
   // -- identical to gridStart -- making it a zero-width instant. Every
   // range query below builds a half-open [gridStart, gridEnd) window
@@ -462,7 +573,11 @@ export default async function CalendarPage({
   // this is the same half-open-with-inclusive-last-moment pattern applied
   // consistently across all three ranges rather than a new one.
   const gridEnd =
-    range === "day" ? endOfDay(selectedDay) : range === "week" ? endOfWeek(selectedDay) : endOfWeek(endOfMonth(monthDate));
+    range === "day"
+      ? endOfDay(selectedDay)
+      : range === "week" || range === "agenda"
+        ? endOfWeek(selectedDay)
+        : endOfWeek(endOfMonth(monthDate));
   const gridDays = eachDayOfInterval({ start: gridStart, end: gridEnd });
 
   const [events, custodyBlocks, people] = await Promise.all([
@@ -494,6 +609,53 @@ export default async function CalendarPage({
       events.map((e) => e.id)
     ),
   ]);
+
+  // Redesign (Part 2 — Calendar): "Weather strip between day headers and
+  // the grid." Unconditional on the home-address gate only (D-050's
+  // existing pattern for weather everywhere else in the app), not the
+  // scheduling_v2 flag the travel-conflict block below is gated on --
+  // weather and travel-time conflicts are unrelated capabilities that
+  // happen to both need home coordinates. Only fetched for week view,
+  // where the strip actually renders; a failure here degrades to no
+  // weather shown, same as every other weather integration in this app.
+  let weekWeatherByDay = new Map<string, { tempF: number | null; shortForecast: string; rulesOutOutdoor: boolean }>();
+  if (range === "week") {
+    try {
+      const selfPeopleForWeather = await peopleRepo.list(supabase, (q) =>
+        q.eq("household_id", household.id).eq("relationship_type", "self").limit(1)
+      );
+      const ownerUserIdForWeather = selfPeopleForWeather[0]?.user_id;
+      const ownerForWeather = ownerUserIdForWeather ? await usersRepo.getById(supabase, ownerUserIdForWeather) : null;
+      if (ownerForWeather?.home_lat != null && ownerForWeather?.home_lng != null) {
+        const forecast = await getNwsForecast(supabase, ownerForWeather.home_lat, ownerForWeather.home_lng);
+        if (forecast.data) {
+          for (const day of gridDays) {
+            const dayKey = format(day, DAY_PARAM_FORMAT);
+            // NWS periods alternate day/night ("Monday", "Monday Night") --
+            // the daytime period is the one worth showing on a day strip.
+            const period = forecast.data.periods.find(
+              (p) => isSameDay(new Date(p.startTime), day) && !p.name.toLowerCase().includes("night")
+            );
+            if (period) {
+              const score = scoreWeatherSuitability({
+                tempF: period.temperatureF,
+                precipChancePercent: period.precipitationChancePercent,
+                windMph: parseWindMph(period.windSpeed),
+              });
+              weekWeatherByDay.set(dayKey, {
+                tempF: period.temperatureF,
+                shortForecast: period.shortForecast,
+                rulesOutOutdoor: score < 40,
+              });
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Calendar page: weather strip fetch failed (non-fatal):", error);
+      weekWeatherByDay = new Map();
+    }
+  }
 
   // Module 4 (scheduling_v2, D-120): read-only travel-time conflict
   // warnings over the same grid window already computed above. Mirrors
@@ -639,6 +801,28 @@ export default async function CalendarPage({
     };
   });
 
+  // Redesign (Part 2 — Calendar): "Custody ribbon above the day headers,"
+  // one continuous named band per child rather than month view's per-day
+  // frame segments. Only computed for week view, where the ribbon renders.
+  const weekCustodyBands =
+    range === "week"
+      ? buildWeekCustodyRibbon(
+          gridDays,
+          visibleCustodyBlocks.reduce((byChild, c) => {
+            const list = byChild.get(c.child_person_id) ?? [];
+            list.push({
+              id: c.id,
+              childPersonId: c.child_person_id,
+              responsiblePersonId: c.responsible_person_id,
+              startsAt: new Date(c.starts_at),
+              endsAt: new Date(c.ends_at),
+            });
+            byChild.set(c.child_person_id, list);
+            return byChild;
+          }, new Map<string, { id: string; childPersonId: string; responsiblePersonId: string; startsAt: Date; endsAt: Date }[]>())
+        )
+      : [];
+
   // D-062: birthdays auto-populate on the calendar, computed fresh from
   // each person's birthdate rather than stored as their own events — see
   // lib/calendar/birthdays.ts for why. Shown alongside real events, not
@@ -774,7 +958,7 @@ export default async function CalendarPage({
     headerTitle = format(selectedDay, "EEEE, MMMM d, yyyy");
     prevMonthHref = `/calendar?month=${format(prevDay, MONTH_PARAM_FORMAT)}&day=${format(prevDay, DAY_PARAM_FORMAT)}${viewQuery}${rangeQuery}`;
     nextMonthHref = `/calendar?month=${format(nextDay, MONTH_PARAM_FORMAT)}&day=${format(nextDay, DAY_PARAM_FORMAT)}${viewQuery}${rangeQuery}`;
-  } else if (range === "week") {
+  } else if (range === "week" || range === "agenda") {
     const prevWeekAnchor = subWeeks(selectedDay, 1);
     const nextWeekAnchor = addWeeks(selectedDay, 1);
     headerTitle = `${format(gridStart, "MMM d")} \u2013 ${format(gridEnd, "MMM d, yyyy")}`;
@@ -809,101 +993,128 @@ export default async function CalendarPage({
   // Brief card use, scoped to just this weekend's window.
   const weekendOpportunities = getPresentedOpportunities(rawWeekendOpportunities).flat;
 
+  // Redesign (Part 2 — Calendar): "Layers legend: you / Mel / work /
+  // childcare / suggested." Built from real, already-computed colours --
+  // parentColors (custody-you/custody-mel-style bands), and the existing
+  // work-shift/time-off dot colours -- rather than inventing new categories.
+  // "Suggested by LifeOS" is included for completeness per Part 2's list,
+  // but nothing currently produces a dashed suggestion block on this
+  // calendar (see docs/redesign-log.md) -- shown as a swatch with no live
+  // items behind it yet, not fabricated data.
+  const layerEntries: { label: string; swatch: React.ReactNode }[] = [
+    ...[...parentColors.entries()].map(([parentId, color]) => ({
+      label: parentId === selfPerson.id ? "You have the kids" : `${peopleById.get(parentId) ?? "Co-parent"} has the kids`,
+      swatch: <span className={cn("h-1.5 w-4 rounded-full", color.bar)} />,
+    })),
+    { label: "Work", swatch: <span className="size-2 rounded-full bg-slate-400" /> },
+    { label: "Time off", swatch: <span className="size-2 rounded-full bg-amber-500" /> },
+    { label: "Suggested by LifeOS", swatch: <span className="size-2.5 rounded-full border-[1.5px] border-dashed border-action" /> },
+  ];
+
   return (
-    <div className="flex flex-col gap-4 p-4">
-      {/* D-079 (P2-4): dropped the standalone header "Custody" button --
-          with the All/Custody filter toggle right below also saying
-          "Custody", the header read as three overlapping controls. Custody
-          schedule management is still one tap away via "Manage schedules"
-          inside the Custody filter view itself (below). */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Calendar</h1>
-        <div className="flex gap-2">
-          <Button asChild size="sm">
-            {/* D-079 (P2-3): prefill from whichever day is currently
-                selected, matching the empty-state "Add something" link
-                below -- previously always opened blank regardless of the
-                day the user had just clicked. */}
-            <Link href={`/calendar/new?date=${selectedDayKey}`}>
-              <Plus className="size-4" /> Add
-            </Link>
-          </Button>
+    <div className="flex flex-col gap-[18px]">
+        {/* D-079 (P2-4): dropped the standalone header "Custody" button --
+            with the All/Custody filter toggle right below also saying
+            "Custody", the header read as three overlapping controls. Custody
+            schedule management is still one tap away via "Manage schedules"
+            inside the Custody filter view itself (below). */}
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h1 className="font-serif text-page-title text-ink">{headerTitle}</h1>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button asChild size="icon" variant="ghost" aria-label={`Previous ${range}`}>
+              <Link href={prevMonthHref}>
+                <ChevronLeft className="size-4" />
+              </Link>
+            </Button>
+            <Button asChild size="sm" variant="ghost">
+              <Link href={`/calendar?month=${monthLabel}&day=${format(startOfDay(now), DAY_PARAM_FORMAT)}${viewQuery}${rangeQuery}`}>Today</Link>
+            </Button>
+            <Button asChild size="icon" variant="ghost" aria-label={`Next ${range}`}>
+              <Link href={nextMonthHref}>
+                <ChevronRight className="size-4" />
+              </Link>
+            </Button>
+            <Button asChild size="sm">
+              {/* D-079 (P2-3): prefill from whichever day is currently
+                  selected, matching the empty-state "Add something" link
+                  below -- previously always opened blank regardless of the
+                  day the user had just clicked. */}
+              <Link href={`/calendar/new?date=${selectedDayKey}`}>
+                <Plus className="size-4" /> New
+              </Link>
+            </Button>
+          </div>
         </div>
-      </div>
 
-      {/* D-065: granularity (Month/Week/Day) is a separate control from
-          the All/Custody filter row below it -- the two combine freely
-          (e.g. Custody + Week), so this is its own segmented control
-          rather than folded into the existing toggle. */}
-      <div className="flex gap-1 rounded-md bg-muted p-1 text-sm">
-        <Link
-          href={`/calendar?month=${monthLabel}&day=${selectedDayKey}${viewQuery}`}
-          className={cn("flex-1 rounded px-3 py-1.5 text-center", range === "month" ? "bg-background font-medium shadow-xs" : "text-muted-foreground")}
-        >
-          Month
-        </Link>
-        <Link
-          href={`/calendar?month=${monthLabel}&day=${selectedDayKey}${viewQuery}&range=week`}
-          className={cn("flex-1 rounded px-3 py-1.5 text-center", range === "week" ? "bg-background font-medium shadow-xs" : "text-muted-foreground")}
-        >
-          Week
-        </Link>
-        <Link
-          href={`/calendar?month=${monthLabel}&day=${selectedDayKey}${viewQuery}&range=day`}
-          className={cn("flex-1 rounded px-3 py-1.5 text-center", range === "day" ? "bg-background font-medium shadow-xs" : "text-muted-foreground")}
-        >
-          Day
-        </Link>
-      </div>
-
-      <div className="flex gap-1 rounded-md bg-muted p-1 text-sm">
-        <Link
-          href={`/calendar?month=${monthLabel}&day=${selectedDayKey}${rangeQuery}`}
-          className={cn("flex-1 rounded px-3 py-1.5 text-center", view === "all" ? "bg-background font-medium shadow-xs" : "text-muted-foreground")}
-        >
-          All
-        </Link>
-        <Link
-          href={`/calendar?month=${monthLabel}&day=${selectedDayKey}&view=custody${rangeQuery}`}
-          className={cn("flex-1 rounded px-3 py-1.5 text-center", view === "custody" ? "bg-background font-medium shadow-xs" : "text-muted-foreground")}
-        >
-          Custody
-        </Link>
-      </div>
-
-      {view === "custody" && (
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap gap-3">
-            {[...childColors.entries()].map(([childId, color]) => (
-              <div key={childId} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <span className={cn("size-2 rounded-full", color.dot)} />
-                {peopleById.get(childId) ?? "Child"}
-              </div>
+          {/* Redesign (Part 2): segmented control reordered Day/Week/Month/
+              Agenda (was Month/Week/Day, no Agenda) and week is now the
+              default range (parseRangeParam). Link-based, not the
+              components/ui/segmented-control.tsx primitive -- that
+              primitive is controlled client state, while this needs a
+              real, bookmarkable/shareable URL per view (existing
+              app convention). */}
+          <div className="inline-flex items-center gap-1 rounded-control border border-line bg-surface-2 p-1">
+            {(
+              [
+                { value: "day", label: "Day" },
+                { value: "week", label: "Week" },
+                { value: "month", label: "Month" },
+                { value: "agenda", label: "Agenda" },
+              ] as const
+            ).map((option) => (
+              <Link
+                key={option.value}
+                href={`/calendar?month=${monthLabel}&day=${selectedDayKey}${viewQuery}${option.value === "month" ? "" : `&range=${option.value}`}`}
+                className={cn(
+                  "rounded-chip px-3 py-1.5 font-sans text-[12.5px] font-bold motion-safe-transition",
+                  range === option.value ? "bg-surface text-ink shadow-sm" : "text-meta hover:text-ink-2"
+                )}
+              >
+                {option.label}
+              </Link>
             ))}
           </div>
-          <Link href="/calendar/custody" className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground">
-            Manage schedules
-          </Link>
-        </div>
-      )}
 
-      {/* D-132: the month-grid custody frame is color-coded by responsible
-          parent (not child), so it needs its own legend distinct from the
-          per-child dot legend above -- shown regardless of All/Custody
-          filter since the frame itself renders in both. Skipped entirely
-          for households with no custody blocks in view at all (e.g. no
-          co-parent on file), matching the same "only show what applies"
-          precedent as the per-child legend. */}
-      {custodyBlocks.length > 0 && parentColors.size > 0 && (
-        <div className="flex flex-wrap gap-3">
-          {[...parentColors.entries()].map(([parentId, color]) => (
-            <div key={parentId} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span className={cn("h-1.5 w-4 rounded-full", color.bar)} />
-              {peopleById.get(parentId) ?? "Parent"} has the kids
-            </div>
-          ))}
+          <div className="inline-flex items-center gap-1 rounded-control border border-line bg-surface-2 p-1">
+            <Link
+              href={`/calendar?month=${monthLabel}&day=${selectedDayKey}${rangeQuery}`}
+              className={cn(
+                "rounded-chip px-3 py-1.5 font-sans text-[12.5px] font-bold motion-safe-transition",
+                view === "all" ? "bg-surface text-ink shadow-sm" : "text-meta hover:text-ink-2"
+              )}
+            >
+              All
+            </Link>
+            <Link
+              href={`/calendar?month=${monthLabel}&day=${selectedDayKey}&view=custody${rangeQuery}`}
+              className={cn(
+                "rounded-chip px-3 py-1.5 font-sans text-[12.5px] font-bold motion-safe-transition",
+                view === "custody" ? "bg-surface text-ink shadow-sm" : "text-meta hover:text-ink-2"
+              )}
+            >
+              Custody
+            </Link>
+          </div>
         </div>
-      )}
+
+        {view === "custody" && (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap gap-3">
+              {[...childColors.entries()].map(([childId, color]) => (
+                <div key={childId} className="flex items-center gap-1.5 font-sans text-metadata text-meta">
+                  <span className={cn("size-2 rounded-full", color.dot)} />
+                  {peopleById.get(childId) ?? "Child"}
+                </div>
+              ))}
+            </div>
+            <Link href="/calendar/custody" className="font-sans text-metadata text-meta underline underline-offset-2 hover:text-ink">
+              Manage schedules
+            </Link>
+          </div>
+        )}
 
       {/* Module 4 (scheduling_v2, D-120): read-only conflict banner --
           purely informational, no interactive controls beyond the existing
@@ -996,22 +1207,12 @@ export default async function CalendarPage({
       {/* Desktop mockup A/B: at lg+ the month grid and the selected-day
           agenda sit side by side instead of stacked, so picking a day
           doesn't require scrolling past the calendar to see it. */}
-      <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[380px_1fr] lg:items-start lg:gap-5">
+      {/* Redesign: prev/next + title now live in the page-level header
+          above (all ranges); this Card is month-grid-only content, no
+          longer a duplicate nav header wrapping it. */}
+      <div className={cn("flex flex-col gap-4", range === "month" && "lg:grid lg:grid-cols-[380px_1fr] lg:items-start lg:gap-5")}>
+      {range === "month" && (
       <Card>
-        <CardHeader className="flex-row items-center justify-between space-y-0">
-          <Button asChild size="icon" variant="ghost" className="size-7" aria-label={`Previous ${range}`}>
-            <Link href={prevMonthHref}>
-              <ChevronLeft className="size-4" />
-            </Link>
-          </Button>
-          <CardTitle className="text-sm">{headerTitle}</CardTitle>
-          <Button asChild size="icon" variant="ghost" className="size-7" aria-label={`Next ${range}`}>
-            <Link href={nextMonthHref}>
-              <ChevronRight className="size-4" />
-            </Link>
-          </Button>
-        </CardHeader>
-        {range === "month" && (
           <CardContent className="flex flex-col gap-1">
             <div className="grid grid-cols-7 gap-1 text-center text-[10px] text-muted-foreground">
               {WEEKDAY_LABELS.map((label, i) => (
@@ -1108,16 +1309,69 @@ export default async function CalendarPage({
               })}
             </div>
           </CardContent>
-        )}
       </Card>
+      )}
 
       <div id="selected-day" className="flex flex-col gap-2 scroll-mt-4">
-        {range !== "day" && <p className="text-xs font-medium text-muted-foreground">{format(selectedDay, "EEEE, MMMM d")}</p>}
+        {range !== "day" && range !== "agenda" && (
+          <p className="font-sans text-body font-bold text-ink">{format(selectedDay, "EEEE, MMMM d")}</p>
+        )}
         {dayTimeline && <DayTimelineView timeline={dayTimeline} day={selectedDay} />}
         {weekTimeline && (
-          <WeekTimelineView timeline={weekTimeline} selectedDay={selectedDay} today={today} monthLabel={monthLabel} viewQuery={viewQuery} />
+          <WeekTimelineView
+            timeline={weekTimeline}
+            selectedDay={selectedDay}
+            today={today}
+            monthLabel={monthLabel}
+            viewQuery={viewQuery}
+            custodyBands={weekCustodyBands}
+            weatherByDay={weekWeatherByDay}
+            peopleById={peopleById}
+            layerEntries={layerEntries}
+          />
         )}
-        {selectedDayItems.length === 0 ? (
+        {/* Redesign (Part 2): "Agenda" -- a flat chronological list across
+            the same week window, grouped by day, rather than a grid.
+            Reuses `items`/`byDay` (already computed above for every other
+            view) -- no new data, just a different arrangement of it. */}
+        {range === "agenda" &&
+          (items.length === 0 ? (
+            <Card>
+              <CardContent className="font-sans text-body text-ink-2">
+                Nothing scheduled this week.{" "}
+                <Link href={`/calendar/new?date=${selectedDayKey}`} className="text-action underline underline-offset-2">
+                  Add something
+                </Link>
+                .
+              </CardContent>
+            </Card>
+          ) : (
+            gridDays.map((day) => {
+              const key = format(day, DAY_PARAM_FORMAT);
+              const dayItems = byDay.get(key) ?? [];
+              if (dayItems.length === 0) return null;
+              return (
+                <div key={key} className="flex flex-col gap-2">
+                  <p className="font-sans text-metadata font-bold uppercase text-meta">{format(day, "EEEE, MMMM d")}</p>
+                  {dayItems.map((item) => (
+                    <Card key={item.id}>
+                      <CardContent className="flex items-center justify-between gap-2">
+                        <div>
+                          <p className="font-sans text-body font-bold text-ink">{item.title}</p>
+                          <p className="font-sans text-metadata text-meta">
+                            {item.allDay ? "All day" : format(item.startsAt, "h:mm a")}
+                            {item.location && ` · ${item.location}`}
+                          </p>
+                        </div>
+                        <Badge variant="outline">{humanizeChipLabel(item.subtitle)}</Badge>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              );
+            })
+          ))}
+        {range !== "agenda" && (selectedDayItems.length === 0 ? (
           <Card>
             <CardContent className="text-sm text-muted-foreground">
               Nothing scheduled.{" "}
@@ -1178,7 +1432,7 @@ export default async function CalendarPage({
               </CardContent>
             </Card>
           ))
-        )}
+        ))}
       </div>
       </div>
     </div>

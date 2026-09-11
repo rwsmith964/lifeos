@@ -359,8 +359,59 @@ collapse to stacked cards (that's explicitly Step 10's job per Part 9) but corre
 within its own container rather than the page body, satisfying Part 8's Definition of Done bullet
 about horizontal scroll even ahead of the dedicated responsive pass.
 
+## Step 6 — done
+
+`app/(app)/calendar/page.tsx` is a large, feature-rich existing page (month/week/day granularity,
+travel-conflict detection, work schedules, time off, birthdays, weekend-plan integration, kid-linked
+event visibility rules) -- kept every bit of that intact and additive, per the brief's "don't change
+business logic" rule, rather than rewriting it fresh.
+
+Changed: default range is now week (was month); added a fourth "Agenda" range (a flat
+chronological list grouped by day, reusing the same already-computed `items`/`byDay` -- no new
+data); segmented control reordered Day/Week/Month/Agenda; time grid default window changed from
+7am-9pm to 6am-10pm (`lib/calendar/day-timeline.ts`'s `DEFAULT_WINDOW_*` constants only -- the
+auto-expand-for-outlier-items safety behavior is untouched, so an event outside 6-22 still widens
+the grid instead of being clipped); current-time line recolored from a hardcoded red to the action
+token. New: a custody ribbon above the week view's day headers (`lib/calendar/week-custody-ribbon.ts`'s
+`buildWeekCustodyRibbon`, one continuous named band per child, merging consecutive same-parent days
+— the week-level counterpart to the pre-existing per-day `buildMonthCellCustodyBars`); a weather
+strip between the day headers and the hour grid (real NWS forecast via the pre-existing
+`getNwsForecast`/`scoreWeatherSuitability`, same home-address gate as every other weather feature
+in this app, not gated on the `scheduling_v2` flag the travel-conflict banner uses since they're
+unrelated capabilities); weekend columns get a subtly darker background; a Layers legend built from
+real existing colours (custody parent colours, the pre-existing work/time-off dot colours) plus a
+"Suggested by LifeOS" entry with no live data behind it yet (see gap below).
+
+Removed the old Card's own duplicate prev/next/title header now that the page-level header (added
+above the range/view toggles) carries that for every range, not just month.
+
+**Real bug found and fixed via live screenshot verification, not caught by typecheck/lint/build:**
+the custody ribbon's first draft positioned bands in plain flex document order, so every band
+rendered stacked at the left of the row regardless of which actual days it covered (a Fri-Sat band
+looked identical to a Mon-Tue one). Fixed by positioning each band absolutely by percentage
+left-offset/width derived from its real `startDayIndex`/`endDayIndex`, confirmed against the actual
+custody blocks rendered below it in the same screenshot.
+
+**Real gap, not fabricated:** Part 2 calls for "suggestions" to render as dashed ghost blocks in the
+action colour, but there is no existing data source for an "AI-suggested calendar item" distinct
+from a real event/custody block/birthday/work-shift/time-off — the closest analog (the weekend
+plan's recommended activity) lives in its own `<details>` panel, not as a calendar-grid item. Not
+built; logged here rather than inventing fake suggestion data to fill the visual gap.
+
+**Second regression caught and fixed:** changing the window default from 7-21 to 6-22 broke one
+pre-existing `day-timeline.test.ts` assertion that hardcoded the old window's total-hours math
+(19h vs. the new 20h) — caught immediately by the test suite (854→853 briefly), not silently
+shipped; fixed the assertion's math, not the new behavior.
+
+**Verified:** typecheck/lint/build clean; test suite back to the same pre-existing 5 failures
+(854/859) after fixing the regression above. **Live-verified** at 1440px against real household
+data across all four ranges: Week (default) shows the correctly-positioned custody ribbon, weekend
+shading, and action-coloured current-time indicator; Month still renders correctly with no
+duplicate header; Agenda groups real items by day correctly. Weather strip did not show live data
+for this household in this pass -- consistent with the same home-address gate already observed
+empty on the Today page this session, not a new bug specific to Calendar.
+
 ## Current step
 
-Step 6 (Part 9) — Calendar. Target: default to Week view, custody ribbon, weather strip, 6am-10pm
-time grid, dashed suggestion blocks, current-time line, Layers legend. This is the screen Richard
-specifically checked and found still unbuilt, so extra care here.
+Step 7 (Part 9) — Plan (Activities absorbed into it). No reference image exists for this screen
+per the original brief; building from Part 2's text alone.

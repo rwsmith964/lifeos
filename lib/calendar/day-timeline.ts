@@ -18,8 +18,14 @@
 // `buildDayTimeline`) so hour rows line up across day columns the way
 // Google/Apple/Outlook's week view does.
 
-export const DEFAULT_WINDOW_START_HOUR = 7;
-export const DEFAULT_WINDOW_END_HOUR = 21;
+// Redesign (docs/redesign-brief.md Part 2 — Calendar): "Time grid 6 AM –
+// 10 PM." Only the default window changed (7am-9pm -> 6am-10pm); the
+// auto-expand-for-outlier-items behavior below is untouched, so an event
+// outside this window still safely widens the grid instead of being
+// clipped -- that safety behavior predates this redesign and isn't part
+// of what Part 2 is asking to change.
+export const DEFAULT_WINDOW_START_HOUR = 6;
+export const DEFAULT_WINDOW_END_HOUR = 22;
 
 /** Minimum visual height for a very short or zero-duration event, so a
  * 15-minute appointment (or a 0-duration marker) doesn't collapse to an
