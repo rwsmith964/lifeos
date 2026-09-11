@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
 import { Monitor, Moon, Sun } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 
 const OPTIONS = [
   { value: "light", label: "Light", icon: Sun },
@@ -11,13 +11,20 @@ const OPTIONS = [
   { value: "system", label: "System", icon: Monitor },
 ] as const;
 
+type ThemeValue = (typeof OPTIONS)[number]["value"];
+
+function isThemeValue(value: string | undefined): value is ThemeValue {
+  return value === "light" || value === "dark" || value === "system";
+}
+
 /**
- * Three-way Light / Dark / System segmented control. Renders a
- * theme-neutral placeholder until mounted — next-themes only knows the
- * real resolved theme after hydration (it reads localStorage / the OS
- * preference client-side), so rendering the live selection any earlier
- * would mismatch between server and client and could flash the wrong
- * option briefly.
+ * Three-way Light / Dark / System control, built on the shared
+ * SegmentedControl primitive (Redesign Part 3) instead of its own bespoke
+ * markup. Renders a theme-neutral placeholder until mounted — next-themes
+ * only knows the real resolved theme after hydration (it reads
+ * localStorage / the OS preference client-side), so rendering the live
+ * selection any earlier would mismatch between server and client and could
+ * flash the wrong option briefly.
  */
 export function ThemeToggle() {
   const { theme, setTheme } = useTheme();
@@ -30,30 +37,11 @@ export function ThemeToggle() {
   useEffect(() => setMounted(true), []);
 
   return (
-    <div
-      className="inline-flex rounded-md border p-1"
-      role="radiogroup"
+    <SegmentedControl
       aria-label="Color theme"
-    >
-      {OPTIONS.map((option) => {
-        const isActive = mounted && theme === option.value;
-        return (
-          <button
-            key={option.value}
-            type="button"
-            role="radio"
-            aria-checked={isActive}
-            onClick={() => setTheme(option.value)}
-            className={cn(
-              "flex items-center gap-1.5 rounded-sm px-3 py-1.5 text-sm font-medium transition-colors",
-              isActive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            <option.icon className="size-4" />
-            {option.label}
-          </button>
-        );
-      })}
-    </div>
+      options={[...OPTIONS]}
+      value={mounted && isThemeValue(theme) ? theme : "system"}
+      onChange={(value) => setTheme(value)}
+    />
   );
 }

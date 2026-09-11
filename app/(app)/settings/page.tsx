@@ -13,6 +13,7 @@ import { MySchedule } from "./my-schedule";
 import { FeatureFlags } from "./feature-flags";
 import { listFeatureFlagStates } from "@/lib/flags";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { PalettePicker } from "@/components/palette-picker";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 
@@ -56,15 +57,23 @@ export default async function SettingsPage() {
   const canManage = selfMembership?.role === "owner" || selfMembership?.role === "adult";
 
   return (
-    <div className="flex flex-col gap-4 p-4">
-      <h1 className="text-xl font-semibold">Settings</h1>
+    <div className="flex flex-col gap-[18px]">
+      <h1 className="font-serif text-page-title text-ink">Settings</h1>
       <Card>
-        <CardContent className="flex flex-col gap-2">
-          <Label>Appearance</Label>
-          <ThemeToggle />
-          <p className="text-xs text-muted-foreground">
-            &quot;System&quot; follows your device&apos;s light/dark setting automatically.
-          </p>
+        <CardContent className="flex flex-col gap-[18px]">
+          <p className="font-sans text-section-label uppercase text-meta">Appearance</p>
+          <div className="flex flex-col gap-2">
+            <Label>Theme</Label>
+            <ThemeToggle />
+            <p className="font-sans text-metadata text-meta">
+              &quot;System&quot; follows your device&apos;s light/dark setting automatically.
+            </p>
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label>Palette</Label>
+            <PalettePicker />
+            <p className="font-sans text-metadata text-meta">Choose the colour system used across LifeOS.</p>
+          </div>
         </CardContent>
       </Card>
       <SettingsForm
@@ -88,11 +97,11 @@ export default async function SettingsPage() {
         <CardContent className="flex items-center justify-between gap-2">
           <div>
             <Label>Activity</Label>
-            <p className="text-xs text-muted-foreground">
+            <p className="font-sans text-metadata text-meta">
               See what the assistant did on its own, and undo an action if needed.
             </p>
           </div>
-          <Link href="/settings/activity" className="text-sm font-medium text-primary hover:underline">
+          <Link href="/settings/activity" className="font-sans text-body font-bold text-action underline-offset-2 hover:underline">
             View activity log
           </Link>
         </CardContent>

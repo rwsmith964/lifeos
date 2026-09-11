@@ -523,8 +523,36 @@ the previous calendar day locally, and `isActivityInSeason` reads the month via 
 (local time), producing an off-by-one-month result. Left alone since it's unrelated business logic,
 not a visual/redesign concern.
 
+## Step 9 — done
+
+Part 9 scopes this step narrowly ("Settings, including the Appearance section") compared to the
+five named screens, which each got a full rebuild against a table/spec in Part 2 -- Settings has no
+such spec. Treated as a restyle-in-place pass: the page's structure, fields, and every sub-component
+(household form, work schedule, time off, members/invites, calendar feeds, feature-flag modules,
+activity link) are unchanged; most of the visual system already cascaded down for free from Step 2
+(Card/Input/Button/Label all already carry the new tokens). Changed: the page heading now uses the
+real page-title type-scale token instead of the old `text-xl font-semibold`, and the top card is
+relabelled "Appearance" with two rows under it.
+
+**The actual Part 4 requirement** -- "Add a palette picker in Settings under Appearance, next to
+Light/Dark/System" -- is the one real addition. New `components/palette-picker.tsx` wires the
+already-existing `usePalette()`/`PALETTES`/`PALETTE_LABELS` (built in Step 1, never surfaced in any
+UI until now) into the same shared `SegmentedControl` primitive Calendar's Day/Week/Month/Agenda
+control already uses -- exactly what that primitive's own doc comment (written in Step 3) flagged as
+its next use. `components/theme-toggle.tsx` was migrated onto the same `SegmentedControl` in the same
+pass, so Theme and Palette now read as one visual family instead of two different widgets stacked on
+top of each other.
+
+**Verified:** typecheck/lint/build clean; test suite at the same pre-existing 854/859 (the
+`seasonality.test.ts` failures noted in Step 8, still untouched). **Live-verified** at 1440px: Theme
+(Light/Dark/System) and Palette (all three) both render as proper segmented controls and both
+actually work -- clicking each palette option live-changed `data-palette` and every visible colour
+on the page (confirmed warm-evening-desk, sunrise-citrus, and harbor-bright all render distinctly
+different, not just a no-op attribute change), and clicking each theme option flips `light`/`dark`
+independently of whichever palette is selected, confirming the two axes are genuinely orthogonal as
+Part 4 specifies. Reset both back to the real defaults (warm-evening-desk / system) before moving on.
+
 ## Current step
 
-Step 9 (Part 9) — Settings, including the Appearance section (palette picker). The palette
-switching mechanism (`components/palette-provider.tsx`, `usePalette()`) was already built in Step 1
-but has never been surfaced in any UI — this step wires it into a real Settings page section.
+Step 10 (Part 9) — Responsive pass: the 768-1279px tier first, then below 768px, across all five
+main screens (Today/People/Calendar/Plan/Gifts).
