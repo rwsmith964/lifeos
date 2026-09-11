@@ -681,6 +681,58 @@ success/undo path is unaffected; all five screens smoke-tested post-change (Toda
 confirmed rendering correctly via live page-text checks); Settings screenshot confirms nothing
 broke for the manager view (the only role available to test live in this account).
 
+## Step 12 — done
+
+Measured, not eyeballed: wrote a real WCAG contrast checker (relative luminance + contrast ratio,
+run live in the browser against `getComputedStyle`-resolved colours so `color-mix(in oklab, ...)`
+soft-tints are measured as actually rendered, not hand-approximated) and ran it against all 29
+role/derived tokens × 3 palettes × 2 modes (6 combinations), checking every real text/background and
+button/background pairing against Part 3's stated bar: 4.5:1 for body text, 3:1 for large text and
+UI boundaries. This was flagged back in Step 1 as needing exactly this check (`app/globals.css`'s
+soft-tint comment: "logged as an approximation ... to be checked in the Part 9 Step 12
+accessibility/contrast pass").
+
+**Real failures found and fixed (adjusted the derived/support token, never a defining role colour,
+per Part 3's own instruction):**
+- `--meta` (metadata/label text) failed 4.5:1 against `--surface` and/or `--ground` in 5 of 6
+  combinations (as low as 3.21:1) -- darkened/lightened by a small amount per palette/mode (see the
+  dated inline comments at each changed value in `globals.css` for exact before/after ratios). This
+  is genuinely common text (every metadata line, section label, timestamp across every screen), so
+  this was the highest-impact fix in this pass.
+- `--on-action` (button label text on a solid `--action` background) failed 4.5:1 in all three
+  palettes' light mode -- as low as 2.99:1 for harbor-bright's marigold. Fixed by switching light
+  mode's `--on-action` from a near-white ivory to a dark warm near-black (`#150c00`) in all three
+  palettes -- dark text reads far better against these mid-lightness accent colours than light text
+  does, the same "on-primary" pattern many design systems use for a bright/light accent. Dark mode's
+  own `--on-action` values were already dark and already passed, unchanged. Live-verified across all
+  three palettes: every solid-action button ("+ Add," "Reach out," "New," "Save") now shows clearly
+  legible dark-on-orange/marigold text instead of the previous washed-out white-on-orange.
+
+**Real failures found, not fixed, logged as RQ4 instead:** hairline borders (`--line`/
+`--line-strong` against `--surface`/`--ground`) measure 1.18-1.63:1 in all 6 combinations, nowhere
+near 3:1 -- but Part 3 explicitly specifies "1px hairlines" and a quiet, low-shadow aesthetic, so
+this reads as an intentional design choice in tension with the letter of the contrast rule, not an
+oversight; fixing it system-wide would visibly change the whole app's borders. Also
+harbor-bright-light's `--action` role colour measures 2.85:1 against `--ground` (just under 3:1,
+decorative/large-text use only -- its button-background use was unaffected and already fixed above)
+-- a defining role colour, which Part 3 says not to adjust for contrast. Both logged to
+`QUESTIONS.md` as RQ4 rather than either silently accepted or unilaterally overridden.
+
+**Also audited (already solid, no change needed):** every icon-only button across all five screens
+already carries a real `aria-label` (checked via grep across every `size="icon"` Button usage --
+Calendar's prev/next/edit controls, Plan's mark-done/edit-trip buttons, People's "Open full
+profile"). `prefers-reduced-motion: reduce` was already wired into the shared
+`.motion-safe-transition` utility back in Step 1 and correctly disables every transition, not just
+some.
+
+**Verified:** typecheck/lint/build clean; test suite unchanged at the pre-existing 854/859. Re-ran
+the full contrast checker after the fixes -- the `--meta`/`--on-action` failures are gone (0 body-text
+failures remaining across all 6 combinations); only the two logged-not-fixed items above remain.
+Live-verified the button-text fix visually in the browser across all three palettes (Warm evening
+desk, Sunrise citrus, Harbor bright), confirmed via the Settings palette picker + a real page
+navigation each time, then reset back to the real default (warm-evening-desk) before moving on.
+
 ## Current step
 
-Step 12 (Part 9) — Accessibility and contrast pass across all three palettes in both modes.
+Step 13 (Part 1) — output the full contents of `QUESTIONS.md` as the final message. This is the
+last step of the redesign run.

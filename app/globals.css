@@ -92,9 +92,23 @@
   --ink: #1b1815;
   --ink-2: #625b51;
   --ink-3: #6e6659;
-  --meta: #8e877d;
+  /* Step 12 (accessibility/contrast pass): darkened from #8e877d --
+     measured 3.55:1 on --surface and 3.21:1 on --ground, both below
+     Part 3's required 4.5:1 for body text. This is a support/utility
+     token, not one of the palette's defining role colours, so it's the
+     kind of pairing Part 3 says to adjust directly rather than logging
+     as an RQ (that instruction is specifically about not changing a
+     defining role colour like action/settled/slipping to fix contrast). */
+  --meta: #736d65;
   --action: #b96a22;
-  --on-action: #fff8ef;
+  /* Step 12: darkened from #fff8ef (near-white) -- measured 3.87:1 against
+     --action, below the 4.5:1 body-text requirement (button labels). Dark
+     text reads far better against this palette's mid-lightness orange than
+     light text does; same fix applied to all three palettes' light mode
+     (see sunrise-citrus/harbor-bright below) for the same reason. Dark
+     mode's own --on-action values were already dark and already passed --
+     only light mode needed this. */
+  --on-action: #150c00;
   --settled: #5f7d51;
   --slipping: #a9452f;
   --custody-you: #3a6f75;
@@ -119,7 +133,9 @@
   --ink: #f1ece4;
   --ink-2: #b5aea4;
   --ink-3: #a39c92;
-  --meta: #7e776e;
+  /* Step 12: lightened from #7e776e -- measured 3.97:1 on --surface,
+     4.23:1 on --ground, both below 4.5:1. */
+  --meta: #88827a;
   --action: #e08a3c;
   --on-action: #1a1206;
   --settled: #7c9a72;
@@ -148,9 +164,13 @@
   --ink: #2a1e15;
   --ink-2: #6b5b4c;
   --ink-3: #7d6c5b;
-  --meta: #96836f;
+  /* Step 12: darkened from #96836f -- measured 3.64:1 on --surface,
+     3.45:1 on --ground, both below 4.5:1. */
+  --meta: #7e6e5d;
   --action: #e0631a;
-  --on-action: #fff8ef;
+  /* Step 12: darkened from #fff8ef -- measured 3.34:1 against --action,
+     below 4.5:1 (see warm-evening-desk's --on-action comment above). */
+  --on-action: #150c00;
   --settled: #2f9968;
   --slipping: #d24440;
   --custody-you: #1d8fb0;
@@ -193,9 +213,14 @@
   --ink: #0f1d25;
   --ink-2: #4c6674;
   --ink-3: #5a7482;
-  --meta: #5f7a88;
+  /* Step 12: darkened from #5f7a88 -- measured 4.24:1 on --ground, just
+     below 4.5:1 (it already passed on --surface). */
+  --meta: #5a7481;
   --action: #c98600;
-  --on-action: #fffdf6;
+  /* Step 12: darkened from #fffdf6 -- measured 2.99:1 against --action
+     (the biggest miss of the three palettes; this marigold is quite
+     light), below 4.5:1 (see warm-evening-desk's --on-action comment). */
+  --on-action: #150c00;
   --settled: #1d9b77;
   --slipping: #d9503f;
   --custody-you: #1b8496;
@@ -214,7 +239,9 @@
   --ink: #edf4f7;
   --ink-2: #a9c0cb;
   --ink-3: #8fa8b5;
-  --meta: #718a98;
+  /* Step 12: lightened from #718a98 -- measured 4.37:1 on --surface,
+     below 4.5:1 (it already passed on --ground). */
+  --meta: #778f9c;
   --action: #ffc13b;
   --on-action: #241800;
   --settled: #4ecba0;

@@ -58,6 +58,40 @@ value.
 **Cost of getting it wrong:** Low for both — (a) is a straightforward colour-token swap if the
 intent was actually literal; (b) is a 1-2px visual difference on one component's corner radius.
 
+### RQ4
+**Where:** `app/globals.css` (Part 3 — Geometry: "Borders are 1px hairlines"; Part 9 Step 12 —
+contrast pass)
+**What I need to know:** Part 3's accessibility rule requires "3:1 for large text and UI
+boundaries" in every palette/mode. Measuring all three palettes × both modes (6 combinations)
+against real rendered colours found two categories of near-universal failure that a literal reading
+of "UI boundaries" would call out, but that directly conflict with other explicit instructions in
+the same document: (a) `--line`/`--line-strong` (the hairline card/table-row/divider borders) measure
+1.18-1.63:1 against `--surface`/`--ground` in all 6 combinations — nowhere close to 3:1 — but Part 3
+elsewhere calls for exactly this: "Borders are 1px hairlines," "No shadows in dark mode," a quiet,
+low-contrast aesthetic that both reference images and the brief's own tone ("warm-evening-desk —
+quietest, default") clearly intend. Pushing every hairline to genuine 3:1 would require a
+meaningfully darker/heavier border on every card, table row, and divider in the app — a real,
+visible departure from the described look, not a small tint nudge. (b) `harbor-bright` light mode's
+`action` role colour (marigold `#c98600`) measures 2.85:1 against `--ground` — just barely under
+3:1, relevant only when `action` is used as large decorative text/icon colour directly on `--ground`
+(its normal use as a button background, checked separately, is unaffected and was already fixed —
+see the `--on-action` fix logged inline in `globals.css`). Adjusting a defining role colour to fix
+this is exactly what Part 3's own contrast-fix instruction says not to do ("adjust the derived tint,
+not the role colour").
+**What I did instead:** Fixed every failure that was a genuine body-text/button-text miss on a
+non-defining support token (`--meta`, `--on-action`) by adjusting just that token per palette/mode —
+see the inline dated comments next to each changed value in `globals.css` for the exact
+before/after numbers. Left (a) and (b) alone and logged them here rather than either silently
+ignoring a real numeric shortfall or unilaterally overriding the brief's own explicit hairline-border
+and no-role-colour-changes instructions.
+**Cost of getting it wrong:** Low for (b) — a 2.85 vs. 3.0 miss on one palette's decorative-only use
+of its accent colour against the page background is a minor, easily-tuned gap if it turns out to
+matter (e.g. darken `harbor-bright`'s light-mode `--action` by a few percent). Medium for (a) — if
+hairline borders genuinely need to hit 3:1 (e.g. for a low-vision user who relies on the border, not
+just spacing, to tell two cards apart), the fix is systemic (every `--line`/`--line-strong` value
+across 6 combinations) and visibly changes the app's whole quiet aesthetic, so it's worth Richard
+confirming the intent before that trade is made either way.
+
 ## Build Brief Queue (QUEUE-###)
 
 Entries below use the format mandated by the "Build Brief — Competitive Parity + Moat Extension"
