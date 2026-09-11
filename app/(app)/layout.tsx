@@ -81,7 +81,16 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
             </div>
           </aside>
 
-          <div className="flex min-h-dvh w-full flex-1 flex-col">
+          {/* Redesign Step 10 (responsive pass): min-w-0 is required here --
+              without it, this flex item's default min-width:auto lets any
+              wide descendant (e.g. the Calendar week grid's own
+              horizontally-scrollable, minWidth-pinned track) bubble its
+              intrinsic width up through flex-1/flex-col ancestors that
+              never otherwise constrain width, pushing the whole shell wider
+              than the viewport and forcing the page itself to scroll
+              horizontally -- exactly what Part 3's layout rules forbid.
+              Caught via live viewport testing at 1024px, not by build/lint. */}
+          <div className="flex min-h-dvh w-full min-w-0 flex-1 flex-col">
             {/* Header: 72px, hairline border below (Part 3 -- Layout). */}
             <header className="flex h-[72px] items-center gap-3 border-b border-line px-4 md:px-[34px]">
               <div className="md:hidden">

@@ -552,7 +552,41 @@ different, not just a no-op attribute change), and clicking each theme option fl
 independently of whichever palette is selected, confirming the two axes are genuinely orthogonal as
 Part 4 specifies. Reset both back to the real defaults (warm-evening-desk / system) before moving on.
 
+## Step 10 — done
+
+Tested both tiers (768-1279px, then <768px, plus the exact 768/1279 boundary values) across all
+five main screens, checking each for the one thing Part 3's layout rules explicitly forbid --
+`document.documentElement.scrollWidth > window.innerWidth`, i.e. the page body itself scrolling
+horizontally (as opposed to a deliberate `overflow-x: auto` container scrolling internally, which
+is allowed and already used correctly by Calendar's week grid, D-167).
+
+**Real bug found and fixed, affecting every page, not just Calendar:** at any tablet-tier width
+(tested 768/1024/1279), the whole app body scrolled horizontally by ~50-80px. Root cause was in the
+shell itself (`app/(app)/layout.tsx`), not any individual page: the main-column flex item
+(`<div className="flex min-h-dvh w-full flex-1 flex-col">`, sibling of the sidebar `<aside>` in the
+outer row flex) had no `min-w-0`. A flex item's default `min-width` is `auto` (shrink-to-fit its
+content's intrinsic width), not `0` -- so any sufficiently wide descendant bubbles its intrinsic
+width up through every unconstrained flex/flex-col ancestor and forces the whole row wider than the
+viewport, even ones with their own `overflow-x-auto`. Calendar's week grid (with its deliberate
+`minWidth: gridMinWidth` scroll track) was the descendant that happened to be wide enough to expose
+it, but the missing `min-w-0` was on the shared shell, so it silently affected every route -- it just
+never got wide enough content elsewhere to visibly trip it before. Fixed with one class
+(`min-w-0` on that div), which is the standard fix for this well-known flexbox behavior; no content,
+spacing, or component changed. Confirmed after the fix that `overflow-x-auto` containers (Calendar's
+week grid) still scroll internally exactly as before -- the fix only stops that intrinsic width from
+propagating past the container that's supposed to absorb it.
+
+**Verified:** typecheck/lint/build clean; test suite unchanged at the pre-existing 854/859.
+**Live-verified** at 375px (mobile), 768px and 1279px (both tablet-tier boundaries), and 1024px
+(tablet-tier middle) via real viewport resize + `scrollWidth`/`innerWidth` checks on all five
+screens at both tiers (10 checks total) -- zero horizontal page overflow anywhere, before vs. after
+confirmed via the same check on Calendar specifically (true before the fix, false after). Also
+visually confirmed via screenshots at each size: People's table already collapses to a stacked
+card-per-row layout below `md` (built correctly in Step 4, no changes needed); Plan and Gifts already
+stack their right rail below `xl` (built correctly in Steps 7-8); Calendar's week grid correctly
+keeps scrolling internally at every width without leaking into the page. No other responsive
+regressions found in this pass.
+
 ## Current step
 
-Step 10 (Part 9) — Responsive pass: the 768-1279px tier first, then below 768px, across all five
-main screens (Today/People/Calendar/Plan/Gifts).
+Step 11 (Part 9) — States pass: loading, empty, error, read-only, everywhere.
