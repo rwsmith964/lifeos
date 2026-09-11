@@ -18,6 +18,30 @@ export const giftSuggestionsRepo = createRepository<
   GiftSuggestionUpdate
 >("gift_suggestions");
 
+// Redesign (docs/redesign-brief.md Part 2 — Gifts sidebar: "a year-to-date
+// gift budget card"). `gifts` has no direct household_id column (scoped
+// via person_id -> people.household_id, like every person-owned table),
+// so this joins through people the same way listActiveSuggestionsForHousehold
+// already does for gift_suggestions.
+export async function listGivenGiftsForHouseholdInYear(
+  client: SupabaseClient,
+  householdId: string,
+  year: number
+): Promise<GiftRow[]> {
+  // gifts has two FKs to people (person_id and given_by_person_id), so the
+  // embed must name gifts_person_id_fkey explicitly -- an unqualified
+  // people!inner is ambiguous and PostgREST rejects it (PGRST201).
+  const { data, error } = await client
+    .from("gifts")
+    .select("*, person:people!gifts_person_id_fkey!inner(household_id)")
+    .eq("person.household_id", householdId)
+    .eq("status", "given")
+    .gte("occasion_date", `${year}-01-01`)
+    .lte("occasion_date", `${year}-12-31`);
+  if (error) throw error;
+  return (data ?? []) as GiftRow[];
+}
+
 export async function listGiftsForPerson(
   client: SupabaseClient,
   personId: string,

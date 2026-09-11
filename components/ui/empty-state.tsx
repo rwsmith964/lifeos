@@ -14,7 +14,7 @@ export function EmptyState({
   className,
 }: {
   icon?: React.ReactNode;
-  message: string;
+  message: React.ReactNode;
   action?: React.ReactNode;
   className?: string;
 }) {

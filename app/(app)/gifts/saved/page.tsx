@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { ArrowLeft, BookmarkCheck } from "lucide-react";
 import { requireHouseholdContext } from "@/lib/auth/session";
+import { getZonedNow } from "@/lib/timezones";
 import { listActiveSuggestionsForHousehold } from "@/lib/db/repositories/gifts";
+import { listBudgetsForPerson } from "@/lib/db/repositories/people";
 import { dedupeSuggestionsPerPerson } from "@/lib/gifts/dedupe";
 import { groupSuggestionsByPersonAndRun } from "@/lib/gifts/group-suggestions";
-import { Card, CardContent } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { GiftSuggestionGroups } from "../gift-suggestion-groups";
 
 /**
@@ -21,7 +23,8 @@ import { GiftSuggestionGroups } from "../gift-suggestion-groups";
  * the two states.
  */
 export default async function SavedGiftsPage() {
-  const { supabase, household } = await requireHouseholdContext();
+  const { supabase, household, timezone } = await requireHouseholdContext();
+  const today = getZonedNow(timezone);
   const rawSuggestions = await listActiveSuggestionsForHousehold(supabase, household.id);
   const deduped = dedupeSuggestionsPerPerson(rawSuggestions);
   const saved = deduped.filter(
@@ -30,30 +33,37 @@ export default async function SavedGiftsPage() {
   );
   const personGroups = groupSuggestionsByPersonAndRun(saved);
 
+  const budgetsByPersonId = new Map<string, Awaited<ReturnType<typeof listBudgetsForPerson>>>();
+  for (const group of personGroups) {
+    if (!budgetsByPersonId.has(group.personId)) {
+      budgetsByPersonId.set(group.personId, await listBudgetsForPerson(supabase, group.personId));
+    }
+  }
+
   return (
-    <div className="flex flex-col gap-4 p-4">
+    <div className="flex flex-col gap-[18px]">
       <div className="flex items-center gap-2">
-        <Link href="/gifts" className="text-muted-foreground hover:text-foreground" aria-label="Back to gift suggestions">
+        <Link href="/gifts" className="text-ink-2 hover:text-ink" aria-label="Back to gift suggestions">
           <ArrowLeft className="size-4" aria-hidden="true" />
         </Link>
-        <h1 className="text-xl font-semibold">Saved gifts</h1>
+        <h1 className="font-serif text-page-title text-ink">Saved gifts</h1>
       </div>
 
       {saved.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center gap-3 py-8 text-center">
-            <BookmarkCheck className="size-8 text-muted-foreground" aria-hidden="true" />
-            <p className="text-sm text-muted-foreground">
-              Nothing saved yet. Tap Save on a suggestion from the{" "}
-              <Link href="/gifts" className="underline underline-offset-2">
-                Gift suggestions
+        <EmptyState
+          icon={<BookmarkCheck aria-hidden="true" />}
+          message={
+            <>
+              Nothing saved yet. Save a suggestion from the{" "}
+              <Link href="/gifts" className="text-action underline underline-offset-2">
+                Gifts
               </Link>{" "}
               page to build a shortlist here.
-            </p>
-          </CardContent>
-        </Card>
+            </>
+          }
+        />
       ) : (
-        <GiftSuggestionGroups personGroups={personGroups} />
+        <GiftSuggestionGroups personGroups={personGroups} budgetsByPersonId={budgetsByPersonId} household={household} today={today} />
       )}
     </div>
   );

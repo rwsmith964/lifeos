@@ -461,7 +461,70 @@ Did not get to live-verify a populated `PlanProposalCard` (score numeral + chips
 scored opportunity, since none exists in the account this week — worth a follow-up check once a
 real opportunity is detected.
 
+## Step 8 — done
+
+Rebuilt the Gifts area (`app/(app)/gifts/page.tsx`, new `gifts-timeline.tsx`, rewritten
+`gift-suggestion-groups.tsx`, restyled `gifts/saved/page.tsx`) per Part 2: grouped by person and
+occasion (unchanged, already existed), a new 90-day timeline at the top, richer per-run group
+headers (avatar, "{name} — {occasion}", date + days-remaining, budget range, spend bar,
+order-status badge), and idea cards in a 4-column grid. Kept the existing `GiftSuggestionActions`
+lifecycle component completely intact (Save/Dismiss/Mark ordered/Mark given, each with toast+undo)
+rather than collapsing it to the brief's literal "Buy / Drop" card copy — "Buy" would misrepresent
+what the app actually does (nothing is purchased; the action only saves to a shortlist), so this is
+a deliberate deviation from the copy, not the underlying lifecycle, logged here rather than as an RQ
+since it's a factual-accuracy call, not an ambiguity.
+
+**New data added, both real and additive:** `listGivenGiftsForHouseholdInYear` (new query in
+`lib/db/repositories/gifts.ts`) for the sidebar's year-to-date card — sums real `gifts.cost_cents`
+for status=given rows this year via a join through `people` (gifts has no direct `household_id`).
+No fabricated "of $X" goal shown since no annual budget *target* field exists on `households` (only
+per-occasion min/max) — confirmed via grep before building, not assumed. The timeline reuses the
+existing `scanUpcomingOccasions` (already powering suggestion generation and Today's "Coming up"
+rail), not a new detection system. Group-header budget ranges reuse the existing
+`resolveGiftBudget` resolution; the spend bar sums `estimated_cost_cents` only across
+saved/ordered suggestions in that run (items actually committed to), so it correctly reads $0 on
+the main Gifts page (nothing saved yet there) and the real total on the Saved gifts page — an
+honest reading rather than a fabricated projection.
+
+**Scope simplification, logged not treated as an RQ:** idea cards use a plain tinted icon well
+(gift icon) instead of a real product thumbnail — `GiftSuggestionRow` has no image/thumbnail field
+in the schema, so a real photo isn't available, and fabricating a stock image would misrepresent
+the products.
+
+**Real bug found and fixed (not a redesign regression, pre-existing but newly exercised):** the
+new `listGivenGiftsForHouseholdInYear` query 500'd on first load with Postgres error PGRST201 —
+`gifts` has two foreign keys to `people` (`person_id` and `given_by_person_id`), so an unqualified
+`people!inner(...)` embed is ambiguous to PostgREST. Fixed by naming the FK explicitly:
+`people!gifts_person_id_fkey!inner(...)`.
+
+**Real bug found and fixed via live-verification, not caught by typecheck/lint/build:** the group
+header's "days remaining" showed a raw negative number ("-13 days away") for any occasion whose
+`occasion_date` has already passed — a real, common case for `just_because` suggestions (P1-9:
+these historically got `occasion_date` hardcoded to the day they were generated) and even for
+birthday/anniversary runs once the date has slipped by without being dismissed. Fixed with a
+`formatDaysRemaining` helper that reads "N days ago" for past dates instead of a negative number.
+
+**Verified:** typecheck/lint/build all clean; test suite at the same pre-existing 854/859 (5
+failures in `lib/planner/seasonality.test.ts`, untouched by this session — see note below).
+**Live-verified** at 1440px against real household data: multi-item runs (3 suggestions) render as
+a real 3-column grid row; single-item runs correctly show empty grid tracks rather than a layout
+bug; the spend bar and order-status badge update correctly after a real Save action (verified
+end-to-end: saved a suggestion, confirmed it moved to /gifts/saved with the spend bar now showing
+its real cost against budget, then moved it back to leave household data unchanged); the empty-state
+timeline message rendered correctly (no occasions fall inside the next 90 days for this household's
+real data right now — Christmas is 106 days out, just outside the window).
+
+**Pre-existing, unrelated test failure noticed during this step's verification (not fixed, out of
+scope):** `lib/planner/seasonality.test.ts` has 3 failing assertions, all in `isActivityInSeason`.
+The file is untouched this whole session (confirmed via `git status`/`git log`). Root cause looks
+like a timezone bug in the *test*, not the function: the test dates are bare ISO strings (e.g.
+`new Date("2026-03-01")`), which parse as UTC midnight — in any timezone west of UTC that becomes
+the previous calendar day locally, and `isActivityInSeason` reads the month via `date.getMonth()`
+(local time), producing an off-by-one-month result. Left alone since it's unrelated business logic,
+not a visual/redesign concern.
+
 ## Current step
 
-Step 8 (Part 9) — Gifts. Target: replace the chronological idea feed with groups by person/
-occasion, a 90-day timeline, order-by dates and budget bars per group, matching the reference image.
+Step 9 (Part 9) — Settings, including the Appearance section (palette picker). The palette
+switching mechanism (`components/palette-provider.tsx`, `usePalette()`) was already built in Step 1
+but has never been surfaced in any UI — this step wires it into a real Settings page section.
