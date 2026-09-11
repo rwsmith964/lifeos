@@ -1,53 +1,122 @@
+import { format } from "date-fns";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { requireHouseholdContext } from "@/lib/auth/session";
-import { listPeopleForHousehold } from "@/lib/db/repositories/people";
-import { listChildcareRequestsForHousehold } from "@/lib/db/repositories/childcare";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { getZonedNow } from "@/lib/timezones";
+import { listPeopleForHousehold, listInterestsForPerson } from "@/lib/db/repositories/people";
+import { listChildcareRequestsForHousehold } from "@/lib/db/repositories/childcare";
+import { listActiveCadencesForHousehold } from "@/lib/db/repositories/contact";
+import { listUpcomingEventsForPerson } from "@/lib/db/repositories/calendar";
+import { listActiveSuggestionsForHousehold } from "@/lib/db/repositories/gifts";
+import { evaluateRhythm, lastContactLabel } from "@/lib/people/rhythm";
+import { nearestUpcomingOccasionForPerson, occasionTypeDisplayLabel } from "@/lib/gifts/occasions";
+import { differenceInCalendarDays } from "date-fns";
 import { ChildcareSection } from "./childcare-section";
+import { PeopleTableClient, type PersonTableRow } from "./people-table-client";
 
-const RELATIONSHIP_LABELS: Record<string, string> = {
-  self: "You",
-  child: "Child",
-  spouse: "Spouse",
-  partner: "Partner",
-  co_parent: "Co-parent",
-  parent: "Parent",
-  sibling: "Sibling",
-  extended_family: "Extended family",
-  friend: "Friend",
-  colleague: "Colleague",
-  other: "Other",
-};
+const NEXT_THING_OCCASION_HORIZON_DAYS = 60;
 
 export default async function PeoplePage() {
-  const { supabase, household } = await requireHouseholdContext();
-  const [people, othersRaw, childcareRequests] = await Promise.all([
-    listPeopleForHousehold(supabase, household.id),
-    // P0-5: excludeSelf here is the canonical decision for "does the
-    // account owner show up in the People list" -- no (self is who's
-    // using the app, not someone they're keeping track of) -- applied via
-    // the shared query rather than a page-local filter so every other
-    // screen presenting this same roster (Add Event's attendee picker,
-    // etc.) can share the exact same decision instead of each re-deriving
-    // its own filter and silently drifting out of sync.
-    listPeopleForHousehold(supabase, household.id, { excludeSelf: true }),
+  const { supabase, household, timezone } = await requireHouseholdContext();
+  const today = getZonedNow(timezone);
+
+  const [people, cadences, childcareRequests, activeSuggestions] = await Promise.all([
+    listPeopleForHousehold(supabase, household.id, { excludeSelf: true, includeArchived: true }),
+    listActiveCadencesForHousehold(supabase, household.id),
     listChildcareRequestsForHousehold(supabase, household.id),
+    listActiveSuggestionsForHousehold(supabase, household.id),
   ]);
-  const others = othersRaw
-    // The repository query sorts by the DB column full_name, which isn't
-    // always what's shown as the primary label below (nickname takes
-    // priority when set) — re-sort here by the same name actually
-    // displayed so the on-screen order always matches what the user sees
-    // (Phase 3 backlog: "sort-by-hidden-field").
-    .sort((a, b) => (a.nickname || a.full_name).localeCompare(b.nickname || b.full_name));
+  const allPeopleForChildcare = await listPeopleForHousehold(supabase, household.id, { includeArchived: true });
+
+  const cadenceByPersonId = new Map(cadences.map((c) => [c.person_id, c]));
+  const suggestionsByPersonId = new Map<string, typeof activeSuggestions>();
+  for (const s of activeSuggestions) {
+    const list = suggestionsByPersonId.get(s.person_id) ?? [];
+    list.push(s);
+    suggestionsByPersonId.set(s.person_id, list);
+  }
+
+  const rows: PersonTableRow[] = await Promise.all(
+    people
+      .filter((p) => !p.is_archived)
+      .map(async (person): Promise<PersonTableRow> => {
+        const cadence = cadenceByPersonId.get(person.id);
+        const rhythm = cadence ? evaluateRhythm(cadence, today) : null;
+        const lastContact = cadence ? lastContactLabel(cadence.last_contact_date, cadence.last_contact_type) : "No cadence set";
+
+        const upcomingEvents = await listUpcomingEventsForPerson(supabase, person.id, today.toISOString(), 1);
+        let nextThing = "—";
+        if (upcomingEvents[0]) {
+          nextThing = `${format(new Date(upcomingEvents[0].starts_at), "EEE, h:mm a")} · ${upcomingEvents[0].title}`;
+        } else {
+          const occasion = nearestUpcomingOccasionForPerson(person, today);
+          if (occasion && differenceInCalendarDays(occasion.occasionDate, today) <= NEXT_THING_OCCASION_HORIZON_DAYS) {
+            nextThing = `${occasionTypeDisplayLabel(occasion.occasionType)} ${format(occasion.occasionDate, "MMM d")}`;
+          }
+        }
+
+        const [interests, giftSuggestions] = await Promise.all([
+          listInterestsForPerson(supabase, person.id),
+          Promise.resolve(suggestionsByPersonId.get(person.id) ?? []),
+        ]);
+
+        return {
+          id: person.id,
+          name: person.nickname || person.full_name,
+          fullName: person.full_name,
+          relationshipType: person.relationship_type,
+          isChildcareProvider: person.is_childcare_provider,
+          rhythmLabel: rhythm?.label ?? "No cadence set",
+          rhythmTier: rhythm?.tier ?? "settled",
+          rhythmHealthPct: rhythm?.healthPct ?? 100,
+          hasCadence: !!cadence,
+          lastContact,
+          nextThing,
+          phone: person.phone,
+          notes: person.notes,
+          interests: interests.map((i) => i.interest),
+          giftShortlist: giftSuggestions.slice(0, 3).map((g) => ({
+            id: g.id,
+            title: g.title,
+            priceCents: g.estimated_cost_cents,
+            status: g.status,
+          })),
+        };
+      })
+  );
+
+  const archivedRows: PersonTableRow[] = people
+    .filter((p) => p.is_archived)
+    .map((person) => ({
+      id: person.id,
+      name: person.nickname || person.full_name,
+      fullName: person.full_name,
+      relationshipType: person.relationship_type,
+      isChildcareProvider: person.is_childcare_provider,
+      rhythmLabel: "Archived",
+      rhythmTier: "settled",
+      rhythmHealthPct: 100,
+      hasCadence: false,
+      lastContact: "—",
+      nextThing: "—",
+      phone: person.phone,
+      notes: person.notes,
+      interests: [],
+      giftShortlist: [],
+    }));
+
+  const slippingCount = rows.filter((r) => r.rhythmTier === "slipping").length;
 
   return (
-    <div className="flex flex-col gap-4 p-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">People</h1>
+    <div className="flex flex-col gap-[18px]">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="font-serif text-page-title text-ink">People</h1>
+          <p className="mt-1 font-sans text-body text-ink-2">
+            {rows.length} in your circle{slippingCount > 0 && ` · ${slippingCount} slipping`}
+          </p>
+        </div>
         <Button asChild size="sm">
           <Link href="/people/new">
             <Plus className="size-4" /> Add
@@ -55,41 +124,9 @@ export default async function PeoplePage() {
         </Button>
       </div>
 
-      {others.length === 0 ? (
-        <Card>
-          <CardContent className="text-sm text-muted-foreground">
-            No one added yet. Add the people in your life to start getting gift reminders and contact
-            nudges.
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="flex flex-col gap-2 lg:grid lg:grid-cols-3 lg:gap-3">
-          {others.map((person) => (
-            <Link key={person.id} href={`/people/${person.id}`}>
-              <Card>
-                <CardContent className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium">{person.nickname || person.full_name}</p>
-                    {/* Only show the full name as a subtitle when it's actually
-                        different information than the title above — otherwise
-                        this rendered the same name twice (Phase 3 backlog:
-                        "double-name display"). */}
-                    {person.nickname && person.nickname !== person.full_name && (
-                      <p className="text-xs text-muted-foreground">{person.full_name}</p>
-                    )}
-                  </div>
-                  <div className="flex flex-col items-end gap-1">
-                    <Badge variant="secondary">{RELATIONSHIP_LABELS[person.relationship_type] ?? person.relationship_type}</Badge>
-                    {person.is_childcare_provider && <Badge variant="outline">Childcare provider</Badge>}
-                  </div>
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
-        </div>
-      )}
+      <PeopleTableClient rows={rows} archivedRows={archivedRows} />
 
-      <ChildcareSection requests={childcareRequests} people={people} />
+      <ChildcareSection requests={childcareRequests} people={allPeopleForChildcare} />
     </div>
   );
 }

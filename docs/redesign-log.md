@@ -326,9 +326,41 @@ on track" reflecting that both Jackie and Fritz are genuinely overdue in this re
 household — expected, not a bug, since the reference mockup's occasion data was fictional demo
 content).
 
+## Step 5 — done
+
+`components/ui/table-row.tsx`'s `RhythmCell` updated to the real three-tier system found in the
+reference images: new `lib/people/rhythm.ts` (`evaluateRhythm`, pure/unit-testable like
+`lib/contact/cadence.ts`) computes settled/warning/slipping from the same `target_interval_days`/
+`last_contact_date` cadence data, warning being "≥70% of the way to due but not yet over."
+
+Rebuilt `app/(app)/people/page.tsx` (server) + new `people-table-client.tsx` (client, tabs +
+selection state). Replaced the old name-chip grid with the spec'd table: avatar/name/relationship,
+rhythm bar, last contact, next thing, and a slipping-aware action button (filled "Reach out" vs
+ghost "Open" per Part 2). "Next thing" is a new small presentational helper (not new business
+logic) — next upcoming event this person attends (`listUpcomingEventsForPerson`, pre-existing) if
+any within the near term, else their next birthday/anniversary within 60 days
+(`nearestUpcomingOccasionForPerson`, pre-existing), else "—". Tabs (Circle/Kids & custody/
+Childcare/Archive) are client-side filters over already-loaded data — small household, no benefit
+to round-tripping the server per tab. Detail pane shows the selected person's interests (existing
+`listInterestsForPerson`) and gift shortlist (existing `listActiveSuggestionsForHousehold`,
+cross-referenced by person) — both pre-existing data, newly surfaced here.
+
+**Scope note, not a numbered RQ:** rows sort alphabetically (existing `listPeopleForHousehold`
+order), not slipping-first — Part 2 doesn't specify a sort order for the table the way Today's
+stack explicitly does ("most urgent first"), so this wasn't treated as a spec gap. Worth
+revisiting if Richard wants urgency-first sorting here too.
+
+**Verified:** typecheck/lint/test(854/859, pre-existing)/build all clean. **Live-verified** at
+1440×1000 against real household data: tabs, the three rhythm tiers (Jackie/Fritz correctly
+"8 of 7"/"8 of 5" and slipping-red with a filled "Reach out" button; Cal/Em/Mel correctly "No
+cadence set" with a ghost "Open" button), and the detail pane (real interests and gift shortlist
+prices for Cal) all render correctly. Mobile (390×844): the fixed-column table grid doesn't yet
+collapse to stacked cards (that's explicitly Step 10's job per Part 9) but correctly scrolls
+within its own container rather than the page body, satisfying Part 8's Definition of Done bullet
+about horizontal scroll even ahead of the dedicated responsive pass.
+
 ## Current step
 
-Step 5 (Part 9) — People. Target: rebuild the People page as a table (Person/Rhythm/Last contact/
-Next thing/action) with tabs (Circle/Kids & custody/Childcare/Archive) and a detail pane, per the
-reference image and Part 2/3 text. `RhythmCell` needs its three-tier settled/warning/slipping
-update first (noted after the reference images arrived, still pending).
+Step 6 (Part 9) — Calendar. Target: default to Week view, custody ribbon, weather strip, 6am-10pm
+time grid, dashed suggestion blocks, current-time line, Layers legend. This is the screen Richard
+specifically checked and found still unbuilt, so extra care here.

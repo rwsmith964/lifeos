@@ -17,7 +17,7 @@ import { listActiveSuggestionsForHousehold } from "@/lib/db/repositories/gifts";
 import { listOpenOpportunitiesWithSubjectForHousehold } from "@/lib/db/repositories/opportunities";
 import { getPresentedOpportunities } from "@/lib/opportunities/present";
 import { BRIEF_CONTRIBUTORS, composeBrief, itemsForCategory } from "@/lib/brief/contributors";
-import { evaluateCadence } from "@/lib/contact/cadence";
+import { evaluateRhythm } from "@/lib/people/rhythm";
 import { scanUpcomingOccasions, occasionTypeDisplayLabel } from "@/lib/gifts/occasions";
 import { buildTodayPriorityItems, type PriorityItem } from "@/lib/brief/today-priority-items";
 import type { BriefContent } from "@/lib/brief/schema";
@@ -114,22 +114,17 @@ export default async function BriefPage() {
   const peopleById = new Map(householdPeople.map((p) => [p.id, p]));
 
   // "Relationships holding" (Part 2): a household-level rollup over the
-  // same cadence data the People page's own rhythm column will use (Step
-  // 5) -- computed here as a simple health percentage per active
-  // relationship, not a new tracked metric.
+  // same cadence data and the same lib/people/rhythm.ts tiering the People
+  // page's own rhythm column uses (Step 5) -- not a new tracked metric.
   const relationshipBars = activeCadences
     .map((c) => {
-      const status = evaluateCadence(c, today);
+      const status = evaluateRhythm(c, today);
       const person = peopleById.get(c.person_id);
-      const healthPct =
-        status.daysSinceLastContact == null
-          ? 0
-          : Math.max(0, Math.min(100, 100 - (status.daysSinceLastContact / Math.max(c.target_interval_days, 1)) * 100));
-      return { personId: c.person_id, name: person?.nickname || person?.full_name || "Someone", isOverdue: status.isOverdue, healthPct };
+      return { personId: c.person_id, name: person?.nickname || person?.full_name || "Someone", tier: status.tier, healthPct: status.healthPct };
     })
     .filter((b) => b.personId)
     .slice(0, RELATIONSHIP_BAR_LIMIT);
-  const settledCount = relationshipBars.filter((b) => !b.isOverdue).length;
+  const settledCount = relationshipBars.filter((b) => b.tier === "settled").length;
 
   if (!content) {
     return (
@@ -274,7 +269,9 @@ export default async function BriefPage() {
                   <div
                     key={bar.personId}
                     title={bar.name}
-                    className={`w-full rounded-[3px] ${bar.isOverdue ? "bg-slipping" : "bg-settled"}`}
+                    className={`w-full rounded-[3px] ${
+                      bar.tier === "slipping" ? "bg-slipping" : bar.tier === "warning" ? "bg-action" : "bg-settled"
+                    }`}
                     style={{ height: `${Math.max(8, bar.healthPct)}%` }}
                   />
                 ))}
