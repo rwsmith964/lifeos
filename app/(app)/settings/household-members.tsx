@@ -165,11 +165,20 @@ export function HouseholdMembers({
       <CardContent className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <Label>Household members</Label>
-          {canManage && !showInviteForm && (
-            <Button type="button" size="sm" variant="outline" onClick={() => setShowInviteForm(true)}>
-              Invite someone
-            </Button>
-          )}
+          {/* Redesign (Part 5 — States: Read-only): non-destructive controls
+              stay visible but disabled with a reason when the viewer lacks
+              access, rather than disappearing -- only destructive actions
+              (RemoveMemberButton/RevokeInviteButton below) are hidden. */}
+          {!showInviteForm &&
+            (canManage ? (
+              <Button type="button" size="sm" variant="outline" onClick={() => setShowInviteForm(true)}>
+                Invite someone
+              </Button>
+            ) : (
+              <Button type="button" size="sm" variant="outline" disabled title="Only household owners and adults can invite people">
+                Invite someone
+              </Button>
+            ))}
         </div>
 
         {canManage && showInviteForm && <InviteForm />}

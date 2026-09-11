@@ -621,6 +621,66 @@ clicking a row opens the sheet (confirmed via its computed class going from `tra
 (`translate-x-full` again); at 1440px the sheet stays permanently closed and the inline pane renders
 instead, confirmed via the `isDesktop` gate.
 
+## Step 11 — done
+
+Audited all four states Part 5 requires (loading/empty/error/read-only) plus partial-stale, across
+every screen, against what already existed from Steps 1-10 rather than assuming a rebuild was
+needed everywhere -- most of empty/error/stale turned out to already be solid because earlier steps
+built them in as part of each screen's real data plumbing, not bolted on now.
+
+**Loading (real gap, fixed).** Zero `loading.tsx` files existed anywhere in `app/(app)/` before this
+step -- on a slow query the old and new UI alike would just show nothing until the whole page's data
+resolved, no skeleton at all. Added one `loading.tsx` per main screen (Today/People/Calendar/Plan/
+Gifts), each built from `components/ui/skeleton.tsx` (a Step 2 primitive that already existed for
+exactly this, unused until now) and matching its real page's actual container classes card-for-card
+(same `rounded-card`/`border-line`/padding, same table-row grid, same 4-column idea-card grid) so
+the real content swaps in at the same height per Part 5's "nothing shifts when data lands" rule --
+this is the standard Next.js App Router mechanism for a Suspense-boundary fallback, not a new
+loading-state architecture.
+
+**Error retry (real gap, fixed).** The shared `useAsyncToastAction` hook (already used by every
+gift-suggestion action, feature-flag toggle, etc.) showed a destructive-styled error toast on
+failure but had no way to retry short of re-finding and re-clicking the original control -- Part 5
+requires "inline and specific, scoped to the thing that failed, with a retry." Added a Retry action
+button to the error toast that just re-runs the exact same attempt (refactored the hook's inner
+closure to a named function so it can call itself for this, since a `const` arrow can't reference
+itself before its own declaration -- caught by `react-hooks/immutability` at lint time, fixed by
+using a plain function declaration instead). Verified the existing success/Undo path still works
+end-to-end (real Save -> real Move-back round trip on a gift suggestion) since this touched shared
+hook internals used everywhere.
+
+**Read-only (real gap, fixed in two spots).** Part 5: "render controls as disabled with a reason on
+hover rather than hiding them, except for destructive actions, which are hidden." Audited every
+`canManage`-gated control in Settings (the only place in the app with a real viewer/owner permission
+split). Found the pattern was already correct for feature-flag toggles (disabled + explanatory text,
+Step-9-untouched, no change needed) and correctly hides genuinely destructive controls
+(RemoveMemberButton, RevokeInviteButton) -- but two non-destructive "add" actions ("Invite someone",
+"Add a calendar") were fully hidden instead of disabled-with-reason. Fixed both to the spec'd
+pattern (disabled + `title` tooltip, same convention already used elsewhere for "no phone number on
+file"). Left calendar feeds' Sync-now button grouped with its neighboring destructive Remove button
+(both hidden together for a non-manager) rather than splitting that block apart -- a defensible
+minor simplification, not treated as an RQ: a viewer with no feed-management rights at all has
+little reason to manually trigger a sync either.
+
+**Empty/Error/Stale (largely already solid, verified not rebuilt).** Every screen's empty states
+were already written with real, specific copy naming what the system needs (People's per-tab
+messages, Gifts' timeline/idea-group empty states, Plan's per-day "nothing stands out yet," Today's
+"nothing needs you today") -- built in as each screen was rebuilt in Steps 4-8, not generic "No
+results" anywhere. Today's stale-brief banner (`isStale`/`isBriefStale`) and `RegenerateBriefButton`
+already matched Part 5's "a failed rebuild does not blank the page, it keeps the last brief and
+says it's stale" rule exactly, including on a failed regenerate (inline error, no `router.refresh()`
+on failure so the existing brief stays on screen) -- only touched its error text to use the current
+type-scale token (`text-metadata`) instead of a pre-redesign `text-xs` leftover. Destructive treatment
+already uses a real distinct `--destructive` token per palette (not aliased to `--slipping` -- this
+had been an open question, RQ2, resolved back in Step 1), confirmed still true across all three
+palettes' token definitions.
+
+**Verified:** typecheck/lint/build clean; test suite unchanged at the pre-existing 854/859.
+**Live-verified:** a real Save->Undo round trip on a gift suggestion confirms the retried hook's
+success/undo path is unaffected; all five screens smoke-tested post-change (Today, Calendar
+confirmed rendering correctly via live page-text checks); Settings screenshot confirms nothing
+broke for the manager view (the only role available to test live in this account).
+
 ## Current step
 
-Step 11 (Part 9) — States pass: loading, empty, error, read-only, everywhere.
+Step 12 (Part 9) — Accessibility and contrast pass across all three palettes in both modes.

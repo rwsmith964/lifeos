@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useTransition } from "react";
+import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/ui/toast";
 
@@ -28,7 +28,14 @@ export function useAsyncToastAction(action: () => Promise<void>, options: UseAsy
   const { showToast } = useToast();
   const { successMessage, successDescription, onUndo, undoMessage, errorMessage } = options;
 
-  const run = useCallback(() => {
+  // Named function declaration (not a `const` arrow) so it can call itself
+  // by name from the catch block below without a self-reference-before-
+  // declaration issue -- that's the retry (Part 5 — States: Error:
+  // "Inline and specific, scoped to the thing that failed, with a retry").
+  // `attempt` already closes over everything this exact action needs, so
+  // offering it back as the toast's own action button is a real retry, not
+  // a generic "try again" that might do something else.
+  function attempt() {
     startTransition(async () => {
       try {
         await action();
@@ -58,10 +65,11 @@ export function useAsyncToastAction(action: () => Promise<void>, options: UseAsy
           title: errorMessage ?? "Something went wrong",
           description: err instanceof Error ? err.message : undefined,
           variant: "destructive",
+          action: { label: "Retry", onClick: attempt },
         });
       }
     });
-  }, [action, router, showToast, successMessage, successDescription, onUndo, undoMessage, errorMessage]);
+  }
 
-  return { pending, run };
+  return { pending, run: attempt };
 }

@@ -123,11 +123,18 @@ export function CalendarFeeds({ feeds, canManage }: { feeds: CalendarFeedRow[]; 
               weekend planner knows about your real commitments.
             </p>
           </div>
-          {canManage && !showAddForm && (
-            <Button type="button" size="sm" variant="outline" onClick={() => setShowAddForm(true)}>
-              Add a calendar
-            </Button>
-          )}
+          {/* Redesign (Part 5 — States: Read-only): disabled + reason, not
+              hidden -- adding a feed isn't destructive. */}
+          {!showAddForm &&
+            (canManage ? (
+              <Button type="button" size="sm" variant="outline" onClick={() => setShowAddForm(true)}>
+                Add a calendar
+              </Button>
+            ) : (
+              <Button type="button" size="sm" variant="outline" disabled title="Only household owners and adults can add calendars">
+                Add a calendar
+              </Button>
+            ))}
         </div>
 
         {canManage && showAddForm && <AddFeedForm />}
