@@ -27,6 +27,7 @@
 import { format, formatDistanceToNow } from "date-fns";
 import { notFound } from "next/navigation";
 import { requireHouseholdContext } from "@/lib/auth/session";
+import { getZonedNow } from "@/lib/timezones";
 import { isFeatureEnabled } from "@/lib/flags";
 import { buildAmbientView } from "@/lib/ambient/build-ambient-view";
 import { AmbientRefresh } from "./ambient-refresh";
@@ -41,14 +42,17 @@ function formatEventTime(startsAtISO: string, allDay: boolean): string {
 }
 
 export default async function AmbientDisplayPage() {
-  const { supabase, household, selfPerson } = await requireHouseholdContext();
+  const { supabase, household, selfPerson, timezone } = await requireHouseholdContext();
 
   const enabled = await isFeatureEnabled(supabase, household.id, "ambient_display");
   if (!enabled) {
     notFound();
   }
 
-  const now = new Date();
+  // M-01: household-local "today," not the server's bare UTC `new Date()`
+  // -- a wall-mounted display is the single worst place to show the wrong
+  // calendar date.
+  const now = getZonedNow(timezone);
   const view = await buildAmbientView(supabase, household.id, household.name, selfPerson.id, now);
 
   const updatedLabel = view.generatedAt

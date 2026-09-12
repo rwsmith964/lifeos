@@ -131,7 +131,7 @@ export async function generateDailyBrief(
   // version (inner-joins people.household_id) but wasn't being used here;
   // switched to it, then re-applied the original lower bound (>= today)
   // that the helper itself doesn't take as a parameter.
-  const giftSuggestions = (await listSuggestionsDueForOrder(client, householdId, 14)).filter(
+  const giftSuggestions = (await listSuggestionsDueForOrder(client, householdId, 14, todayStart)).filter(
     (g) => g.order_by_date >= todayDateStr
   );
   const giftReminders = await Promise.all(

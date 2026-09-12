@@ -36,6 +36,7 @@ import { parseWindMph, scoreWeatherSuitability } from "../planner/weather-score"
 import { dispatchNotification } from "../notifications/dispatch";
 import { isFeatureEnabled } from "../flags";
 import { resolveOpportunityScoreBreakdown } from "../planner/score-breakdown-display";
+import { getZonedNow } from "../timezones";
 
 // NWS's forecast endpoint only returns ~7 days of periods (day+night) --
 // scanning further than that would mean scoring days with no real forecast
@@ -58,7 +59,12 @@ export interface DetectOpportunitiesResult {
 export async function detectOpportunitiesForHousehold(
   client: SupabaseClient,
   householdId: string,
-  today: Date = new Date()
+  // M-01: same fix as generateWeekendPlan (lib/planner/generate.ts) -- the
+  // cron route is the only real caller and never passed a date, so this
+  // used to default to a bare `new Date()` (server UTC), shifting the
+  // scanned day range and every detected opportunity's `for_date` by a day
+  // right at a household-evening/UTC-midnight rollover.
+  today?: Date
 ): Promise<DetectOpportunitiesResult> {
   const household = await householdsRepo.getById(client, householdId);
   if (!household) throw new Error(`Household ${householdId} not found`);
@@ -69,6 +75,8 @@ export async function detectOpportunitiesForHousehold(
   // fallback forecast for trip ideas -- same precondition generateWeekendPlan
   // requires before it will produce candidates.
   if (!home) return { opportunitiesDetected: 0, notificationSent: false };
+
+  const resolvedToday = today ?? getZonedNow(owner?.timezone ?? "America/Los_Angeles");
 
   // Module 2 (leisure_planner_v2, D-118): read once up front, not per
   // candidate -- see resolveOpportunityScoreBreakdown for the actual
@@ -85,7 +93,7 @@ export async function detectOpportunitiesForHousehold(
     return { opportunitiesDetected: 0, notificationSent: false };
   }
 
-  const scanStart = startOfDay(today);
+  const scanStart = startOfDay(resolvedToday);
   const scanEnd = addDays(scanStart, OPPORTUNITY_SCAN_DAYS_AHEAD);
 
   const [events, custodyBlocks] = await Promise.all([
@@ -100,7 +108,7 @@ export async function detectOpportunitiesForHousehold(
   // Same lookback the weekend planner uses (P1-8/D-070) -- feeding both
   // surfaces the same recency signal is part of what makes their scores
   // agree for the same activity/day.
-  const recentActivityTypes = await listRecentlyProposedActivityTypes(client, householdId, today);
+  const recentActivityTypes = await listRecentlyProposedActivityTypes(client, householdId, resolvedToday);
 
   const newHeadlines: string[] = [];
 
@@ -141,7 +149,7 @@ export async function detectOpportunitiesForHousehold(
         targetDate: dayStart,
         availableMinutes,
         weeksSinceLastProposed: weeksSinceLastProposed(activity.activity_type, recentActivityTypes),
-        weeksSinceLastDone: weeksSinceLastDone(activity.last_done_at, today),
+        weeksSinceLastDone: weeksSinceLastDone(activity.last_done_at, resolvedToday),
       });
       const { forecastPeriod: period, weatherScore, travel, score } = candidate;
       if (!period) continue; // beyond the forecast horizon, or the adapter has no data right now

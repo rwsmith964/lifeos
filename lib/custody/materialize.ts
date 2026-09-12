@@ -193,12 +193,23 @@ function materializeWeeklySegmentsRows(
 export async function materializeCustodySchedule(
   client: SupabaseClient,
   schedule: CustodyScheduleRow,
+  // M-01/D-04: required, not defaulted to `new Date()` -- this windowStart is
+  // used both to decide what to delete (below) and where the projection
+  // starts. Two calls that straddle a UTC-midnight rollover (the server's
+  // "today") used to compute two different windowStart days -- the first
+  // call's delete-then-recreate cleared/regenerated from day N, but a
+  // second call later the same real local day computed windowStart = day
+  // N+1 and never deleted day N's rows before re-inserting, leaving
+  // overlapping duplicate blocks for that day. Every real caller already
+  // has the household's timezone via requireHouseholdContext() and should
+  // pass getZonedNow(timezone).
+  now: Date,
   windowDays: number = MATERIALIZE_WINDOW_DAYS
 ): Promise<{ blocksCreated: number }> {
   const exceptions = await listExceptionsForSchedule(client, schedule.id);
   const exceptionsByDate = new Map(exceptions.map((e) => [e.exception_date, e.responsible_person_id]));
 
-  const windowStart = new Date();
+  const windowStart = new Date(now);
   windowStart.setHours(0, 0, 0, 0);
   const windowEnd = addDays(windowStart, windowDays);
 

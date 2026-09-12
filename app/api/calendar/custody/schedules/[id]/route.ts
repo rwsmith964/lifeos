@@ -9,13 +9,14 @@
 // future-window custody_blocks. See DECISIONS.md D-125.
 import { NextResponse } from "next/server";
 import { requireHouseholdContext } from "@/lib/auth/session";
+import { getZonedNow } from "@/lib/timezones";
 import { custodySchedulesRepo } from "@/lib/db/repositories/custody-schedules";
 import { custodyScheduleUpdateSchema } from "@/lib/db/schemas";
 import { materializeCustodySchedule } from "@/lib/custody/materialize";
 import { friendlyMutationError } from "@/lib/db/errors";
 
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { supabase, household } = await requireHouseholdContext();
+  const { supabase, household, timezone } = await requireHouseholdContext();
   const { id } = await params;
 
   const schedule = await custodySchedulesRepo.getById(supabase, id);
@@ -28,7 +29,7 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
       .from("custody_blocks")
       .delete()
       .eq("custody_schedule_id", id)
-      .gte("starts_at", new Date().toISOString());
+      .gte("starts_at", getZonedNow(timezone).toISOString());
     if (deleteBlocksError) throw deleteBlocksError;
 
     await custodySchedulesRepo.remove(supabase, id);
@@ -42,7 +43,7 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
 }
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { supabase, household } = await requireHouseholdContext();
+  const { supabase, household, timezone } = await requireHouseholdContext();
   const { id } = await params;
 
   const schedule = await custodySchedulesRepo.getById(supabase, id);
@@ -71,7 +72,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     // read branches on recurrence_type, but don't assume the unused columns are
     // actually null.
     const updated = await custodySchedulesRepo.update(supabase, id, parsed.data);
-    const { blocksCreated } = await materializeCustodySchedule(supabase, updated);
+    const { blocksCreated } = await materializeCustodySchedule(supabase, updated, getZonedNow(timezone));
     return NextResponse.json({ id: updated.id, blocksCreated });
   } catch (error) {
     return NextResponse.json(

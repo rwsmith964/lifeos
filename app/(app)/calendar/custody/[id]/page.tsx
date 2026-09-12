@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, Download, Pencil } from "lucide-react";
 import { format } from "date-fns";
 import { requireHouseholdContext } from "@/lib/auth/session";
+import { getZonedNow } from "@/lib/timezones";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
 import { listExceptionsForSchedule, custodySchedulesRepo } from "@/lib/db/repositories/custody-schedules";
 import { filterEligibleResponsibleAdults } from "@/lib/custody/eligible-parents";
@@ -30,7 +31,7 @@ export default async function CustodyScheduleDetailPage({
   // pre-filled below — an exception is the correct "edit just this day"
   // tool for a materialized block (see app/api/calendar/custody/[id]/route.ts).
   const { date: prefillDate } = await searchParams;
-  const { supabase, household } = await requireHouseholdContext();
+  const { supabase, household, timezone } = await requireHouseholdContext();
 
   const schedule = await custodySchedulesRepo.getById(supabase, id);
   if (!schedule || schedule.household_id !== household.id) notFound();
@@ -47,7 +48,7 @@ export default async function CustodyScheduleDetailPage({
   // KNOWN-ISSUES.md 2.x: findGaps was only ever shown at creation time,
   // never re-checked against an existing schedule (e.g. after an edited
   // end_date, or a custom cycle with an unfilled day index).
-  const windowStart = new Date();
+  const windowStart = getZonedNow(timezone);
   windowStart.setHours(0, 0, 0, 0);
   const windowEnd = new Date(windowStart);
   windowEnd.setDate(windowEnd.getDate() + MATERIALIZE_WINDOW_DAYS);

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { format } from "date-fns";
 import { requireHouseholdContext } from "@/lib/auth/session";
+import { getZonedNow } from "@/lib/timezones";
 import { listInvitesForHousehold, listMembersOfHousehold, usersRepo } from "@/lib/db/repositories/households";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
 import { listCalendarFeedsForHousehold } from "@/lib/db/repositories/calendar";
@@ -18,7 +19,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 
 export default async function SettingsPage() {
-  const { supabase, household, userId, memberships } = await requireHouseholdContext();
+  const { supabase, household, userId, memberships, timezone } = await requireHouseholdContext();
   const user = await usersRepo.getById(supabase, userId);
   const switcherItems: HouseholdSwitcherItem[] = memberships.map((m) => ({
     householdId: m.household.id,
@@ -43,7 +44,7 @@ export default async function SettingsPage() {
         listTimeOffForPerson(supabase, selfPerson.id),
       ])
     : [[], []];
-  const todayStr = format(new Date(), "yyyy-MM-dd");
+  const todayStr = format(getZonedNow(timezone), "yyyy-MM-dd");
   const myUpcomingTimeOff = myTimeOff.filter((entry) => entry.end_date >= todayStr);
   const memberUsers = await Promise.all(members.map((m) => usersRepo.getById(supabase, m.user_id)));
   const memberDisplays: HouseholdMemberDisplay[] = members.map((m, i) => ({
