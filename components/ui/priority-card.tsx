@@ -47,20 +47,20 @@ export function PriorityCard({
 }: PriorityCardProps) {
   if (collapsed) {
     return (
-      <div className={cn("flex items-center gap-[18px] rounded-card border border-line bg-surface px-[22px] py-[15px]", className)}>
+      <div className={cn("flex flex-wrap items-center gap-[18px] rounded-card border border-line bg-surface px-[22px] py-[15px]", className)}>
         <IconWell tagVariant={tagVariant}>{icon}</IconWell>
         <p className="min-w-0 flex-1 truncate font-sans text-card-headline text-ink">{headline}</p>
-        <div className="flex shrink-0 items-center gap-2">{actions}</div>
+        <div className="flex flex-wrap items-center justify-end gap-2">{actions}</div>
       </div>
     );
   }
 
   if (priority === "low") {
     return (
-      <div className={cn("flex items-center gap-3 py-2", className)}>
+      <div className={cn("flex flex-wrap items-center gap-3 py-2", className)}>
         <span className="font-sans text-metadata font-bold text-meta">{tagLabel}</span>
         <p className="min-w-0 flex-1 truncate font-sans text-body text-ink-2">{headline}</p>
-        <div className="flex shrink-0 items-center gap-2">{actions}</div>
+        <div className="flex flex-wrap items-center justify-end gap-2">{actions}</div>
       </div>
     );
   }
@@ -81,7 +81,7 @@ export function PriorityCard({
         </div>
         <p className="font-sans text-card-headline text-ink text-pretty">{headline}</p>
         {detail && <div className="font-sans text-body text-ink-2">{detail}</div>}
-        <div className="flex items-center gap-2 pt-2">{actions}</div>
+        <div className="flex flex-wrap items-center gap-2 pt-2">{actions}</div>
       </div>
     </div>
   );
