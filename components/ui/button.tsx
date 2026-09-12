@@ -31,7 +31,14 @@ const buttonVariants = cva(
         default: "bg-action text-on-action hover:bg-action/90 border border-transparent",
         destructive: "bg-destructive-soft-bg text-destructive-soft-fg border border-transparent hover:opacity-90",
         outline: "bg-transparent text-ink-2 border border-line-strong hover:bg-surface-2 hover:text-ink",
-        secondary: "bg-surface-2 text-ink border border-transparent hover:bg-surface-2/70",
+        // G1 (audit pass 2026-09-11): "make secondary buttons outline-only"
+        // -- secondary used to be a filled surface-tinted button,
+        // visually a half-step between `default` (amber) and `ghost`,
+        // adding one more "what does this weight mean" question. Same
+        // look as `outline` now (transparent, bordered) so there are only
+        // two real weights: filled (primary) and outline (everything
+        // else), matching Part 3's own two-variant button spec.
+        secondary: "bg-transparent text-ink-2 border border-line-strong hover:bg-surface-2 hover:text-ink",
         ghost: "bg-transparent text-ink-2 border border-line-strong hover:bg-surface-2 hover:text-ink",
         link: "text-action underline-offset-4 hover:underline h-auto px-0 border-none",
       },

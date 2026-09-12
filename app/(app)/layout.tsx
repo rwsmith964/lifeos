@@ -10,6 +10,7 @@ import { CaptureProvider } from "@/components/capture/capture-provider";
 import { CommandBar } from "@/components/capture/command-bar";
 import { MobileCaptureButton } from "@/components/capture/mobile-capture-button";
 import { AppLockGate } from "@/components/native/app-lock-gate";
+import { HeaderThemeToggle } from "@/components/header-theme-toggle";
 import { SignOutButton } from "./sign-out-button";
 import { SidebarNav } from "./sidebar-nav";
 
@@ -105,6 +106,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
               </div>
               <CommandBar className="hidden md:flex" />
               <div className="ml-auto flex items-center gap-2">
+                <HeaderThemeToggle />
                 <Link
                   href="/notifications"
                   aria-label={unread.length > 0 ? `Notifications (${unread.length} unread)` : "Notifications"}

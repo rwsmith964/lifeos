@@ -79,11 +79,11 @@ Status per audit item. Updated at the end of each Phase. DONE / PARTIAL / BLOCKE
 - F4: DONE — Notifications now groups by day (Today/Yesterday/weekday), read items collapse to a one-line summary (click to re-expand), an All/Unread filter, and only the last 7 days show by default with a "Show older (N)" reveal. Live-verified every piece including expand/collapse and the older-notifications reveal. Files: `app/(app)/notifications/notifications-list.tsx` (new), `app/(app)/notifications/page.tsx`.
 
 ## Phase 11 — Appearance / design system
-- G1: PENDING
-- G2: PENDING
-- G3: PENDING
-- G4: PENDING
-- G5: PENDING
+- G1: PARTIAL — most named amber-overload items were already resolved (active tab, notification badge, "REACH OUT" label — the last two via this pass's own earlier work); changed secondary buttons to outline-only. Left "quieter link tint" as a logged open question (no concrete target) — see QUESTIONS.md Q17. Files: `components/ui/button.tsx`.
+- G2: SKIPPED — real and unaddressed ("reserve the card for real objects"), but touches dozens of files as a systemic redesign, not a bounded fix; a partial pass risked more visual inconsistency than the current uniform baseline. See QUESTIONS.md Q17.
+- G3: DONE (already fixed — no change needed; see QUESTIONS.md Q17) — the redesign's own "Step 12: accessibility/contrast pass across all 3 palettes" commit (confirmed via git log) already tuned these tokens.
+- G4: DONE (already fixed by this pass's own earlier work — see QUESTIONS.md Q17) — raw `09:00:00` times fixed by M-02 (Phase 2), "Module 3: ..." descriptions fixed by A3 (Phase 5).
+- G5: DONE — added a compact single-icon theme toggle (cycles light/dark/system) to the header, on top of A2 already making the full Settings picker findable. Live-verified. Files: `components/header-theme-toggle.tsx` (new), `app/(app)/layout.tsx`.
 
 ## Phase 12 — Copy
 - H1: PENDING
