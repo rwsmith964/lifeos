@@ -91,10 +91,10 @@ Status per audit item. Updated at the end of each Phase. DONE / PARTIAL / BLOCKE
 - H3: DONE (= D-01, Phase 3)
 
 ## Phase 13 — Feedback, trust, session
-- I1: PENDING
-- I2: PENDING
-- I3: PENDING
-- I4: PENDING
+- I1: DONE (already fixed by this pass's own earlier work — see QUESTIONS.md Q18) — both named examples (Rebuild/Refresh briefing, Regenerate weekend plan) already show staged progress copy and always end in a visible result, via B6 and M-04.
+- I2: DONE — a returnTo redirect now actually reaches the pre-existing (but previously never fed) `next=` handling in the login form/action; added a session keep-alive (nudges token refresh while the tab is visible, warns via toast if a refresh genuinely fails) since no live browser-side Supabase client existed anywhere before; restyled the login page to match the app's branded look. Files: `proxy.ts`, `lib/auth/session.ts`, `components/session-keep-alive.tsx` (new), `app/(app)/layout.tsx`, `app/login/page.tsx`.
+- I3: DONE — gift Dismiss already had full Undo (pre-existing); wired Undo for removing an activity and archiving a person too, both trivial flag-flips via the same shared `ConfirmDeleteButton` component. Archiving also had a deeper bug fixed as part of this: its own `redirect()` on success silently prevented the Undo toast from ever rendering at all. Files: `app/(app)/activities/actions.ts`, `app/(app)/activities/deactivate-button.tsx`, `app/(app)/people/[id]/actions.ts`, `app/(app)/people/[id]/edit/edit-person-form.tsx`.
+- I4: SKIPPED — real and unaddressed (one form still batch-saves via an explicit button while every sibling section on the same page already auto-saves per change), but converting it is a genuine behavioral change to a form with existing cross-field validation, not a quick fix this late in the pass. See QUESTIONS.md Q18.
 
 ## Phase 14 — Accessibility
 - J1: PENDING (= C3)

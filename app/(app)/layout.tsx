@@ -11,6 +11,7 @@ import { CommandBar } from "@/components/capture/command-bar";
 import { MobileCaptureButton } from "@/components/capture/mobile-capture-button";
 import { AppLockGate } from "@/components/native/app-lock-gate";
 import { HeaderThemeToggle } from "@/components/header-theme-toggle";
+import { SessionKeepAlive } from "@/components/session-keep-alive";
 import { SignOutButton } from "./sign-out-button";
 import { SidebarNav } from "./sidebar-nav";
 
@@ -68,6 +69,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   return (
     <AppLockGate>
       <CaptureProvider>
+        <SessionKeepAlive />
         <div className="flex min-h-dvh w-full bg-ground">
           {/* Sidebar: hidden below md (768), 72px icon rail 768-1279, full
               244px at xl+ (1280) -- Part 6's three breakpoints exactly. */}

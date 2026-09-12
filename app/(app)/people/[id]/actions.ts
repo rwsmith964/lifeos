@@ -646,5 +646,24 @@ export async function archivePersonAction(personId: string): Promise<SimpleFormS
     return { error: friendlyMutationError(error, { fallback: "Couldn't archive that person — please try again." }) };
   }
   revalidatePath("/people");
-  redirect("/people");
+  revalidatePath(`/people/${personId}`);
+  // I3 (audit pass 2026-09-11): "Undo exists in one place and is needed in
+  // several... archiving a person." This used to redirect("/people")
+  // immediately on success -- a Next.js redirect thrown from a server
+  // action short-circuits the whole call, so the caller's toast-with-Undo
+  // flow never even got a chance to show. Staying put (same pattern gift
+  // Dismiss already uses) lets ConfirmDeleteButton's Undo actually work.
+  return { error: null };
+}
+
+export async function unarchivePersonAction(personId: string): Promise<SimpleFormState> {
+  const { supabase } = await requireHouseholdContext();
+  try {
+    await peopleRepo.update(supabase, personId, { is_archived: false });
+  } catch (error) {
+    return { error: friendlyMutationError(error, { fallback: "Couldn't restore that person — please try again." }) };
+  }
+  revalidatePath("/people");
+  revalidatePath(`/people/${personId}`);
+  return { error: null };
 }

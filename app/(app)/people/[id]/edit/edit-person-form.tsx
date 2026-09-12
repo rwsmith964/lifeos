@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useRef } from "react";
-import { updatePersonAction, archivePersonAction, type SimpleFormState } from "../actions";
+import { updatePersonAction, archivePersonAction, unarchivePersonAction, type SimpleFormState } from "../actions";
 import { useFormValidity } from "@/lib/hooks/use-form-validity";
 import type { PersonRow } from "@/lib/db/database.types";
 import { Button } from "@/components/ui/button";
@@ -169,6 +169,10 @@ export function EditPersonForm({ person }: { person: PersonRow }) {
           label={`Archive ${person.full_name}`}
           confirmLabel={`Confirm archive ${person.full_name}`}
           action={() => archivePersonAction(person.id)}
+          onUndo={async () => {
+            const result = await unarchivePersonAction(person.id);
+            if (result.error) throw new Error(result.error);
+          }}
         />
       )}
     </div>
