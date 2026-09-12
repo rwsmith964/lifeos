@@ -54,9 +54,9 @@ Status per audit item. Updated at the end of each Phase. DONE / PARTIAL / BLOCKE
 - B7: DONE — "Coming up" now reads its horizon from `households.gift_scan_horizon_days` (was a hardcoded 90, inconsistent with Settings' real 60) for both the scan window and the displayed number; "Relationships" now names whoever's actually overdue ("Jackie Smith and Fritz are overdue for a check-in") instead of an unexplained "0 of 2 on track." Files: `app/(app)/page.tsx`.
 
 ## Phase 7 — Person pages
-- C1: PENDING
-- C2: PENDING
-- C3: PENDING
+- C1: DONE — split the 18-section page into 4 tabs (Overview/Schedule/Gifts/History) via a new `PersonPageTabs` client component; all sections still server-fetched exactly as before, just grouped. Live-verified for a child (Cal) and a non-child adult (Jackie Smith), including the child/adult section branching. See QUESTIONS.md Q14 for tab-assignment judgment calls. Files: `app/(app)/people/[id]/person-page-tabs.tsx` (new), `app/(app)/people/[id]/page.tsx`.
+- C2: DONE — wrapped every list-style Add form (interest, gift budget, gift site, gift record, wishlist item, relationship, conversation log entry, moment, ledger entry, work schedule, time off, child activity — 12 in total) behind a collapsed "+ Add X" affordance instead of an always-open form; live-verified opening and cancelling. Left single-purpose action cards (Get gift ideas, Profile details, Contact cadence's compact inline controls) uncollapsed since they aren't the "list + open form" pattern C2 describes. Files: `components/ui/add-affordance.tsx` (new), `app/(app)/people/[id]/page.tsx`.
+- C3: DONE — every section title was a plain `<div>` styled at body-text size (`CardTitle`'s own default overridden to `text-sm`); `CardTitle` gained an `as` prop (default unchanged everywhere else in the app) and this page's 18 titles now render as real `<h2>` elements at their component's actual default (larger) size. Live-verified the accessibility tree now reports them as real headings. Files: `components/ui/card.tsx`, `app/(app)/people/[id]/page.tsx`.
 
 ## Phase 8 — Gifts
 - D1: PENDING

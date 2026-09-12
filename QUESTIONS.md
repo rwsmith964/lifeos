@@ -665,6 +665,15 @@ and `PROGRESS.md` for per-item status.
 - **Reversible:** Yes -- if the brief-generation pipeline is later instrumented with real stage events, replacing the single pending label with a staged one is a contained change to just this button component.
 - **Confidence:** High that this is a real, honest improvement over the prior bare label-swap. Medium on whether Richard will consider "real progress state" satisfied by this or want the fuller staged version -- flagging the trade-off explicitly since the audit's own wording could support either reading.
 
+### Q14 — C1: tab assignment for Profile details, Relationships, and Notes wasn't fully specified
+
+- **Task:** C1
+- **Files:** `app/(app)/people/[id]/page.tsx`, `app/(app)/people/[id]/person-page-tabs.tsx` (new)
+- **Question:** C1's own suggested split ("Overview (contact, cadence, notes, next occasion) · Schedule (work, time off) · Gifts (budgets, sites, ideas, history, wishlist) · History (conversation log, moments, reciprocity)") doesn't name every one of the page's 18 sections -- Custody and Activities (schedule-shaped but child-specific), Profile details (a Module 1 fixed-field form), and Relationships (Module 1's "other people in their life" list) aren't in the example.
+- **Assumed:** Custody -> Overview (it's a "what do I need to know" fact, not something you'd edit like a schedule) and Activities -> Schedule (it's literally a recurring weekly schedule, just for a child instead of an adult's work shifts). Profile details -> Overview (arbitrary key facts about the person -- shoe size, how you met -- read as exactly the kind of thing C1's own framing asks for: "what do I need to know before I call this person"). Relationships -> History (grouped with the other Module 1 relationship-context lists -- conversation log, moments, reciprocity -- rather than Overview, since it's markedly less urgent than cadence/custody). Moved Notes into Overview too (explicitly named in C1's own example, previously rendered after everything else at the bottom of the page).
+- **Reversible:** Yes -- moving a section between tabs is a self-contained JSX move (each section is its own `<Card>`), no data model implications either way.
+- **Confidence:** High that Overview now genuinely fits "one screen" (contact, cadence, custody if a child, profile details, notes) per C1's stated goal -- live-verified. Medium on the exact placement of Custody/Profile details/Relationships specifically, since the audit didn't literally name them; a reasonable person could sort 1-2 of these differently.
+
 ### Q13 — P-04/P-08: one already-fixed, one prompt-only fix that can't be unit-tested
 
 - **Task:** P-04, P-08

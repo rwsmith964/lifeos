@@ -46,6 +46,8 @@ import { estimateAgeYears } from "@/lib/ai/prompts/gift-suggestion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { AddAffordance } from "@/components/ui/add-affordance";
+import { PersonPageTabs } from "./person-page-tabs";
 import {
   AddBudgetForm,
   AddGiftSiteForm,
@@ -216,6 +218,15 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
         </Button>
       </div>
 
+      {/* C1 (audit pass 2026-09-11): "Split into tabs: Overview (contact,
+          cadence, notes, next occasion) · Schedule (work, time off) ·
+          Gifts (budgets, sites, ideas, history, wishlist) · History
+          (conversation log, moments, reciprocity)." Every section below is
+          unchanged (same data, same forms) -- only which tab it renders
+          under changed. See person-page-tabs.tsx. */}
+      <PersonPageTabs
+        overview={
+          <>
       {(person.phone || person.email) && (
         <Card>
           <CardContent className="flex flex-col gap-2">
@@ -236,7 +247,7 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
       {upcomingEvents.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">Upcoming</CardTitle>
+            <CardTitle as="h2">Upcoming</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-2">
             {upcomingEvents.map((event) => (
@@ -254,7 +265,7 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
       {isChild && custodyBlocks.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">Custody (next 14 days)</CardTitle>
+            <CardTitle as="h2">Custody (next 14 days)</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-2">
             {custodyBlocks.map((block) => (
@@ -270,103 +281,10 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
         </Card>
       )}
 
-      {isChild && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Activities</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            <p className="text-muted-foreground text-xs">
-              {person.full_name}&apos;s recurring weekly activities -- practices, lessons, anything on a regular
-              schedule. Mark whether each adult has to be there (games) or it&apos;s optional (practices). This
-              doesn&apos;t add anything to the calendar yet -- it&apos;s just where the schedule lives.
-            </p>
-            {childActivities.length > 0 && (
-              <div className="flex flex-col gap-3">
-                {childActivities.map((activity) => (
-                  <ChildActivityListItem
-                    key={activity.id}
-                    childPersonId={id}
-                    activity={activity}
-                    householdAdults={householdAdults}
-                    attendance={attendanceByActivity.get(activity.id) ?? []}
-                  />
-                ))}
-              </div>
-            )}
-            <AddChildActivityForm childPersonId={id} />
-          </CardContent>
-        </Card>
-      )}
-
-      {!isChild && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Work schedule</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            <p className="text-muted-foreground text-xs">
-              This person&apos;s usual weekly shifts. Used to figure out when they&apos;re free for plans and to skip
-              generating a shift on any day they&apos;ve booked off below.
-            </p>
-            {workSchedules.length > 0 && (
-              <div className="flex flex-col gap-1">
-                {workSchedules.map((schedule) => (
-                  <div key={schedule.id} className="flex items-center justify-between text-sm">
-                    <p>
-                      <span className="font-medium">{DAY_OF_WEEK_LABELS[schedule.day_of_week]}</span>{" "}
-                      <span className="text-muted-foreground">
-                        {/* M-02: format the raw "HH:MM:SS" DB value instead of printing it as-is. */}
-                        {schedule.label} {formatTime(schedule.start_time)}–{formatTime(schedule.end_time)}
-                      </span>
-                    </p>
-                    <DeleteWorkScheduleButton personId={id} scheduleId={schedule.id} />
-                  </div>
-                ))}
-              </div>
-            )}
-            <AddWorkScheduleForm personId={id} />
-          </CardContent>
-        </Card>
-      )}
-
-      {!isChild && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Time off</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            <p className="text-muted-foreground text-xs">
-              Vacation, sick days, or anything else that takes this person off their usual work schedule. You can
-              also add these by just describing them in Quick Capture -- e.g. “I’m off next Friday.”
-            </p>
-            {upcomingTimeOff.length > 0 && (
-              <div className="flex flex-col gap-1">
-                {upcomingTimeOff.map((entry) => (
-                  <div key={entry.id} className="flex items-center justify-between text-sm">
-                    <p>
-                      <span className="font-medium">
-                        {entry.start_date === entry.end_date
-                          ? format(new Date(`${entry.start_date}T00:00:00`), "MMM d")
-                          : `${format(new Date(`${entry.start_date}T00:00:00`), "MMM d")}–${format(new Date(`${entry.end_date}T00:00:00`), "MMM d")}`}
-                      </span>{" "}
-                      {entry.reason && <span className="text-muted-foreground">{entry.reason}</span>}
-                      {entry.destination && <span className="text-muted-foreground"> — {entry.destination}</span>}
-                    </p>
-                    <DeleteTimeOffButton personId={id} entryId={entry.id} />
-                  </div>
-                ))}
-              </div>
-            )}
-            <AddTimeOffForm personId={id} />
-          </CardContent>
-        </Card>
-      )}
-
       {person.relationship_type !== "self" && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">Contact cadence</CardTitle>
+            <CardTitle as="h2">Contact cadence</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
             {cadenceStatus ? (
@@ -414,9 +332,136 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
         </Card>
       )}
 
+      {engineEnabled && (
+        <Card>
+          <CardHeader>
+            <CardTitle as="h2">Profile details</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ProfileDetailsForm personId={id} details={profileDetails} />
+          </CardContent>
+        </Card>
+      )}
+
+      {person.notes && (
+        <Card>
+          <CardHeader>
+            <CardTitle as="h2">Notes</CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground">{person.notes}</CardContent>
+        </Card>
+      )}
+      </>
+        }
+        schedule={
+          <>
+
+      {isChild && (
+        <Card>
+          <CardHeader>
+            <CardTitle as="h2">Activities</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <p className="text-muted-foreground text-xs">
+              {person.full_name}&apos;s recurring weekly activities -- practices, lessons, anything on a regular
+              schedule. Mark whether each adult has to be there (games) or it&apos;s optional (practices). This
+              doesn&apos;t add anything to the calendar yet -- it&apos;s just where the schedule lives.
+            </p>
+            {childActivities.length > 0 && (
+              <div className="flex flex-col gap-3">
+                {childActivities.map((activity) => (
+                  <ChildActivityListItem
+                    key={activity.id}
+                    childPersonId={id}
+                    activity={activity}
+                    householdAdults={householdAdults}
+                    attendance={attendanceByActivity.get(activity.id) ?? []}
+                  />
+                ))}
+              </div>
+            )}
+            <AddAffordance label="Add activity">
+              <AddChildActivityForm childPersonId={id} />
+            </AddAffordance>
+          </CardContent>
+        </Card>
+      )}
+
+      {!isChild && (
+        <Card>
+          <CardHeader>
+            <CardTitle as="h2">Work schedule</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <p className="text-muted-foreground text-xs">
+              This person&apos;s usual weekly shifts. Used to figure out when they&apos;re free for plans and to skip
+              generating a shift on any day they&apos;ve booked off below.
+            </p>
+            {workSchedules.length > 0 && (
+              <div className="flex flex-col gap-1">
+                {workSchedules.map((schedule) => (
+                  <div key={schedule.id} className="flex items-center justify-between text-sm">
+                    <p>
+                      <span className="font-medium">{DAY_OF_WEEK_LABELS[schedule.day_of_week]}</span>{" "}
+                      <span className="text-muted-foreground">
+                        {/* M-02: format the raw "HH:MM:SS" DB value instead of printing it as-is. */}
+                        {schedule.label} {formatTime(schedule.start_time)}–{formatTime(schedule.end_time)}
+                      </span>
+                    </p>
+                    <DeleteWorkScheduleButton personId={id} scheduleId={schedule.id} />
+                  </div>
+                ))}
+              </div>
+            )}
+            <AddAffordance label="Add work schedule">
+              <AddWorkScheduleForm personId={id} />
+            </AddAffordance>
+          </CardContent>
+        </Card>
+      )}
+
+      {!isChild && (
+        <Card>
+          <CardHeader>
+            <CardTitle as="h2">Time off</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <p className="text-muted-foreground text-xs">
+              Vacation, sick days, or anything else that takes this person off their usual work schedule. You can
+              also add these by just describing them in Quick Capture -- e.g. “I’m off next Friday.”
+            </p>
+            {upcomingTimeOff.length > 0 && (
+              <div className="flex flex-col gap-1">
+                {upcomingTimeOff.map((entry) => (
+                  <div key={entry.id} className="flex items-center justify-between text-sm">
+                    <p>
+                      <span className="font-medium">
+                        {entry.start_date === entry.end_date
+                          ? format(new Date(`${entry.start_date}T00:00:00`), "MMM d")
+                          : `${format(new Date(`${entry.start_date}T00:00:00`), "MMM d")}–${format(new Date(`${entry.end_date}T00:00:00`), "MMM d")}`}
+                      </span>{" "}
+                      {entry.reason && <span className="text-muted-foreground">{entry.reason}</span>}
+                      {entry.destination && <span className="text-muted-foreground"> — {entry.destination}</span>}
+                    </p>
+                    <DeleteTimeOffButton personId={id} entryId={entry.id} />
+                  </div>
+                ))}
+              </div>
+            )}
+            <AddAffordance label="Add time off">
+              <AddTimeOffForm personId={id} />
+            </AddAffordance>
+          </CardContent>
+        </Card>
+      )}
+          </>
+        }
+        gifts={
+          <>
+
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm">Interests</CardTitle>
+          <CardTitle as="h2">Interests</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           {interests.length > 0 && (
@@ -436,13 +481,15 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
             relationshipType={person.relationship_type}
             existingInterests={interests.map((i) => i.interest)}
           />
-          <AddInterestForm personId={id} />
+          <AddAffordance label="Add interest">
+            <AddInterestForm personId={id} />
+          </AddAffordance>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm">Gift budgets</CardTitle>
+          <CardTitle as="h2">Gift budgets</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           {budgets.length > 0 && (
@@ -458,13 +505,15 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
               ))}
             </div>
           )}
-          <AddBudgetForm personId={id} />
+          <AddAffordance label="Add gift budget">
+            <AddBudgetForm personId={id} />
+          </AddAffordance>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm">Preferred gift sites</CardTitle>
+          <CardTitle as="h2">Preferred gift sites</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-muted-foreground text-xs">
@@ -488,14 +537,16 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
               ))}
             </div>
           )}
-          <AddGiftSiteForm personId={id} />
+          <AddAffordance label="Add gift site">
+            <AddGiftSiteForm personId={id} />
+          </AddAffordance>
         </CardContent>
       </Card>
 
       {person.relationship_type !== "self" && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">Get gift ideas</CardTitle>
+            <CardTitle as="h2">Get gift ideas</CardTitle>
           </CardHeader>
           <CardContent>
             <GenerateSuggestionsForm
@@ -509,7 +560,7 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm">Gift history</CardTitle>
+          <CardTitle as="h2">Gift history</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           {gifts.length > 0 && (
@@ -519,40 +570,40 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
               ))}
             </div>
           )}
-          <RecordGiftForm personId={id} />
+          <AddAffordance label="Record a gift">
+            <RecordGiftForm personId={id} />
+          </AddAffordance>
         </CardContent>
       </Card>
 
       {engineEnabled && (
+        <Card>
+          <CardHeader>
+            <CardTitle as="h2">Wishlist</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            {wishlistItems.length > 0 && (
+              <div className="flex flex-col gap-1">
+                {wishlistItems.map((item) => (
+                  <WishlistItemRow key={item.id} personId={id} item={item} />
+                ))}
+              </div>
+            )}
+            <AddAffordance label="Add wishlist item">
+              <AddWishlistItemForm personId={id} />
+            </AddAffordance>
+          </CardContent>
+        </Card>
+      )}
+          </>
+        }
+        history={
+          <>
+      {engineEnabled && (
         <>
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm">Profile details</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ProfileDetailsForm personId={id} details={profileDetails} />
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Wishlist</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-3">
-              {wishlistItems.length > 0 && (
-                <div className="flex flex-col gap-1">
-                  {wishlistItems.map((item) => (
-                    <WishlistItemRow key={item.id} personId={id} item={item} />
-                  ))}
-                </div>
-              )}
-              <AddWishlistItemForm personId={id} />
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Relationships</CardTitle>
+              <CardTitle as="h2">Relationships</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
               <p className="text-muted-foreground text-xs">
@@ -566,13 +617,15 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
                   ))}
                 </div>
               )}
-              <AddRelationshipForm personId={id} householdPeople={allHouseholdPeople} />
+              <AddAffordance label="Add relationship">
+                <AddRelationshipForm personId={id} householdPeople={allHouseholdPeople} />
+              </AddAffordance>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm">Conversation log</CardTitle>
+              <CardTitle as="h2">Conversation log</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
               <p className="text-muted-foreground text-xs">
@@ -586,13 +639,15 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
                   ))}
                 </div>
               )}
-              <AddConversationLogEntryForm personId={id} />
+              <AddAffordance label="Add conversation log entry">
+                <AddConversationLogEntryForm personId={id} />
+              </AddAffordance>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm">Shared moments</CardTitle>
+              <CardTitle as="h2">Shared moments</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
               {personMoments.length > 0 && (
@@ -609,13 +664,15 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
                   ))}
                 </div>
               )}
-              <AddMomentForm personId={id} householdPeople={allHouseholdPeople} />
+              <AddAffordance label="Add moment">
+                <AddMomentForm personId={id} householdPeople={allHouseholdPeople} />
+              </AddAffordance>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm">Gift reciprocity ledger</CardTitle>
+              <CardTitle as="h2">Gift reciprocity ledger</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
               <p className="text-muted-foreground text-xs">
@@ -629,20 +686,16 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
                   ))}
                 </div>
               )}
-              <AddReciprocityEntryForm personId={id} />
+              <AddAffordance label="Add ledger entry">
+                <AddReciprocityEntryForm personId={id} />
+              </AddAffordance>
             </CardContent>
           </Card>
         </>
       )}
-
-      {person.notes && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Notes</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">{person.notes}</CardContent>
-        </Card>
-      )}
+          </>
+        }
+      />
     </div>
   );
 }
