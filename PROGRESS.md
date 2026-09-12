@@ -45,13 +45,13 @@ Status per audit item. Updated at the end of each Phase. DONE / PARTIAL / BLOCKE
 - A4: DONE — new shared `Breadcrumb` component wired into every nested page found (person detail/edit, add person, request childcare, calendar add/edit event, the whole custody family, activities/trip-idea add/edit, packing add/detail, gifts/saved, settings/activity, execution, intake), replacing the one bespoke breadcrumb and scattered "← X" links that existed before. See QUESTIONS.md Q10 for scope notes. Files: `components/nav/breadcrumb.tsx` (new), ~20 page files.
 
 ## Phase 6 — Today page
-- B1: PENDING
-- B2: PENDING
-- B3: PENDING
-- B4: PENDING
-- B5: PENDING
-- B6: PENDING
-- B7: PENDING
+- B1: DONE — reach-out cards get real inline actions (Text, Log contact); the dinner card gets a real inline meal picker (type a meal, "Plan it"); opportunity-backed decide cards get real Accept/Dismiss (same action the Opportunities page uses). Live-verified all three end-to-end. Files: `app/(app)/today-card-actions.tsx` (new), `app/(app)/today-actions.ts` (new), `app/(app)/page.tsx`.
+- B2: DONE (code + migration; migration needs Richard to apply it — see QUESTIONS.md Q11) — every card gets Dismiss (hides for the rest of today) and Snooze 3 days, persisted per-viewer in a new `today_item_dismissals` table so a regenerated brief doesn't bring a dismissed item right back. Degrades gracefully with a clear, honest error until the migration is applied — live-verified this exact path. Files: `supabase/migrations/20260911000001_today_item_dismissals.sql` (new), `lib/db/repositories/today-dismissals.ts` (new).
+- B3: DONE — reach-out card eyebrow now shows a short day count ("10 days") instead of repeating the full "10 days since last contact — past your usual cadence" sentence; headline is just the person's name; the full reason still shows once, as the card's detail line. Files: `lib/brief/today-priority-items.ts`.
+- B4: DONE — replaced the stacked REACH_OUT/DECIDE/QUICK + Suggestion/Gifts/Household double label with one `source` axis (People/Plan/Gifts/Household/Calendar), which is also what predicts each card's action. Files: `lib/brief/today-priority-items.ts`, `app/(app)/page.tsx`.
+- B5: DONE — reach-out (urgent) cards get a coloured left rule + stronger fill; quick items (gift/household/calendar heads-ups) drop the card chrome entirely and read as a quiet list; decide/opportunity cards stay a standard full card. Files: `components/ui/priority-card.tsx`, `app/(app)/page.tsx`.
+- B6: DONE (real progress state, not a fabricated staged animation — see QUESTIONS.md Q12) — "Rebuild" renamed to "Refresh briefing," pending state shows real descriptive copy, and a genuine "Updated: weather, 2 reach-outs" / "Nothing changed." summary appears afterward, computed from an actual before/after diff of the brief content. Files: `app/(app)/regenerate-brief-button.tsx`, `app/(app)/actions.ts`, `lib/brief/diff-summary.ts` (new).
+- B7: DONE — "Coming up" now reads its horizon from `households.gift_scan_horizon_days` (was a hardcoded 90, inconsistent with Settings' real 60) for both the scan window and the displayed number; "Relationships" now names whoever's actually overdue ("Jackie Smith and Fritz are overdue for a check-in") instead of an unexplained "0 of 2 on track." Files: `app/(app)/page.tsx`.
 
 ## Phase 7 — Person pages
 - C1: PENDING

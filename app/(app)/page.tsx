@@ -1,7 +1,7 @@
 import { addDays, format, formatDistanceToNow, startOfDay } from "date-fns";
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { AlertTriangle, Cloud, Compass, Mic, Users, Zap } from "lucide-react";
+import { AlertTriangle, CalendarDays, Cloud, Compass, Gift, House, Mic, Users } from "lucide-react";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { getZonedNow } from "@/lib/timezones";
 import { generateDailyBrief } from "@/lib/brief/generate";
@@ -19,21 +19,39 @@ import { getPresentedOpportunities } from "@/lib/opportunities/present";
 import { BRIEF_CONTRIBUTORS, composeBrief, itemsForCategory } from "@/lib/brief/contributors";
 import { evaluateRhythm } from "@/lib/people/rhythm";
 import { scanUpcomingOccasions, occasionTypeDisplayLabel } from "@/lib/gifts/occasions";
-import { buildTodayPriorityItems, type PriorityItem } from "@/lib/brief/today-priority-items";
+import { buildTodayPriorityItems, type PriorityItemKind } from "@/lib/brief/today-priority-items";
+import { listActiveDismissalsForPerson } from "@/lib/db/repositories/today-dismissals";
 import type { BriefContent } from "@/lib/brief/schema";
-import { Button } from "@/components/ui/button";
 import { PriorityCard } from "@/components/ui/priority-card";
 import { RailCard } from "@/components/ui/rail-card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { RegenerateBriefButton } from "./regenerate-brief-button";
+import { ReachOutCardActions, DecideCardActions, DinnerCardActions, QuickCardActions } from "./today-card-actions";
 
-const OCCASION_SCAN_HORIZON_DAYS = 90;
 const RELATIONSHIP_BAR_LIMIT = 8;
 
-const TAG_META: Record<PriorityItem["tag"], { label: string; variant: "slipping" | "custody-you" | "neutral"; icon: ReactNode }> = {
-  reach_out: { label: "Reach out", variant: "slipping", icon: <Users className="size-5" /> },
-  decide: { label: "Decide", variant: "custody-you", icon: <Compass className="size-5" /> },
-  quick: { label: "Quick", variant: "neutral", icon: <Zap className="size-5" /> },
+// B4: one axis (source), not two -- People/Plan/Gifts/Household/Calendar
+// predicts where a card's button goes, replacing the old
+// REACH_OUT/DECIDE/QUICK badge stacked beside a second Suggestion/Gifts/
+// Household label.
+const SOURCE_META: Record<string, { variant: "slipping" | "custody-you" | "neutral"; icon: ReactNode }> = {
+  People: { variant: "slipping", icon: <Users className="size-5" /> },
+  Plan: { variant: "custody-you", icon: <Compass className="size-5" /> },
+  Gifts: { variant: "neutral", icon: <Gift className="size-5" /> },
+  Household: { variant: "neutral", icon: <House className="size-5" /> },
+  Calendar: { variant: "neutral", icon: <CalendarDays className="size-5" /> },
+};
+
+// B5: reach-out cards are genuinely urgent (a coloured left rule, stronger
+// fill); decide/opportunity cards stay a standard full card; quick items
+// (gift/household/calendar heads-ups) drop the card chrome entirely and
+// read as a quiet list, so urgency is visible in FORM, not just words.
+const PRIORITY_BY_KIND: Record<PriorityItemKind, "urgent" | "standard" | "low"> = {
+  reach_out: "urgent",
+  decide: "standard",
+  quick_headsup: "low",
+  quick_household: "low",
+  quick_household_dinner: "low",
 };
 
 export default async function BriefPage() {
@@ -98,6 +116,13 @@ export default async function BriefPage() {
     isStale = isBriefStale(brief.generated_at, [...recentEvents, ...recentCustodyBlocks, ...householdPeople]);
   }
 
+  // B7: "'Nothing in the next 90 days' -- but Settings sets the gift scan
+  // horizon to 60, so the number is both arbitrary and inconsistent."
+  // households.gift_scan_horizon_days is the one real setting (already used
+  // by the Gifts feature itself) -- both the scan window and the number
+  // shown to the household now read from it instead of a separate constant.
+  const occasionHorizonDays = household.gift_scan_horizon_days;
+
   // Redesign right-rail data -- "Coming up" (Part 2): existing occasion-scan
   // logic (lib/gifts/occasions.ts, already used by the Gifts feature),
   // cross-referenced against existing active gift suggestions to show a
@@ -106,7 +131,7 @@ export default async function BriefPage() {
     listActiveSuggestionsForHousehold(supabase, household.id),
     listActiveCadencesForHousehold(supabase, household.id),
   ]);
-  const upcomingOccasions = scanUpcomingOccasions(householdPeople, today, OCCASION_SCAN_HORIZON_DAYS).slice(0, 4);
+  const upcomingOccasions = scanUpcomingOccasions(householdPeople, today, occasionHorizonDays).slice(0, 4);
   const suggestionCountByPerson = new Map<string, number>();
   for (const s of activeSuggestions) {
     suggestionCountByPerson.set(s.person_id, (suggestionCountByPerson.get(s.person_id) ?? 0) + 1);
@@ -124,7 +149,29 @@ export default async function BriefPage() {
     })
     .filter((b) => b.personId)
     .slice(0, RELATIONSHIP_BAR_LIMIT);
-  const settledCount = relationshipBars.filter((b) => b.tier === "settled").length;
+  // B7: "'0 of 2 on track' ... never names the two people, and is phrased
+  // as a failure." Name whoever's actually overdue instead of just a
+  // count; only fall back to the count when nobody is (a positive state,
+  // not worth naming).
+  const overdueNames = relationshipBars.filter((b) => b.tier !== "settled").map((b) => b.name);
+  const relationshipsSummary =
+    relationshipBars.length === 0
+      ? "No rhythms set up yet."
+      : overdueNames.length === 0
+        ? `All ${relationshipBars.length} on track.`
+        : `${overdueNames.join(" and ")} ${overdueNames.length === 1 ? "is" : "are"} overdue for a check-in.`;
+
+  // B2: items dismissed/snoozed by this viewer -- filtered out of the
+  // priority stack below. Falls back to "nothing hidden" if the migration
+  // adding this table hasn't been applied to this environment yet (see
+  // QUESTIONS.md) rather than 500ing the whole page over a cosmetic
+  // feature not being wired up yet.
+  let dismissedItemIds = new Set<string>();
+  try {
+    dismissedItemIds = await listActiveDismissalsForPerson(supabase, selfPerson.id, todayDateStr);
+  } catch (error) {
+    console.error("Failed to load Today item dismissals (non-fatal):", error);
+  }
 
   if (!content) {
     return (
@@ -139,6 +186,7 @@ export default async function BriefPage() {
     householdPeopleByName,
     opportunities: topOpportunities,
     household: composedHousehold.map((h) => ({ id: h.id, title: h.title, detail: h.detail ?? undefined, href: h.href ?? undefined })),
+    dismissedItemIds,
   });
   const lowPriorityCount = Math.max(0, rawOpportunities.length - topOpportunities.length);
 
@@ -190,14 +238,12 @@ export default async function BriefPage() {
             <p className="mt-1 font-sans text-body text-ink">
               {upcomingOccasions.length > 0
                 ? `${peopleById.get(upcomingOccasions[0]!.personId)?.nickname || peopleById.get(upcomingOccasions[0]!.personId)?.full_name} — ${occasionTypeDisplayLabel(upcomingOccasions[0]!.occasionType)}, ${format(upcomingOccasions[0]!.occasionDate, "MMM d")}`
-                : `Nothing in the next ${OCCASION_SCAN_HORIZON_DAYS} days.`}
+                : `Nothing in the next ${occasionHorizonDays} days.`}
             </p>
           </div>
           <div className="flex-1 rounded-card border border-line bg-surface px-4 py-3">
             <p className="font-sans text-section-label uppercase text-meta">Relationships</p>
-            <p className="mt-1 font-sans text-body text-ink">
-              {relationshipBars.length > 0 ? `${settledCount} of ${relationshipBars.length} on track.` : "No rhythms set up yet."}
-            </p>
+            <p className="mt-1 font-sans text-body text-ink">{relationshipsSummary}</p>
           </div>
         </div>
 
@@ -216,27 +262,27 @@ export default async function BriefPage() {
         {priorityItems.length > 0 ? (
           <div className="flex flex-col gap-3">
             {priorityItems.map((item) => {
-              const meta = TAG_META[item.tag];
+              const meta = SOURCE_META[item.source] ?? SOURCE_META.Household!;
               return (
                 <PriorityCard
                   key={item.id}
                   icon={meta.icon}
-                  tagLabel={meta.label}
+                  tagLabel={item.source}
                   tagVariant={meta.variant}
                   metadata={item.metadata}
                   headline={item.headline}
                   detail={item.detail}
+                  priority={PRIORITY_BY_KIND[item.kind]}
                   actions={
-                    <>
-                      <Button asChild size="sm">
-                        <Link href={item.primaryAction.href}>{item.primaryAction.label}</Link>
-                      </Button>
-                      {item.ghostActions.map((action) => (
-                        <Button key={action.href} asChild variant="ghost" size="sm">
-                          <Link href={action.href}>{action.label}</Link>
-                        </Button>
-                      ))}
-                    </>
+                    item.kind === "reach_out" ? (
+                      <ReachOutCardActions itemKey={item.id} personId={item.personId} primaryAction={item.primaryAction} />
+                    ) : item.kind === "decide" ? (
+                      <DecideCardActions itemKey={item.id} opportunityId={item.opportunityId} primaryAction={item.primaryAction} />
+                    ) : item.kind === "quick_household_dinner" ? (
+                      <DinnerCardActions itemKey={item.id} primaryAction={item.primaryAction} />
+                    ) : (
+                      <QuickCardActions itemKey={item.id} primaryAction={item.primaryAction} />
+                    )
                   }
                 />
               );
@@ -289,7 +335,7 @@ export default async function BriefPage() {
               );
             })
           ) : (
-            <p className="font-sans text-body text-ink-2">Nothing on the horizon in the next {OCCASION_SCAN_HORIZON_DAYS} days.</p>
+            <p className="font-sans text-body text-ink-2">Nothing on the horizon in the next {occasionHorizonDays} days.</p>
           )}
         </RailCard>
 
@@ -308,9 +354,7 @@ export default async function BriefPage() {
                   />
                 ))}
               </div>
-              <p className="font-sans text-body text-ink-2">
-                {settledCount} of {relationshipBars.length} relationships on track.
-              </p>
+              <p className="font-sans text-body text-ink-2">{relationshipsSummary}</p>
             </>
           ) : (
             <p className="font-sans text-body text-ink-2">No contact rhythms set up yet.</p>
