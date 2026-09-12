@@ -37,7 +37,7 @@ export function MobileCaptureButton({ leftItems, rightItems }: { leftItems: NavI
         <button
           type="button"
           onClick={openCapture}
-          aria-label="Ask, add, or dump a thought"
+          aria-label="Add or dump a thought"
           className="-mt-6 flex size-[52px] items-center justify-center rounded-full bg-action text-on-action shadow-sm motion-safe-transition hover:bg-action/90"
         >
           <Mic className="size-5" />

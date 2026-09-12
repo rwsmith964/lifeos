@@ -158,9 +158,23 @@ export async function POST(request: Request) {
   const items = validated.data.items;
 
   if (items.length === 0) {
+    // D-01: Quick Capture is a write-only parser -- it has no read/query
+    // path, so a genuine question ("what's on my calendar tomorrow?") was
+    // met with the same generic "nothing to save" refusal as gibberish,
+    // even though the placeholder copy used to say "Ask...". Taking the
+    // audit's offered fallback (a full read path is out of scope for this
+    // pass -- logged as Q6): drop "Ask" from the copy (done across
+    // capture-panel/command-bar/mobile-capture-button) and, here, give a
+    // question-shaped input its own honest refusal instead of pretending
+    // it looked like unrecognized noise.
+    const lastUserTurn = redactedTurns.filter((t) => t.role === "user").at(-1)?.text.trim() ?? "";
+    const looksLikeQuestion =
+      /\?\s*$/.test(lastUserTurn) || /^(what|when|where|who|why|how|is|are|do|does|can|will)\b/i.test(lastUserTurn);
     return NextResponse.json({
       status: "unrecognized",
-      confirmationMessage: "I don't see anything to save there — try mentioning a person, event, or gift.",
+      confirmationMessage: looksLikeQuestion
+        ? "I can't answer questions yet — I can only save things. Try telling me what to add instead."
+        : "I don't see anything to save there — try mentioning a person, event, or gift.",
     });
   }
 

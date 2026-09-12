@@ -40,6 +40,47 @@ function firstName(fullName: string): string {
   return fullName.split(/\s+/)[0] ?? fullName;
 }
 
+// D-02: `briefHeadsUpItemSchema` (lib/brief/schema.ts) only carries a
+// title/detail -- the AI-generated brief content has no structured
+// "what is this about" field for a heads-up item -- so every one of them
+// used to be hardcoded to "Gifts"/"Open Gifts" (the category headsUp was
+// originally built for, before weather/trail-condition items started
+// landing in the same array). A weather/weekend-plan heads-up ("Weekend
+// weather: showers... Magpie Cafe scores highest at 57/100") was rendering
+// under a Gifts tag with a button that opened /gifts. Rather than change
+// the AI schema/prompt contract (a bigger, riskier change than this pass
+// scopes), this infers the real category from the item's own text -- every
+// real example seen in production (gift order-by reminders, trail/weather/
+// activity heads-ups) has an unambiguous keyword footprint.
+interface HeadsUpCategory {
+  metadata: string;
+  actionLabel: string;
+  href: string;
+}
+const HEADSUP_CATEGORY_RULES: { pattern: RegExp; category: HeadsUpCategory }[] = [
+  {
+    pattern: /\bgift(s|ed|ing)?\b|\border[- ]by\b|\bbirthday\b|\bshortlist\b/i,
+    category: { metadata: "Gifts", actionLabel: "Open Gifts", href: "/gifts" },
+  },
+  {
+    pattern: /\btrail\b|\bweather\b|\bhik(e|ing)\b|\bfish(ing)?\b|\bweekend\b|\bcondition(s)?\b|\btide\b|\bsolunar\b|\bactivit(y|ies)\b/i,
+    category: { metadata: "Plan", actionLabel: "See weekend options", href: "/activities" },
+  },
+  {
+    pattern: /\bcustody\b|\bchildcare\b|\bpickup\b|\bdrop[- ]off\b|\btransfer\b/i,
+    category: { metadata: "Calendar", actionLabel: "Open Calendar", href: "/calendar" },
+  },
+];
+const HEADSUP_DEFAULT_CATEGORY: HeadsUpCategory = { metadata: "Household", actionLabel: "Open", href: "/household" };
+
+function categorizeHeadsUpItem(item: { title: string; detail: string }): HeadsUpCategory {
+  const text = `${item.title} ${item.detail}`;
+  for (const rule of HEADSUP_CATEGORY_RULES) {
+    if (rule.pattern.test(text)) return rule.category;
+  }
+  return HEADSUP_DEFAULT_CATEGORY;
+}
+
 export function buildTodayPriorityItems({
   content,
   householdPeopleByName,
@@ -93,15 +134,20 @@ export function buildTodayPriorityItems({
     });
   }
 
-  // Quick -- gift deadlines and household chores/meal gaps (Part 3: "Quick" = neutral).
+  // Quick -- gift deadlines, weekend/weather heads-ups, and household
+  // chores/meal gaps, all sharing this one AI-generated array with no
+  // structured category of its own (Part 3: "Quick" = neutral). D-02:
+  // categorizeHeadsUpItem infers which of those this particular item
+  // actually is, instead of every one defaulting to "Gifts."
   content.headsUp.forEach((item, i) => {
+    const category = categorizeHeadsUpItem(item);
     items.push({
       id: `quick-headsup-${i}`,
       tag: "quick",
-      metadata: "Gifts",
+      metadata: category.metadata,
       headline: item.title,
       detail: item.detail,
-      primaryAction: { label: "Open Gifts", href: "/gifts" },
+      primaryAction: { label: category.actionLabel, href: category.href },
       ghostActions: [],
       rank: 2,
     });

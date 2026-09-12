@@ -134,7 +134,7 @@ export default async function PeoplePage() {
 
       <PeopleTableClient rows={rows} archivedRows={archivedRows} />
 
-      <ChildcareSection requests={childcareRequests} people={allPeopleForChildcare} />
+      <ChildcareSection requests={childcareRequests} people={allPeopleForChildcare} today={format(today, "yyyy-MM-dd")} />
     </div>
   );
 }

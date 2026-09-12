@@ -39,7 +39,10 @@ export async function regenerateBriefAction(): Promise<RegenerateBriefState> {
     if (existing) {
       await briefsRepo.remove(serviceRoleClient, existing.id);
     }
-    await generateDailyBrief(serviceRoleClient, household.id, selfPerson.id, today);
+    // D-03: a manual rebuild is already visible to whoever clicked it --
+    // it shouldn't also mint a new unread "daily_brief" notification, the
+    // way the cron's once-a-day generation should.
+    await generateDailyBrief(serviceRoleClient, household.id, selfPerson.id, today, false);
   } catch (error) {
     return { error: friendlyMutationError(error, { fallback: "Couldn't regenerate the brief — please try again." }) };
   }

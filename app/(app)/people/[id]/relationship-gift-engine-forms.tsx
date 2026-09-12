@@ -82,14 +82,22 @@ export function ProfileDetailsForm({
   const formRef = useRef<HTMLFormElement>(null);
   const { clearInvalid } = useFormValidity(formRef);
   const [saved, setSaved] = useState(false);
+  // D-07: `state` starts as `{ error: null }` -- the exact same shape a
+  // successful save leaves it in -- so the effect below used to fire on
+  // first mount too (pending is false and state.error is null before any
+  // submission has ever happened), showing "Saved." with zero interaction.
+  // Only flip `saved` in response to a save this component actually
+  // dispatched.
+  const hasSubmitted = useRef(false);
 
   function handleSave() {
     setSaved(false);
+    hasSubmitted.current = true;
     dispatch(new FormData(formRef.current!));
   }
 
   useEffect(() => {
-    if (!pending && !state.error && formRef.current) setSaved(true);
+    if (hasSubmitted.current && !pending && !state.error && formRef.current) setSaved(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
 
