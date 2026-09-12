@@ -1055,7 +1055,10 @@ export default async function CalendarPage({
               components/ui/segmented-control.tsx primitive -- that
               primitive is controlled client state, while this needs a
               real, bookmarkable/shareable URL per view (existing
-              app convention). */}
+              app convention). B-01: every option must pass its own
+              &range= explicitly -- Month previously omitted it (relying
+              on parseRangeParam's default), which silently rendered Week
+              instead of Month on click. */}
           <div className="inline-flex items-center gap-1 rounded-control border border-line bg-surface-2 p-1">
             {(
               [
@@ -1067,7 +1070,7 @@ export default async function CalendarPage({
             ).map((option) => (
               <Link
                 key={option.value}
-                href={`/calendar?month=${monthLabel}&day=${selectedDayKey}${viewQuery}${option.value === "month" ? "" : `&range=${option.value}`}`}
+                href={`/calendar?month=${monthLabel}&day=${selectedDayKey}${viewQuery}&range=${option.value}`}
                 className={cn(
                   "rounded-chip px-3 py-1.5 font-sans text-[12.5px] font-bold motion-safe-transition",
                   range === option.value ? "bg-surface text-ink shadow-sm" : "text-meta hover:text-ink-2"

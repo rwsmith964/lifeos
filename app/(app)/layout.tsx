@@ -42,7 +42,20 @@ const MOBILE_NAV_RIGHT = MOBILE_NAV_ITEMS.slice(2, 4);
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const { supabase, household, selfPerson } = await requireHouseholdContext();
-  const unread = await listUnreadNotifications(supabase, selfPerson.id);
+  // B-02: this runs on every page render (it's in the shared layout), and an
+  // uncaught throw here escapes app/(app)/error.tsx entirely -- a layout's
+  // own error boundary only catches errors from its children, never from the
+  // layout itself, so this used to escalate all the way to the unstyled
+  // root app/global-error.tsx (no sidebar, no fonts, no chrome) on any
+  // transient failure (a Supabase 503, a dropped connection). The unread
+  // count is cosmetic (just the bell badge), so fail soft here instead of
+  // taking down every page in the app over it.
+  let unread: Awaited<ReturnType<typeof listUnreadNotifications>> = [];
+  try {
+    unread = await listUnreadNotifications(supabase, selfPerson.id);
+  } catch (error) {
+    console.error("Failed to load unread notifications (non-fatal):", error);
+  }
   const displayName = selfPerson.nickname || selfPerson.full_name;
 
   return (

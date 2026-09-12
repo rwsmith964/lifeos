@@ -555,3 +555,22 @@ in D-164 and in `pg_policies` history.
 **Assumption made:** D-165 implemented the best-faithful interpretation achievable without a schema change — gating on data-source presence/absence, not on any numeric value — since inventing a threshold schema and matching UI unprompted would be a much larger, unrequested feature. Left as an open question rather than guessing at threshold ranges/units per activity type.
 **Reversal cost:** Medium — would need a new table or jsonb column for per-config threshold values, a UI to set them per activity type, and comparison logic in `viability-gate.ts`; additive, no existing behavior needs to change to add it.
 **Blocking:** No.
+
+---
+
+## Audit Pass (2026-09-11) — full defect and UX audit
+
+Entries below use the format specified for this pass: `Task` (item ID), `Files`, `Question`,
+`Assumed`, `Reversible`, `Confidence`. Logged instead of stopping to ask — a reasonable decision is
+made and implemented in every case, then noted here. See `AUDIT-MAP.md` for the file-ownership map
+and `PROGRESS.md` for per-item status.
+
+### Q1 — B-02's exact 503 root cause is unconfirmed
+
+- **Task:** B-02
+- **Files:** `proxy.ts`, `app/(app)/layout.tsx`, `app/error.tsx` (new), `app/(app)/error.tsx`, `lib/hooks/use-auto-retry-once.ts` (new)
+- **Question:** The audit reports intermittent 503s on `/`, `/activities`, `/notifications`, and a calendar month URL in one session. I have no access to Vercel function logs or Supabase project metrics from this sandbox, so I could not directly observe an actual 503 or confirm which of several plausible causes is the real one.
+- **Assumed:** Made the code more resilient against every plausible cause I could identify rather than guessing at one: (1) `proxy.ts` calls `supabase.auth.getUser()` on *every* navigation and RSC prefetch for *every* route with no try/catch — a transient failure there would throw out of the whole middleware invocation and could explain why unrelated routes failed together in the same session; wrapped it in try/catch, falling back to letting the request through (each protected layout already re-checks auth itself, per the file's own existing comment). (2) `app/(app)/layout.tsx` called `listUnreadNotifications` directly in the layout body with no error handling — since a layout's own error can only be caught by an error boundary in a *parent* segment (not `app/(app)/error.tsx`, which only catches errors from the layout's children), any transient failure there previously escaped all the way to the bare `app/global-error.tsx`. Wrapped it in try/catch, defaulting to an empty notification list (cosmetic — just the bell badge) rather than taking down every page. (3) Added a new `app/error.tsx` as a styled intermediate backstop specifically for the (app)-layout case, so if something in that layout genuinely does fail, the user sees the real design system instead of the bare fallback. (4) Added a shared `useAutoRetryOnce` hook, wired into both `app/(app)/error.tsx` and the new `app/error.tsx`, that silently retries once (~700ms) before showing any error UI at all, per the audit's explicit ask.
+- **Reversible:** Yes — every change is additive/defensive (try/catch around existing calls, a new intermediate error boundary, an opt-in retry hook). None of it changes normal-path behavior.
+- **Confidence:** Medium — the fixes are well-reasoned responses to the *symptom* (cross-cutting, intermittent request failures) and directly address the two concrete code paths that could turn a transient blip into a full failure, but without production log access I can't certify which one (if either) was the actual cause, or rule out something else entirely (e.g. an actual Supabase/Vercel-side rate limit or cold-start issue outside the app's own code). Recommend Richard check the Vercel function logs and Supabase project's API/auth request metrics around the timestamps in the original audit session if the 503s recur after this fix.
+
