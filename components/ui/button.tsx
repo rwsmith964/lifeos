@@ -37,7 +37,15 @@ const buttonVariants = cva(
       },
       size: {
         default: "h-control-touch md:h-control-default px-4",
-        sm: "h-control-compact px-3 text-[12.5px]",
+        // F1 (audit pass 2026-09-11): "Every control in the app is 30px
+        // tall... Raise every interactive control to a 44px minimum hit
+        // area... as a design-token/base-component change." `sm` was the
+        // one size variant still hardcoded to `control-compact` (30px) at
+        // every width -- the other three sizes already used exactly this
+        // touch/md pattern (see the header comment above), `sm` just never
+        // got it. Named audit examples (Add, Save, Dismiss, Reach out,
+        // Request childcare) are all `size="sm"` buttons.
+        sm: "h-control-touch md:h-control-compact px-3 text-[12.5px]",
         lg: "h-control-touch md:h-control-default px-6",
         icon: "size-control-touch md:size-control-default px-0",
       },

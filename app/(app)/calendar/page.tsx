@@ -1091,7 +1091,13 @@ export default async function CalendarPage({
                 key={option.value}
                 href={`/calendar?month=${monthLabel}&day=${selectedDayKey}${viewQuery}&range=${option.value}`}
                 className={cn(
-                  "rounded-chip px-3 py-1.5 font-sans text-[12.5px] font-bold motion-safe-transition",
+                  // F1: this hand-rolled Link-based switcher deliberately
+                  // doesn't reuse components/ui/segmented-control.tsx (see
+                  // this control's own comment on why it needs real URLs
+                  // instead of client state), so it needs the same
+                  // touch/md height fix applied here directly instead of
+                  // inheriting it from that component.
+                  "flex h-control-touch items-center rounded-chip px-3 font-sans text-[12.5px] font-bold motion-safe-transition md:h-control-compact",
                   range === option.value ? "bg-surface text-ink shadow-sm" : "text-meta hover:text-ink-2"
                 )}
               >

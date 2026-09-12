@@ -1,11 +1,17 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
-// Redesign (Part 3 — Component anatomy: Table row, built for People's
-// table). "Grid 210px 124px 112px 1fr 76px, 16px gap, 14px 16px padding,
-// radius 12, transparent 1px border that becomes visible on hover." Named
-// slots match the People columns (Person/Rhythm/Last contact/Next thing/
-// action) exactly -- see docs/redesign-brief.md Part 2.
+// F2 (audit pass 2026-09-11): "People rows are a five-column grid (210px
+// 124px 112px 1fr 76px) with no header row, so columns are unnamed; for
+// three of five people the middle columns render '-', and the flexible
+// column absorbs ~400px of empty space before the action button." Dropped
+// the fixed 5-column grid for a two-line row (name+relation+action on one
+// line, whatever's actually known about rhythm/last-contact/next-thing
+// wrapped on the line below) -- there's no unnamed column left to be
+// confused about, and a row with nothing to say in the second line just
+// doesn't render one, instead of reserving ~400px of empty grid track for
+// it. `rhythm`/`lastContact`/`nextThing` are all optional now; the caller
+// passes null instead of a placeholder dash for "nothing here."
 export function TableRow({
   person,
   rhythm,
@@ -16,27 +22,34 @@ export function TableRow({
   className,
 }: {
   person: React.ReactNode;
-  rhythm: React.ReactNode;
-  lastContact: React.ReactNode;
-  nextThing: React.ReactNode;
+  rhythm?: React.ReactNode;
+  lastContact?: React.ReactNode;
+  nextThing?: React.ReactNode;
   action: React.ReactNode;
   /** Rows past cadence get a slipping-tinted border (Part 2). */
   slipping?: boolean;
   className?: string;
 }) {
+  const hasSecondLine = rhythm || lastContact || nextThing;
   return (
     <div
       className={cn(
-        "grid grid-cols-[210px_124px_112px_1fr_76px] items-center gap-4 rounded-table-row border px-4 py-[14px] motion-safe-transition hover:border-line-strong",
+        "flex flex-col gap-2 rounded-table-row border px-4 py-[14px] motion-safe-transition hover:border-line-strong",
         slipping ? "border-slipping/40" : "border-transparent",
         className
       )}
     >
-      <div className="min-w-0">{person}</div>
-      <div className="min-w-0">{rhythm}</div>
-      <div className="min-w-0 font-sans text-body text-ink-2">{lastContact}</div>
-      <div className="min-w-0 font-sans text-body text-ink-2">{nextThing}</div>
-      <div className="flex justify-end">{action}</div>
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0 flex-1">{person}</div>
+        <div className="shrink-0">{action}</div>
+      </div>
+      {hasSecondLine && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pl-[46px] font-sans text-body text-ink-2">
+          {rhythm}
+          {lastContact && <span>{lastContact}</span>}
+          {nextThing && <span>{nextThing}</span>}
+        </div>
+      )}
     </div>
   );
 }

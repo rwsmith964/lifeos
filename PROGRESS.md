@@ -73,10 +73,10 @@ Status per audit item. Updated at the end of each Phase. DONE / PARTIAL / BLOCKE
 - E5: DONE (already fixed — no change needed; see QUESTIONS.md Q16) — custody labels are already positioned by exact day-column percentage, not floating/misaligned; a code comment documents this exact bug being caught and fixed by live screenshot verification during the earlier redesign.
 
 ## Phase 10 — Density, touch targets, tables
-- F1: PENDING
-- F2: PENDING
-- F3: PENDING
-- F4: PENDING
+- F1: DONE — fixed as one design-token/base-component change: `Button`'s `sm` size and `SegmentedControl` both hardcoded 30px at every width (unlike the other Button sizes, which already used a 44px-touch/36px-desktop pattern); extended that same pattern to both, plus the Calendar page's one hand-rolled view-switcher control that deliberately doesn't use either shared component. Files: `components/ui/button.tsx`, `components/ui/segmented-control.tsx`, `app/(app)/calendar/page.tsx`.
+- F2: DONE — replaced the unnamed 5-column grid (`210px 124px 112px 1fr 76px`) with a two-line row (name+relation+action on line 1, only whatever's actually known about rhythm/last-contact/next-thing on line 2 — nothing renders a "—" placeholder anymore, and the empty ~400px flexible column is gone). Live-verified. Files: `components/ui/table-row.tsx`, `app/(app)/people/people-table-client.tsx`.
+- F3: DONE — added a search field (matches name or full name) and made most-overdue the default sort (slipping → warning → settled, then by health% ascending). Live-verified. Files: `app/(app)/people/people-table-client.tsx`.
+- F4: DONE — Notifications now groups by day (Today/Yesterday/weekday), read items collapse to a one-line summary (click to re-expand), an All/Unread filter, and only the last 7 days show by default with a "Show older (N)" reveal. Live-verified every piece including expand/collapse and the older-notifications reveal. Files: `app/(app)/notifications/notifications-list.tsx` (new), `app/(app)/notifications/page.tsx`.
 
 ## Phase 11 — Appearance / design system
 - G1: PENDING
