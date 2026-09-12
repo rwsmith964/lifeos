@@ -66,11 +66,11 @@ Status per audit item. Updated at the end of each Phase. DONE / PARTIAL / BLOCKE
 - D5: DONE (the "Saved gifts" link was already prominent — only the budget-bar half needed a fix) — the spend text now names the bar's actual target ("$0 of $150 spent") instead of leaving what the bar fills toward unstated.
 
 ## Phase 9 — Calendar
-- E1: PENDING
-- E2: PENDING
-- E3: PENDING
-- E4: PENDING
-- E5: PENDING
+- E1: DONE (already fixed — no change needed; see QUESTIONS.md Q16) — custody already renders as a positioned ribbon above the day headers, not inside the timed grid.
+- E2: DONE — work shifts now render as a faint background band (no border, low z-index) behind the timed grid instead of a bordered event box competing visually with real appointments. Files: `app/(app)/calendar/page.tsx`.
+- E3: DONE (already fixed — no change needed; see QUESTIONS.md Q16) — New is already primary-weighted and separated from the ghost prev/Today/next controls, both already grouped with the title. Left "fold Agenda into Day" alone (explicitly optional, would remove a deliberately separate working view).
+- E4: DONE — replaced the "This weekend" accordion (already collapsed by default, but its closed summary bar still cost ~60px on every view) with a single compact line to `/activities`, which already shows the same content more fully. Removed the now-dead weekend-opportunities computation this fed. Files: `app/(app)/calendar/page.tsx`.
+- E5: DONE (already fixed — no change needed; see QUESTIONS.md Q16) — custody labels are already positioned by exact day-column percentage, not floating/misaligned; a code comment documents this exact bug being caught and fixed by live screenshot verification during the earlier redesign.
 
 ## Phase 10 — Density, touch targets, tables
 - F1: PENDING
