@@ -174,7 +174,8 @@ export function PeopleTableClient({ rows, archivedRows }: { rows: PersonTableRow
                   nextThing={row.nextThing === "—" ? null : row.nextThing}
                   action={
                     <Button asChild size="sm" variant={row.rhythmTier === "slipping" ? "default" : "ghost"}>
-                      <Link href={`/people/${row.id}`}>{row.rhythmTier === "slipping" ? "Reach out" : "Open"}</Link>
+                      {/* H1: "Open" named no outcome -- the row already names the person, so "View" (their profile) is enough without repeating the name. */}
+                      <Link href={`/people/${row.id}`}>{row.rhythmTier === "slipping" ? "Reach out" : "View"}</Link>
                     </Button>
                   }
                 />

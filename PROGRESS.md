@@ -86,9 +86,9 @@ Status per audit item. Updated at the end of each Phase. DONE / PARTIAL / BLOCKE
 - G5: DONE — added a compact single-icon theme toggle (cycles light/dark/system) to the header, on top of A2 already making the full Settings picker findable. Live-verified. Files: `components/header-theme-toggle.tsx` (new), `app/(app)/layout.tsx`.
 
 ## Phase 12 — Copy
-- H1: PENDING
-- H2: PENDING
-- H3: PENDING (= D-01)
+- H1: DONE — most of the audit's own named examples (Open Plan/Open Gifts on Today) were already outcome-named by earlier phases (B1/D-02); fixed the remaining bare "Open" instances (Today's household default category, the reach-out no-phone/unresolved fallbacks, the People table's row action) to name what actually happens. Files: `lib/brief/today-priority-items.ts`, `app/(app)/people/people-table-client.tsx`.
+- H2: DONE (already resolved by earlier phases) — REACH_OUT/DECIDE/QUICK and HIGH/MID/LOW were both replaced by earlier work this pass (B4, D4); "cadence" kept as instructed; "Needed now"/"slipping" judged already plain enough in context, not the same class of unexplained jargon as the others.
+- H3: DONE (= D-01, Phase 3)
 
 ## Phase 13 — Feedback, trust, session
 - I1: PENDING

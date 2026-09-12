@@ -107,7 +107,7 @@ describe("buildTodayPriorityItems", () => {
       });
       expect(items[0]!.id).toBe("reach-out:unresolved-0");
       expect(items[0]!.personId).toBeUndefined();
-      expect(items[0]!.primaryAction).toEqual({ label: "Open", href: "/people" });
+      expect(items[0]!.primaryAction).toEqual({ label: "Find in People", href: "/people" });
     });
   });
 

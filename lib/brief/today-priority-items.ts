@@ -114,7 +114,10 @@ const HEADSUP_CATEGORY_RULES: { pattern: RegExp; category: HeadsUpCategory }[] =
     category: { metadata: "Calendar", actionLabel: "Open Calendar", href: "/calendar" },
   },
 ];
-const HEADSUP_DEFAULT_CATEGORY: HeadsUpCategory = { metadata: "Household", actionLabel: "Open", href: "/household" };
+// H1: name the destination instead of a bare "Open" -- the one case left
+// after the other categories above already do this (Open Gifts/Calendar,
+// "See weekend options").
+const HEADSUP_DEFAULT_CATEGORY: HeadsUpCategory = { metadata: "Household", actionLabel: "Open Household", href: "/household" };
 
 function categorizeHeadsUpItem(item: { title: string; detail: string }): HeadsUpCategory {
   const text = `${item.title} ${item.detail}`;
@@ -140,8 +143,12 @@ export function buildTodayPriorityItems({
     const record = householdPeopleByName.get(person.personLabel);
     const id = record ? `reach-out:${record.id}` : `reach-out:unresolved-${i}`;
     const name = firstName(person.personLabel);
-    const primaryAction: PriorityAction =
-      record?.phone ? { label: `Text ${name}`, href: `sms:${record.phone}` } : { label: "Open", href: record ? `/people/${record.id}` : "/people" };
+    // H1: name the outcome, not just "Open" -- who you'd see and where.
+    const primaryAction: PriorityAction = record?.phone
+      ? { label: `Text ${name}`, href: `sms:${record.phone}` }
+      : record
+        ? { label: `Open ${name}`, href: `/people/${record.id}` }
+        : { label: "Find in People", href: "/people" };
     items.push({
       id,
       kind: "reach_out",
@@ -223,7 +230,8 @@ export function buildTodayPriorityItems({
       metadata: "",
       headline: item.title,
       detail: item.detail,
-      primaryAction: { label: "Open", href: item.href ?? "/household" },
+      // H1: name the destination instead of a bare "Open".
+      primaryAction: { label: "Open Household", href: item.href ?? "/household" },
       ghostActions: [],
       rank: 2,
     });
