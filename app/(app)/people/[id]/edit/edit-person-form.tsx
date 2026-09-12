@@ -28,8 +28,9 @@ const RELATIONSHIP_OPTIONS = [
 // D-162: closed set, optional/skippable -- "" (the default) is stored as
 // null ("not specified"), distinct from the explicit "prefer_not_to_say"
 // answer. Especially important to keep skippable for children (QUEUE-040).
+// P-01: see app/(app)/people/new/page.tsx's GENDER_OPTIONS comment -- same relabeling, same reasoning.
 const GENDER_OPTIONS = [
-  ["", "Prefer not to answer / not specified"],
+  ["", "Not specified"],
   ["female", "Female"],
   ["male", "Male"],
   ["non_binary", "Non-binary"],

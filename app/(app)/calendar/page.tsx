@@ -1222,6 +1222,34 @@ export default async function CalendarPage({
                 <span key={i}>{label}</span>
               ))}
             </div>
+            {/* P-06: the custody band's container used to only render (and
+                take up space) on days that actually had a custody block,
+                so the date number sat right under the band on some days
+                and right at the top of the cell on others -- the grid
+                looked broken/misaligned even though each cell was correct
+                in isolation. maxCustodyRows reserves one fixed-height track
+                for the WHOLE grid (computed from every day, not just this
+                one), so every cell's date number lines up on the same row
+                regardless of whether that particular day has a band. */}
+            {(() => {
+              const monthCustodyRowCounts = gridDays.map((day) => {
+                const key = format(day, DAY_PARAM_FORMAT);
+                const dayItems = byDay.get(key) ?? [];
+                const custodyBlocksForDay: CustodyBlockLike[] = dayItems
+                  .filter((item): item is typeof item & { childPersonId: string; responsiblePersonId: string } =>
+                    item.kind === "custody" && item.childPersonId != null && item.responsiblePersonId != null
+                  )
+                  .map((item) => ({
+                    id: item.id,
+                    childPersonId: item.childPersonId,
+                    responsiblePersonId: item.responsiblePersonId,
+                    startsAt: item.startsAt,
+                    endsAt: item.endsAt,
+                  }));
+                return buildMonthCellCustodyBars(day, custodyBlocksForDay).length;
+              });
+              const maxCustodyRows = Math.max(0, ...monthCustodyRowCounts);
+              return (
             <div className="grid grid-cols-7 gap-1">
               {gridDays.map((day) => {
                 const key = format(day, DAY_PARAM_FORMAT);
@@ -1270,8 +1298,9 @@ export default async function CalendarPage({
                       !selected && isSameDay(day, today) && "font-semibold text-primary"
                     )}
                   >
-                    {custodyRows.length > 0 && (
-                      <div className="relative h-1" style={{ height: `${custodyRows.length * 4}px` }}>
+                    <span className="text-center">{format(day, "d")}</span>
+                    {maxCustodyRows > 0 && (
+                      <div className="relative" style={{ height: `${maxCustodyRows * 4}px` }}>
                         {custodyRows.map((row, rowIndex) => (
                           <div key={row.childPersonId} className="absolute left-0 h-[3px] w-full" style={{ top: `${rowIndex * 4}px` }}>
                             {row.segments.map((segment, segmentIndex) => (
@@ -1288,7 +1317,6 @@ export default async function CalendarPage({
                         ))}
                       </div>
                     )}
-                    <span className="text-center">{format(day, "d")}</span>
                     <div className="flex flex-col gap-px overflow-hidden">
                       {chips.visible.map((chip) => (
                         <span
@@ -1311,6 +1339,8 @@ export default async function CalendarPage({
                 );
               })}
             </div>
+              );
+            })()}
           </CardContent>
       </Card>
       )}

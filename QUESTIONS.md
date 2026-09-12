@@ -665,6 +665,15 @@ and `PROGRESS.md` for per-item status.
 - **Reversible:** Yes -- if the brief-generation pipeline is later instrumented with real stage events, replacing the single pending label with a staged one is a contained change to just this button component.
 - **Confidence:** High that this is a real, honest improvement over the prior bare label-swap. Medium on whether Richard will consider "real progress state" satisfied by this or want the fuller staged version -- flagging the trade-off explicitly since the audit's own wording could support either reading.
 
+### Q13 — P-04/P-08: one already-fixed, one prompt-only fix that can't be unit-tested
+
+- **Task:** P-04, P-08
+- **Files:** `lib/ai/prompts/brain-dump.ts` (P-08 only; P-04 needed no file change)
+- **Question:** P-04 ("the ⌘K panel is unanchored, pinned near the top-left, page behind undimmed") didn't reproduce — live-verified in the browser and the capture panel is already centered, dimmed, and anchored below the header (`components/capture/capture-panel.tsx`'s own header comment says this was already restyled to "a centered, top-anchored panel" by the earlier redesign). P-08 ("quick capture typed 'ZZ QA Bug Test' as a WORK event... default to personal") traced to the AI prompt, not a downstream bug: every place that converts a null `eventType` into a real DB value already defaults to `"personal"` correctly (`?? "personal"` in 4 separate call sites) — the model itself was guessing "work" with no textual signal, because the prompt's schema listed the enum options with no instruction on when to leave it null (unlike personId/eventAllDay/eventDateApproximate, which all have explicit "don't guess" rules).
+- **Assumed:** P-04: no code change — flagging that the audit's finding doesn't match current behavior, likely because the audit ran against a build from before the panel was restyled, or hit a transient/cached state. P-08: added a new explicit rule (13) to `BRAIN_DUMP_SYSTEM_PROMPT` telling the model to leave `eventType` null absent real signal and never default to "work" just because text sounds terse/task-like, matching the existing pattern used for other null-default fields in the same prompt. This is a prompt-engineering fix, not a deterministic code fix -- there's no way to unit-test "does the live model now behave better," since that depends on the model's actual behavior against a real API call, not a pure function.
+- **Reversible:** Yes for both -- P-04 is a no-op (nothing to revert); P-08 is one prompt-string addition, trivially adjustable if the model still misclassifies after this.
+- **Confidence:** High that P-04 is a non-issue in the current build. Medium on P-08 -- the fix is well-reasoned and follows the prompt's own established pattern, but its actual effectiveness can only be confirmed by trying a few more terse, context-free inputs against the live AI and checking the result, which needs manual verification (flagging for Phase 16's "needs manual verification" list) rather than an automated test.
+
 ### Q10 — A4: shared Breadcrumb component wired into every nested page I could find; scope and rationale for what's covered
 
 - **Task:** A4

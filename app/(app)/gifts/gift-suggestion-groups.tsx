@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { orderByStatusLabel } from "@/lib/gifts/leadtime";
 import { occasionTypeDisplayLabel } from "@/lib/gifts/occasions";
 import { resolveGiftBudget } from "@/lib/gifts/budget";
+import { isGenericWebSearchUrl } from "@/lib/gifts/retailer-links";
 import type { PersonGroup } from "@/lib/gifts/group-suggestions";
 import type { GiftSuggestionRow, HouseholdRow, PersonGiftBudgetRow } from "@/lib/db/database.types";
 import { GiftSuggestionActions } from "./gift-suggestion-actions";
@@ -142,7 +143,14 @@ function GiftIdeaCard({ suggestion, today }: { suggestion: SuggestionWithStatus;
           rel="noreferrer"
           className="font-sans text-metadata text-action underline underline-offset-2"
         >
-          Search on {suggestion.retailer ?? "the web"}
+          {/* P-07: only claim to search a specific retailer when the link
+              genuinely goes to that retailer's own search page -- a saved
+              site with no known search-URL pattern falls back to a plain
+              Google search, and used to still say "Search on Fat Brain
+              Toys" even though it silently searched Google instead. */}
+          {isGenericWebSearchUrl(suggestion.product_url)
+            ? `Search the web for ${suggestion.title}`
+            : `Search on ${suggestion.retailer ?? "the web"}`}
         </a>
       )}
       <GiftSuggestionActions suggestionId={suggestion.id} status={suggestion.status} />

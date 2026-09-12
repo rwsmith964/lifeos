@@ -29,14 +29,14 @@ Status per audit item. Updated at the end of each Phase. DONE / PARTIAL / BLOCKE
 - D-07: DONE — the relationship/gift-engine forms' "Saved." confirmation state could appear on first mount (an effect reacting to "no error" fired before any real submission), since a shared `{ error: string | null }`-shaped `useActionState` initial state is indistinguishable from a real success. Added a `hasSubmitted` ref, gating the effect so "Saved." only shows after an actual save. Files: `app/(app)/people/[id]/relationship-gift-engine-forms.tsx`.
 
 ## Phase 4 — Polish defects
-- P-01: PENDING
-- P-02: PENDING
-- P-03: PENDING
-- P-04: PENDING
-- P-05: PENDING
-- P-06: PENDING
-- P-07: PENDING
-- P-08: PENDING
+- P-01: DONE — Gender select had two near-identical "prefer not to answer"-shaped labels; kept both underlying values (a silent skip vs. an explicit answer are genuinely different) but relabeled "" to "Not specified" so they read as distinct. Files: `app/(app)/people/new/page.tsx`, `app/(app)/people/[id]/edit/edit-person-form.tsx`.
+- P-02: DONE — Full name marked with a visible `*`; the invalid-form message now names the field ("Full name is required.") instead of a generic "fields above"; `useFormValidity` (shared by 15 forms) now focuses the first invalid field on a failed submit, live-verified. Files: `lib/hooks/use-form-validity.ts`, `app/(app)/people/new/page.tsx`.
+- P-03: DONE — the empty-day message called `.toLowerCase()` on an already-correctly-cased day label ("Saturday"), producing "for saturday" with no capital; now uses the label as-is. Files: `app/(app)/activities/page.tsx`.
+- P-04: DONE (already fixed — no code change; see QUESTIONS.md Q13) — live-verified the ⌘K capture panel is already centered, dimmed, and anchored below the header.
+- P-05: DONE — the 404 page's one escape hatch always said "Go to calendar"; now offers both "Go to Today" and "Go to Calendar" for a signed-in visitor. Files: `app/not-found.tsx`.
+- P-06: DONE — the month grid's custody band container only took up space on days that actually had a band, so the date number's vertical position shifted day to day; every cell now reserves one fixed-height track (sized from the whole grid's max row count) with the date pinned above it. Live-verified. Files: `app/(app)/calendar/page.tsx`.
+- P-07: DONE — "Search on X" always silently searched Google with a `site:` filter, never the retailer's own site; added real search-URL templates for Amazon/Etsy/Target/Walmart, and relabeled the fallback to "Search the web for..." for any other site so the button is honest about what it does. Files: `lib/gifts/retailer-links.ts`, `app/(app)/gifts/gift-suggestion-groups.tsx`.
+- P-08: DONE (prompt fix; effectiveness needs live-model verification — see QUESTIONS.md Q13) — every downstream default for a null `eventType` was already correctly "personal"; the AI prompt itself had no instruction against guessing a category with no textual signal. Added an explicit rule matching the prompt's existing no-guessing pattern for other fields. Files: `lib/ai/prompts/brain-dump.ts`.
 
 ## Phase 5 — Navigation and IA
 - A1: DONE — sidebar labels now show at every width the sidebar itself renders (previously xl+ only; the 768-1279px tier was icon-only with a hover-title tooltip, exactly the audit's "unlabeled rail"). New `SidebarNav` client component, icon-above-label in the compact rail (matching the mobile tab bar's own convention) / icon-beside-label at xl+, plus real `aria-current="page"` and an active background/text state. Live-verify caught a real dev-console warning from the initial pre-rendered-icon-as-prop approach (also latent in the pre-existing `MobileCaptureButton`); fixed by sending a plain string icon name across the server/client boundary instead (`components/nav/nav-icon.tsx`, new) — see QUESTIONS.md Q8. Files: `app/(app)/sidebar-nav.tsx` (new), `app/(app)/layout.tsx`, `components/nav/nav-icon.tsx` (new), `components/capture/mobile-capture-button.tsx`.
