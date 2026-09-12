@@ -665,6 +665,15 @@ and `PROGRESS.md` for per-item status.
 - **Reversible:** Yes -- if the brief-generation pipeline is later instrumented with real stage events, replacing the single pending label with a staged one is a contained change to just this button component.
 - **Confidence:** High that this is a real, honest improvement over the prior bare label-swap. Medium on whether Richard will consider "real progress state" satisfied by this or want the fuller staged version -- flagging the trade-off explicitly since the audit's own wording could support either reading.
 
+### Q15 — D1/D4: D1 already fixed; D4's badge relabeled by what the data actually is, not the audit's illustrative example
+
+- **Task:** D1, D4
+- **Files:** `app/(app)/gifts/gift-suggestion-groups.tsx`
+- **Question:** D1 ("one card per row on a 1150px screen... move to a two- or three-up grid") didn't reproduce -- direct DOM inspection at exactly 1150px (the audit's own reported width) shows a real `grid-template-columns: 489.6px 489.6px` (a genuine 2-column grid, matching Part 2's redesign spec of "four columns" at xl+/two at this width), and runs with 2+ suggestions do render side by side, confirmed live. The audit's "one card per row" symptom most likely came from occasion runs that happened to have exactly one suggestion each at the time -- not a broken grid. D4 suggested "Fit: high" as an example label for the unlabeled HIGH/MID/LOW badge, but the underlying field is `price_tier` (confirmed in the AI prompt/schema) -- it rates estimated cost relative to budget, not how well the gift fits the person.
+- **Assumed:** D1: no code change, flagging the non-repro (same pattern as P-04). D4: labeled the badge "Price: High/Mid/Low" rather than literally using "Fit," since that's what the field actually measures -- using the audit's illustrative placeholder word verbatim would have mislabeled it. Also removed the per-card urgency badge/text entirely (it duplicated the group header's badge with the same wording) rather than just changing its copy, since D4 explicitly says to state urgency once, at the occasion level, which already existed.
+- **Reversible:** Yes for both -- D1 is a no-op; D4's badge text and per-card removal are isolated JSX/copy changes with no data implications.
+- **Confidence:** High that D1 doesn't currently reproduce (verified via live computed styles, not just a re-read of the code). High that "Price" is the more accurate label than "Fit" for `price_tier` specifically.
+
 ### Q14 — C1: tab assignment for Profile details, Relationships, and Notes wasn't fully specified
 
 - **Task:** C1

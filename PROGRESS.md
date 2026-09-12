@@ -59,11 +59,11 @@ Status per audit item. Updated at the end of each Phase. DONE / PARTIAL / BLOCKE
 - C3: DONE — every section title was a plain `<div>` styled at body-text size (`CardTitle`'s own default overridden to `text-sm`); `CardTitle` gained an `as` prop (default unchanged everywhere else in the app) and this page's 18 titles now render as real `<h2>` elements at their component's actual default (larger) size. Live-verified the accessibility tree now reports them as real headings. Files: `components/ui/card.tsx`, `app/(app)/people/[id]/page.tsx`.
 
 ## Phase 8 — Gifts
-- D1: PENDING
-- D2: PENDING
-- D3: PENDING
-- D4: PENDING
-- D5: PENDING
+- D1: DONE (already fixed — no change needed; see QUESTIONS.md Q15) — live-verified a real 2-column grid at the audit's own reported 1150px width, confirmed via computed styles.
+- D2: DONE — removed the decorative ~88px gift-icon block that carried no information on every card.
+- D3: DONE — collapsed the AI reasoning to one truncated line by default with a "Why this?" `<details>` disclosure (no JS) revealing the full text.
+- D4: DONE — labeled the price badge "Price: High/Mid/Low" (it's `price_tier`, not a generic "fit" score — see QUESTIONS.md Q15) and removed the per-card "Needed now" duplicate, since the occasion header already states urgency once.
+- D5: DONE (the "Saved gifts" link was already prominent — only the budget-bar half needed a fix) — the spend text now names the bar's actual target ("$0 of $150 spent") instead of leaving what the bar fills toward unstated.
 
 ## Phase 9 — Calendar
 - E1: PENDING

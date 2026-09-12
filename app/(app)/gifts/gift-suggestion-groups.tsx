@@ -1,5 +1,4 @@
 import { differenceInCalendarDays, parseISO } from "date-fns";
-import { Gift as GiftIcon } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -92,13 +91,24 @@ export function GiftSuggestionGroups({
                     <div className="h-1.5 w-[100px] rounded-full bg-line">
                       <div className="h-full rounded-full bg-action" style={{ width: `${spendPercent}%` }} />
                     </div>
-                    <span className="font-sans text-metadata text-meta">${(spendCents / 100).toFixed(0)} spent</span>
+                    {/* D5: the bar's fill percent is computed against the
+                        budget's max (see spendPercent above) but nothing
+                        said so -- "$0 spent" alone left the bar's own
+                        target ambiguous even with "Budget $25-$150" sitting
+                        right next to it. Naming the max here ties the bar
+                        directly to what it's actually filling toward. */}
+                    <span className="font-sans text-metadata text-meta">
+                      ${(spendCents / 100).toFixed(0)} of ${(budget.maxCents / 100).toFixed(0)} spent
+                    </span>
                     {earmarkedCents > 0 && (
                       <span className="font-sans text-metadata text-ink-2 italic">
                         · ${(earmarkedCents / 100).toFixed(0)} earmarked
                       </span>
                     )}
                   </div>
+                  {/* D4: urgency now lives here once, at the occasion
+                      level, instead of being repeated on every card below
+                      with the same "Needed now" wording. */}
                   <Badge variant={orderStatus.isPastDue ? "slipping" : "neutral"} className="ml-auto">
                     {orderStatus.label}
                   </Badge>
@@ -106,7 +116,7 @@ export function GiftSuggestionGroups({
 
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                   {run.suggestions.map((suggestion) => (
-                    <GiftIdeaCard key={suggestion.id} suggestion={suggestion} today={today} />
+                    <GiftIdeaCard key={suggestion.id} suggestion={suggestion} />
                   ))}
                 </div>
               </div>
@@ -118,23 +128,31 @@ export function GiftSuggestionGroups({
   );
 }
 
-function GiftIdeaCard({ suggestion, today }: { suggestion: SuggestionWithStatus; today: Date }) {
-  const status = orderByStatusLabel(parseISO(suggestion.order_by_date), today);
+function GiftIdeaCard({ suggestion }: { suggestion: SuggestionWithStatus }) {
   return (
     <div className="flex flex-col gap-3 rounded-card border border-line bg-surface p-4">
-      <div className="flex h-[88px] items-center justify-center rounded-input bg-action-soft-bg text-action-soft-fg">
-        <GiftIcon className="size-6" aria-hidden="true" />
-      </div>
       <div className="flex items-start justify-between gap-2">
         <p className="font-sans text-card-headline text-ink">{suggestion.title}</p>
-        <Badge variant="secondary">{TIER_LABELS[suggestion.price_tier]}</Badge>
+        {/* D4: "HIGH/MID/LOW" named no axis -- this is price_tier, so say
+            "Price" rather than leaving the reader to guess what's being
+            rated (fit? quality? confidence?). */}
+        <Badge variant="secondary">Price: {TIER_LABELS[suggestion.price_tier]}</Badge>
       </div>
-      <p className="font-sans text-body text-ink-2">{suggestion.reasoning}</p>
+      {/* D3: five lines of AI rationale used to always render in full on a
+          save-or-dismiss surface. <details> collapses it to one line by
+          default with no JS needed -- semantic, keyboard- and
+          screen-reader-accessible out of the box. The full reasoning is
+          identical open or closed; only how much of it shows changes. */}
+      <details className="group">
+        <summary className="cursor-pointer list-none">
+          <span className="line-clamp-1 font-sans text-body text-ink-2 group-open:hidden">{suggestion.reasoning}</span>
+          <span className="font-sans text-metadata font-bold text-action group-open:hidden">Why this?</span>
+          <span className="hidden font-sans text-metadata font-bold text-action group-open:inline">Hide reasoning</span>
+        </summary>
+        <p className="mt-1 font-sans text-body text-ink-2">{suggestion.reasoning}</p>
+      </details>
       <div className="flex items-center justify-between">
         <p className="font-serif text-[20px] leading-none text-ink">${(suggestion.estimated_cost_cents / 100).toFixed(0)}</p>
-        <p className={status.isPastDue ? "font-sans text-metadata text-slipping-soft-fg" : "font-sans text-metadata text-meta"}>
-          {status.label}
-        </p>
       </div>
       {suggestion.product_url && (
         <a
