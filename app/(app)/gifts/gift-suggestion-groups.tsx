@@ -53,8 +53,20 @@ export function GiftSuggestionGroups({
             const daysRemaining = differenceInCalendarDays(occasionDate, today);
             const budgets = budgetsByPersonId.get(person.personId) ?? [];
             const budget = resolveGiftBudget(budgets, run.occasionType, household);
+            // M-05: only a real order counts as spent -- shortlisting
+            // (status "saved") isn't money spent, it's an idea you're
+            // considering. Previously the spend bar counted saved+ordered
+            // together, which flipped a $0-spent budget to "$80 spent" the
+            // moment a suggestion was shortlisted, before anything was
+            // actually bought. Saved-but-not-ordered items are shown
+            // separately below as "earmarked," differently styled, so that
+            // figure doesn't disappear, it just isn't conflated with spend.
             const spendCents = run.suggestions.reduce(
-              (sum, s) => (s.status === "saved" || s.status === "ordered" ? sum + s.estimated_cost_cents : sum),
+              (sum, s) => (s.status === "ordered" ? sum + s.estimated_cost_cents : sum),
+              0
+            );
+            const earmarkedCents = run.suggestions.reduce(
+              (sum, s) => (s.status === "saved" ? sum + s.estimated_cost_cents : sum),
               0
             );
             const spendPercent = Math.min(100, (spendCents / budget.maxCents) * 100);
@@ -80,6 +92,11 @@ export function GiftSuggestionGroups({
                       <div className="h-full rounded-full bg-action" style={{ width: `${spendPercent}%` }} />
                     </div>
                     <span className="font-sans text-metadata text-meta">${(spendCents / 100).toFixed(0)} spent</span>
+                    {earmarkedCents > 0 && (
+                      <span className="font-sans text-metadata text-ink-2 italic">
+                        · ${(earmarkedCents / 100).toFixed(0)} earmarked
+                      </span>
+                    )}
                   </div>
                   <Badge variant={orderStatus.isPastDue ? "slipping" : "neutral"} className="ml-auto">
                     {orderStatus.label}

@@ -18,6 +18,9 @@ import { dispatchNotification } from "../notifications/dispatch";
 export interface ScanHouseholdResult {
   suggestionsGenerated: number;
   notificationsSent: number;
+  // M-08: suggestions whose occasion has passed without being acted on,
+  // transitioned to "dismissed" this run.
+  suggestionsMissed: number;
 }
 
 export async function scanHouseholdForGiftOccasions(
@@ -68,9 +71,28 @@ export async function scanHouseholdForGiftOccasions(
   // correctly-scoped listActiveSuggestionsForHousehold() helper.
   const dueSuggestions = await listActiveSuggestionsForHousehold(client, householdId);
 
+  // M-08: a suggestion whose OCCASION has already passed (not just its
+  // order-by date) is missed, not "still actionable" -- transition it out
+  // of the active set instead of leaving it to generate a fresh "Order by
+  // <date-in-the-past>" notification every day the cron runs (this is what
+  // produced a notification feed full of order-by dates weeks in the
+  // past). Reuses the existing "dismissed" status (no schema change) --
+  // it's already the correct terminal state for "no longer relevant,"
+  // which is exactly what a missed occasion's suggestion is.
+  let suggestionsMissed = 0;
+  for (const suggestion of dueSuggestions) {
+    if (suggestion.status !== "suggested" && suggestion.status !== "saved") continue;
+    if (suggestion.occasion_date >= format(today, "yyyy-MM-dd")) continue;
+    await giftSuggestionsRepo.update(client, suggestion.id, { status: "dismissed" });
+    suggestionsMissed++;
+  }
+  const stillActiveSuggestions = dueSuggestions.filter(
+    (s) => !(s.occasion_date < format(today, "yyyy-MM-dd") && (s.status === "suggested" || s.status === "saved"))
+  );
+
   let notificationsSent = 0;
   if (shopper) {
-    for (const suggestion of dueSuggestions) {
+    for (const suggestion of stillActiveSuggestions) {
       const orderByDate = new Date(suggestion.order_by_date);
       if (!isPastPromptDate(orderByDate, household.gift_prompt_buffer_days, today)) continue;
 
@@ -100,5 +122,5 @@ export async function scanHouseholdForGiftOccasions(
     }
   }
 
-  return { suggestionsGenerated, notificationsSent };
+  return { suggestionsGenerated, notificationsSent, suggestionsMissed };
 }

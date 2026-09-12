@@ -18,6 +18,11 @@ interface GenerateWeekendPlanButtonProps {
 export function GenerateWeekendPlanButton({ variant = "generate" }: GenerateWeekendPlanButtonProps) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  // M-04: "the action must always end in a visible result, including
+  // 'nothing changed' and why" -- previously only `error` was ever shown,
+  // so a real success with nothing new to report read as the button
+  // silently doing nothing.
+  const [message, setMessage] = useState<string | null>(null);
   const { aiAvailable } = useAiHealth();
   const router = useRouter();
 
@@ -32,6 +37,7 @@ export function GenerateWeekendPlanButton({ variant = "generate" }: GenerateWeek
           startTransition(async () => {
             const result = await generateWeekendPlanAction();
             setError(result.error);
+            setMessage(result.message);
             // Same D-051 finding: revalidatePath alone doesn't reliably
             // re-render this already-mounted tree.
             if (!result.error) router.refresh();
@@ -40,7 +46,7 @@ export function GenerateWeekendPlanButton({ variant = "generate" }: GenerateWeek
       >
         {pending ? (
           <>
-            <Loader2 className="size-3 animate-spin" /> Thinking…
+            <Loader2 className="size-3 animate-spin" /> Checking weather and activities…
           </>
         ) : variant === "regenerate" ? (
           "Regenerate weekend plan"
@@ -49,6 +55,7 @@ export function GenerateWeekendPlanButton({ variant = "generate" }: GenerateWeek
         )}
       </Button>
       {error && <p className="text-xs text-destructive">{error}</p>}
+      {!error && message && <p className="text-xs text-muted-foreground">{message}</p>}
     </div>
   );
 }
