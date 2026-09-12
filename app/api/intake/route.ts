@@ -34,7 +34,7 @@ function draftStatusFor(result: IntakeParseResult): IntakeDraftRow["status"] {
 }
 
 export async function POST(request: Request) {
-  const { supabase, household, selfPerson } = await requireHouseholdContext();
+  const { supabase, household, selfPerson, timezone } = await requireHouseholdContext();
 
   const enabled = await isFeatureEnabled(supabase, household.id, "universal_intake_v2");
   if (!enabled) {
@@ -65,11 +65,11 @@ export async function POST(request: Request) {
       case "text":
       case "voice":
         sourceType = body.sourceType;
-        results = [await parseTextSource(supabase, household, body.text)];
+        results = [await parseTextSource(supabase, household, body.text, undefined, timezone)];
         break;
       case "email":
         sourceType = "email";
-        results = [await parseEmailSource(supabase, household, body.subject ?? null, body.bodyText)];
+        results = [await parseEmailSource(supabase, household, body.subject ?? null, body.bodyText, timezone)];
         break;
       case "ics":
         sourceType = "ics";
@@ -85,7 +85,7 @@ export async function POST(request: Request) {
       case "screenshot":
       case "pdf":
         sourceType = body.sourceType;
-        results = [await parseAttachmentSource(supabase, household, body.base64Data, body.mediaType)];
+        results = [await parseAttachmentSource(supabase, household, body.base64Data, body.mediaType, undefined, timezone)];
         break;
     }
   } catch (error) {

@@ -74,6 +74,7 @@ export async function generateSuggestionsAction(
     personId,
     occasionType,
     occasionDate,
+    timezone,
   });
 
   if (result.status === "ai_unavailable" || result.status === "budget_exceeded") {

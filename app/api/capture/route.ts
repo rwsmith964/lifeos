@@ -19,6 +19,7 @@
 import { NextResponse } from "next/server";
 import { format } from "date-fns";
 import { requireHouseholdContext } from "@/lib/auth/session";
+import { getZonedNow } from "@/lib/timezones";
 import { AiBudgetExceededError, AiUnavailableError, callAi, isAiConfigured } from "@/lib/ai/client";
 import { buildChildTokenMap } from "@/lib/ai/context";
 import { parseAiJson } from "@/lib/ai/parse-json";
@@ -72,7 +73,7 @@ function clarifyingQuestionFor(type: BrainDumpItem["type"]): string {
 }
 
 export async function POST(request: Request) {
-  const { supabase, household, selfPerson } = await requireHouseholdContext();
+  const { supabase, household, selfPerson, timezone } = await requireHouseholdContext();
 
   if (!isAiConfigured()) {
     return NextResponse.json({
@@ -121,12 +122,22 @@ export async function POST(request: Request) {
     .map((t) => t.text)
     .join(". ");
 
-  const userPrompt = buildBrainDumpUserPrompt(format(new Date(), "EEEE, MMMM d, yyyy"), capturePeople, combinedTranscript);
+  // M-01 follow-up: was a bare `new Date()` -- the server's raw (UTC on
+  // Vercel) instant, not the household's local calendar day. Near midnight
+  // UTC (mid-afternoon Pacific), the model was told the wrong day-of-week,
+  // which skews every relative-date resolution ("today", "tomorrow") the
+  // prompt makes.
+  const userPrompt = buildBrainDumpUserPrompt(
+    format(getZonedNow(timezone), "EEEE, MMMM d, yyyy"),
+    capturePeople,
+    combinedTranscript
+  );
 
   let aiResult;
   try {
     aiResult = await callAi(supabase, {
       householdId: household.id,
+      timezone,
       feature: "quick_capture",
       systemPrompt: BRAIN_DUMP_SYSTEM_PROMPT,
       userPrompt,
@@ -207,7 +218,7 @@ export async function POST(request: Request) {
 
   let executeResult;
   try {
-    executeResult = await executeAction(supabase, household, selfPerson, action);
+    executeResult = await executeAction(supabase, household, selfPerson, action, timezone);
   } catch (error) {
     return NextResponse.json({
       status: "error",

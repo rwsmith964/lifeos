@@ -9,8 +9,9 @@ import { format } from "date-fns";
 import { isPastPromptDate } from "./leadtime";
 import { scanUpcomingOccasions } from "./occasions";
 import { generateGiftSuggestions } from "./suggest";
-import { householdsRepo } from "../db/repositories/households";
-import { listPeopleForHousehold } from "../db/repositories/people";
+import { getZonedNow } from "../timezones";
+import { householdsRepo, usersRepo } from "../db/repositories/households";
+import { listPeopleForHousehold, peopleRepo } from "../db/repositories/people";
 import { giftSuggestionsRepo, listActiveSuggestionsForHousehold } from "../db/repositories/gifts";
 import { notificationsRepo } from "../db/repositories/system";
 import { dispatchNotification } from "../notifications/dispatch";
@@ -26,13 +27,25 @@ export interface ScanHouseholdResult {
 export async function scanHouseholdForGiftOccasions(
   client: SupabaseClient,
   householdId: string,
-  today: Date = new Date()
+  // M-01 follow-up: this used to default to a bare `new Date()`, and the
+  // cron route (the only caller, run once daily across every household)
+  // never passed anything else -- so every occasion/order-by-date
+  // comparison below ran against the server's raw UTC calendar day, not
+  // the household's local one. Same fix shape as the weekend-planner/
+  // opportunities-detection crons (lib/planner/generate.ts,
+  // lib/opportunities/detect.ts): resolve the household's own owner user
+  // here so their stored timezone is always available as a fallback.
+  today?: Date
 ): Promise<ScanHouseholdResult> {
   const household = await householdsRepo.getById(client, householdId);
   if (!household) throw new Error(`Household ${householdId} not found`);
 
+  const owner = await findHouseholdOwnerUser(client, householdId);
+  const timezone = owner?.timezone ?? "America/Los_Angeles";
+  const resolvedToday = today ?? getZonedNow(timezone);
+
   const people = await listPeopleForHousehold(client, householdId);
-  const occasions = scanUpcomingOccasions(people, today, household.gift_scan_horizon_days);
+  const occasions = scanUpcomingOccasions(people, resolvedToday, household.gift_scan_horizon_days);
 
   // Reminders go to the household's own account holder ("self"), never to
   // the gift recipient — the whole point of the gift engine is surprises,
@@ -56,6 +69,7 @@ export async function scanHouseholdForGiftOccasions(
       personId: occasion.personId,
       occasionType: occasion.occasionType,
       occasionDate: occasion.occasionDate,
+      timezone,
     });
     if (result.status === "generated") suggestionsGenerated += result.suggestions.length;
   }
@@ -82,19 +96,19 @@ export async function scanHouseholdForGiftOccasions(
   let suggestionsMissed = 0;
   for (const suggestion of dueSuggestions) {
     if (suggestion.status !== "suggested" && suggestion.status !== "saved") continue;
-    if (suggestion.occasion_date >= format(today, "yyyy-MM-dd")) continue;
+    if (suggestion.occasion_date >= format(resolvedToday, "yyyy-MM-dd")) continue;
     await giftSuggestionsRepo.update(client, suggestion.id, { status: "dismissed" });
     suggestionsMissed++;
   }
   const stillActiveSuggestions = dueSuggestions.filter(
-    (s) => !(s.occasion_date < format(today, "yyyy-MM-dd") && (s.status === "suggested" || s.status === "saved"))
+    (s) => !(s.occasion_date < format(resolvedToday, "yyyy-MM-dd") && (s.status === "suggested" || s.status === "saved"))
   );
 
   let notificationsSent = 0;
   if (shopper) {
     for (const suggestion of stillActiveSuggestions) {
       const orderByDate = new Date(suggestion.order_by_date);
-      if (!isPastPromptDate(orderByDate, household.gift_prompt_buffer_days, today)) continue;
+      if (!isPastPromptDate(orderByDate, household.gift_prompt_buffer_days, resolvedToday)) continue;
 
       const linkPath = `/gifts/suggestions/${suggestion.id}`;
       // link_path already embeds this suggestion's own UUID so this was
@@ -123,4 +137,18 @@ export async function scanHouseholdForGiftOccasions(
   }
 
   return { suggestionsGenerated, notificationsSent, suggestionsMissed };
+}
+
+// Mirrors the identical private helper in lib/brief/generate.ts,
+// lib/planner/generate.ts, and lib/opportunities/detect.ts -- kept as its
+// own small copy per-module rather than a shared export, matching this
+// codebase's existing convention for this exact lookup (see
+// app/api/calendar/conflicts/route.ts's own copy and comment).
+async function findHouseholdOwnerUser(client: SupabaseClient, householdId: string) {
+  const people = await peopleRepo.list(client, (q) =>
+    q.eq("household_id", householdId).eq("relationship_type", "self").limit(1)
+  );
+  const self = people[0];
+  if (!self?.user_id) return null;
+  return usersRepo.getById(client, self.user_id);
 }

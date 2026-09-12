@@ -95,17 +95,23 @@ export async function upsertExternalDataCache(
   return data as ExternalDataCacheRow;
 }
 
+/**
+ * M-01 follow-up: `sinceIso` is the caller's own zoned start-of-day instant
+ * (see lib/ai/client.ts's callAi), not computed here -- this used to build
+ * `startOfDay` from the server's bare local process time, which is UTC on
+ * Vercel, so a household's daily AI-spend ceiling reset at UTC midnight
+ * (mid-afternoon Pacific) instead of their actual local midnight.
+ */
 export async function sumAiSpendToday(
   client: SupabaseClient,
-  householdId: string
+  householdId: string,
+  sinceIso: string
 ): Promise<number> {
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
   const { data, error } = await client
     .from("ai_usage_log")
     .select("estimated_cost_cents")
     .eq("household_id", householdId)
-    .gte("created_at", startOfDay.toISOString());
+    .gte("created_at", sinceIso);
   if (error) throw error;
   return ((data ?? []) as { estimated_cost_cents: number }[]).reduce(
     (sum, row) => sum + Number(row.estimated_cost_cents),

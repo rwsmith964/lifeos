@@ -65,6 +65,7 @@ export async function generateDailyBrief(
   ]);
   if (!household) throw new Error(`Household ${householdId} not found`);
   if (!person) throw new Error(`Person ${forPersonId} not found`);
+  const timezone = owner?.timezone ?? "America/Los_Angeles";
 
   const windowStart = todayStart;
   const windowEnd = addDays(todayStart, 2); // today + tomorrow
@@ -265,6 +266,7 @@ export async function generateDailyBrief(
   try {
     const result = await callAi(client, {
       householdId,
+      timezone,
       feature: "daily_brief",
       systemPrompt: BRIEF_SYSTEM_PROMPT,
       userPrompt: buildBriefUserPrompt(context),

@@ -30,7 +30,8 @@ function computeDurationDays(startDate: string | null, endDate: string | null): 
 
 export async function generatePackingChecklist(
   client: SupabaseClient,
-  packingList: PackingListRow
+  packingList: PackingListRow,
+  timezone?: string
 ): Promise<GeneratePackingChecklistResult> {
   const householdPeople = await listPeopleForHousehold(client, packingList.household_id);
   const tokenMap = buildChildTokenMap(householdPeople);
@@ -57,6 +58,7 @@ export async function generatePackingChecklist(
     try {
       const result = await callAi(client, {
         householdId: packingList.household_id,
+        timezone,
         feature: "packing_checklist",
         systemPrompt: PACKING_CHECKLIST_SYSTEM_PROMPT,
         userPrompt,

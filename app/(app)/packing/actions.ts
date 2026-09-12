@@ -41,12 +41,12 @@ function revalidatePackingPaths(packingListId?: string) {
  * caller decides what to show rather than this action throwing for them.
  */
 export async function generateChecklistAction(packingListId: string): Promise<GeneratePackingChecklistResult> {
-  const { supabase } = await requirePackingEnabled();
+  const { supabase, timezone } = await requirePackingEnabled();
   const packingList = await packingListsRepo.getById(supabase, packingListId);
   if (!packingList) {
     return { status: "parse_failed", reason: "This packing list no longer exists." };
   }
-  const result = await generatePackingChecklist(supabase, packingList);
+  const result = await generatePackingChecklist(supabase, packingList, timezone);
   if (result.status === "generated") {
     revalidatePackingPaths(packingListId);
   }

@@ -20,7 +20,7 @@ interface BrainDumpExecuteRequestBody {
 }
 
 export async function POST(request: Request) {
-  const { supabase, household, selfPerson } = await requireHouseholdContext();
+  const { supabase, household, selfPerson, timezone } = await requireHouseholdContext();
 
   let body: BrainDumpExecuteRequestBody;
   try {
@@ -49,7 +49,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    await executeAction(supabase, household, selfPerson, action);
+    await executeAction(supabase, household, selfPerson, action, timezone);
   } catch (error) {
     return NextResponse.json({
       status: "error",

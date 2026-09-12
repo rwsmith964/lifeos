@@ -85,7 +85,8 @@ export async function generateWeekendPlan(
   if (!household) throw new Error(`Household ${householdId} not found`);
 
   const owner = await findHouseholdOwnerUser(client, householdId);
-  const resolvedToday = today ?? getZonedNow(owner?.timezone ?? "America/Los_Angeles");
+  const timezone = owner?.timezone ?? "America/Los_Angeles";
+  const resolvedToday = today ?? getZonedNow(timezone);
 
   const saturday = nextSaturdayFrom(resolvedToday);
   const sunday = addDays(saturday, 1);
@@ -314,6 +315,7 @@ export async function generateWeekendPlan(
   try {
     const result = await callAi(client, {
       householdId,
+      timezone,
       feature: "weekend_plan",
       systemPrompt: WEEKEND_PLAN_SYSTEM_PROMPT,
       userPrompt,
