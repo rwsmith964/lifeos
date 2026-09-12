@@ -39,7 +39,7 @@ export function HeaderThemeToggle() {
       onClick={() => setTheme(CYCLE[(CYCLE.indexOf(current) + 1) % CYCLE.length])}
       aria-label={`Theme: ${LABELS[current]}. Click to change.`}
       title={`Theme: ${LABELS[current]}`}
-      className="relative inline-flex size-control-default items-center justify-center rounded-control border border-line text-ink-2 motion-safe-transition hover:border-line-strong hover:text-ink"
+      className="relative inline-flex size-control-default items-center justify-center rounded-control border border-line text-ink-2 motion-safe-transition outline-none hover:border-line-strong hover:text-ink focus-visible:ring-2 focus-visible:ring-action/50"
     >
       <Icon className="size-5" />
     </button>

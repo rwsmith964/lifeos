@@ -36,7 +36,7 @@ export function MySchedule({
     <>
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm">Your work schedule</CardTitle>
+          <CardTitle as="h2" className="text-sm">Your work schedule</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-muted-foreground text-xs">
@@ -66,7 +66,7 @@ export function MySchedule({
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm">Your time off</CardTitle>
+          <CardTitle as="h2" className="text-sm">Your time off</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-muted-foreground text-xs">

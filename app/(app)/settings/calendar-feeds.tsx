@@ -117,7 +117,7 @@ export function CalendarFeeds({ feeds, canManage }: { feeds: CalendarFeedRow[]; 
       <CardContent className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <div>
-            <Label>Connected calendars</Label>
+            <h2 className="text-metadata text-ink-2">Connected calendars</h2>
             <p className="text-xs text-muted-foreground">
               Import events from Google Calendar or any other calendar that offers an iCal (.ics) link, so the
               weekend planner knows about your real commitments.

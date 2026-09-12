@@ -96,9 +96,14 @@ export function SettingsForm({
                 step={1}
                 defaultValue={household.default_gift_budget_max_cents ? household.default_gift_budget_max_cents / 100 : ""}
                 aria-invalid={!!budgetError || undefined}
+                aria-describedby={budgetError ? "budgetMax-error" : undefined}
                 onChange={() => setErrorDismissed(true)}
               />
-              {budgetError && <p className="text-xs text-destructive">{budgetError}</p>}
+              {budgetError && (
+                <p id="budgetMax-error" className="text-xs text-destructive">
+                  {budgetError}
+                </p>
+              )}
             </div>
           </div>
 
@@ -189,9 +194,14 @@ export function SettingsForm({
               placeholder="e.g. 123 Main St, Eugene, OR"
               defaultValue={homeAddress}
               aria-invalid={!!addressError || undefined}
+              aria-describedby={addressError ? "homeAddress-error" : undefined}
               onChange={() => setErrorDismissed(true)}
             />
-            {addressError && <p className="text-xs text-destructive">{addressError}</p>}
+            {addressError && (
+              <p id="homeAddress-error" className="text-xs text-destructive">
+                {addressError}
+              </p>
+            )}
             <p className="text-xs text-muted-foreground">
               Used for weekend-plan suggestions and the weather in your daily brief. We look up the coordinates
               automatically — no need to know your exact latitude/longitude.

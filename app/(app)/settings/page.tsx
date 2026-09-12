@@ -62,7 +62,7 @@ export default async function SettingsPage() {
       <h1 className="font-serif text-page-title text-ink">Settings</h1>
       <Card>
         <CardContent className="flex flex-col gap-[18px]">
-          <p className="font-sans text-section-label uppercase text-meta">Appearance</p>
+          <h2 className="font-sans text-section-label uppercase text-meta">Appearance</h2>
           <div className="flex flex-col gap-2">
             <Label>Theme</Label>
             <ThemeToggle />
@@ -97,7 +97,7 @@ export default async function SettingsPage() {
       <Card>
         <CardContent className="flex items-center justify-between gap-2">
           <div>
-            <Label>Activity</Label>
+            <h2 className="text-metadata text-ink-2">Activity</h2>
             <p className="font-sans text-metadata text-meta">
               See what the assistant did on its own, and undo an action if needed.
             </p>

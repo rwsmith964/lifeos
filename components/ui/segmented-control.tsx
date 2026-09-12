@@ -47,7 +47,7 @@ export function SegmentedControl<T extends string>({
               // minimum hit area below 768px, 30px on desktop where a
               // mouse pointer doesn't need it. This is the "four People
               // tabs" control the audit named directly.
-              "flex h-control-touch items-center gap-1.5 rounded-chip px-3 font-sans text-[12.5px] font-bold motion-safe-transition md:h-control-compact",
+              "flex h-control-touch items-center gap-1.5 rounded-chip px-3 font-sans text-[12.5px] font-bold motion-safe-transition outline-none focus-visible:ring-2 focus-visible:ring-action/50 md:h-control-compact",
               isActive ? "bg-surface text-ink shadow-sm" : "text-meta hover:text-ink-2"
             )}
           >

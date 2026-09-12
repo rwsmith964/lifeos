@@ -7,7 +7,6 @@
 
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
 import { useAsyncToastAction } from "@/lib/hooks/use-async-toast-action";
 import { setFeatureFlagAction } from "./feature-flags-actions";
 import { FEATURE_FLAGS, FLAG_ROUTES, FLAGS_HIDDEN_FROM_SETTINGS, type FeatureFlagKey } from "@/lib/flags";
@@ -37,7 +36,7 @@ export function FeatureFlags({ states, canManage }: FeatureFlagsProps) {
     <Card>
       <CardContent className="flex flex-col gap-4">
         <div>
-          <Label>Modules</Label>
+          <h2 className="text-metadata text-ink-2">Modules</h2>
           <p className="text-xs text-muted-foreground">
             Turn on features that are still rolling out. Off by default until an owner or adult
             enables them.
