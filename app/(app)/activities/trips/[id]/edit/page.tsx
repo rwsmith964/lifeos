@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
 import { tripIdeasRepo } from "@/lib/db/repositories/trip-ideas";
+import { Breadcrumb } from "@/components/nav/breadcrumb";
 import { TripIdeaForm, type TripIdeaFormDefaults } from "../../../trip-idea-form";
 
 export default async function EditTripIdeaPage({ params }: { params: Promise<{ id: string }> }) {
@@ -25,6 +26,7 @@ export default async function EditTripIdeaPage({ params }: { params: Promise<{ i
 
   return (
     <div className="flex flex-col gap-4 p-4">
+      <Breadcrumb items={[{ label: "Plan", href: "/activities" }, { label: "Edit trip idea" }]} />
       <h1 className="text-xl font-semibold">Edit trip idea</h1>
       <TripIdeaForm
         possibleCompanions={possibleCompanions}

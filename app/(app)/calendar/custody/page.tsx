@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { AlertTriangle, ArrowLeft, Plus } from "lucide-react";
+import { AlertTriangle, Plus } from "lucide-react";
+import { Breadcrumb } from "@/components/nav/breadcrumb";
 import { format } from "date-fns";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { getZonedNow } from "@/lib/timezones";
@@ -95,9 +96,7 @@ export default async function CustodyHubPage() {
 
   return (
     <div className="flex flex-col gap-4 p-4">
-      <Link href="/calendar" className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="size-3" /> Calendar
-      </Link>
+      <Breadcrumb items={[{ label: "Calendar", href: "/calendar" }, { label: "Custody" }]} />
 
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Custody</h1>

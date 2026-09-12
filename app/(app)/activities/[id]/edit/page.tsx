@@ -11,6 +11,7 @@ import {
 import { activityTypeKey } from "@/lib/db/schemas";
 import { personDisplayName } from "@/lib/people/display-name";
 import { resolveGearChecklist } from "@/lib/planner/gear-checklist";
+import { Breadcrumb } from "@/components/nav/breadcrumb";
 import { ActivityForm, type ActivityFormDefaults } from "../../activity-form";
 import { ActivityLocationsSection } from "../../activity-locations-section";
 import { AddActivityGearChecklistItemForm, AddOutingLogForm, OutingLogRow, ResolvedGearChecklistList } from "../../leisure-planner-forms";
@@ -66,6 +67,7 @@ export default async function EditActivityPage({ params }: { params: Promise<{ i
 
   return (
     <div className="flex flex-col gap-4 p-4">
+      <Breadcrumb items={[{ label: "Plan", href: "/activities" }, { label: "Edit activity" }]} />
       <h1 className="text-xl font-semibold">Edit activity</h1>
       <ActivityForm
         possibleCompanions={possibleCompanions}

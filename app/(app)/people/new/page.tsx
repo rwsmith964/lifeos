@@ -3,6 +3,7 @@
 import { useRef } from "react";
 import { useFormPost } from "@/lib/hooks/use-form-post";
 import { useFormValidity } from "@/lib/hooks/use-form-validity";
+import { Breadcrumb } from "@/components/nav/breadcrumb";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -44,6 +45,7 @@ export default function NewPersonPage() {
 
   return (
     <div className="flex flex-col gap-4 p-4">
+      <Breadcrumb items={[{ label: "People", href: "/people" }, { label: "Add someone" }]} />
       <h1 className="text-xl font-semibold">Add someone</h1>
       <form ref={formRef} noValidate onChange={clearInvalid} className="flex flex-col gap-4">
         <div className="flex flex-col gap-2">

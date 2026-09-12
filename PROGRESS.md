@@ -39,10 +39,10 @@ Status per audit item. Updated at the end of each Phase. DONE / PARTIAL / BLOCKE
 - P-08: PENDING
 
 ## Phase 5 — Navigation and IA
-- A1: PENDING
-- A2: PENDING
-- A3: PENDING
-- A4: PENDING
+- A1: DONE — sidebar labels now show at every width the sidebar itself renders (previously xl+ only; the 768-1279px tier was icon-only with a hover-title tooltip, exactly the audit's "unlabeled rail"). New `SidebarNav` client component, icon-above-label in the compact rail (matching the mobile tab bar's own convention) / icon-beside-label at xl+, plus real `aria-current="page"` and an active background/text state. Live-verify caught a real dev-console warning from the initial pre-rendered-icon-as-prop approach (also latent in the pre-existing `MobileCaptureButton`); fixed by sending a plain string icon name across the server/client boundary instead (`components/nav/nav-icon.tsx`, new) — see QUESTIONS.md Q8. Files: `app/(app)/sidebar-nav.tsx` (new), `app/(app)/layout.tsx`, `components/nav/nav-icon.tsx` (new), `components/capture/mobile-capture-button.tsx`.
+- A2: DONE — grew the sidebar to the audit's exact 8-item list (Today, Calendar, People, Plan, Household, Gifts, Brain dump, Notifications); Settings kept out of the list, pinned at the bottom with a now-visible "Settings" label at every width (previously an avatar-initials-only chip at the compact tier). Mobile bottom bar unchanged (4 slots); Notifications stays reachable via the header bell on mobile, Household/Brain dump via existing cross-links — see QUESTIONS.md Q8. Files: `app/(app)/layout.tsx`, `components/ui/avatar-menu.tsx`.
+- A3: DONE — rewrote every module's Settings description out of "Module N: ..." jargon into plain language; added a Settings-row "Open →" deep link for every flag with a real page (`/intake`, `/ambient`, `/execution`, `/household`, `/packing`) so a household member never has to guess a URL (the audit's own "/wall" 404 was exactly this gap); hid the 2 flags with genuinely no UI anywhere (`scheduling_v2`, `brief_registration_v2`) from the Settings list rather than leaving a toggle with no observable effect — see QUESTIONS.md Q9. Files: `lib/flags.ts`, `app/(app)/settings/feature-flags.tsx`.
+- A4: DONE — new shared `Breadcrumb` component wired into every nested page found (person detail/edit, add person, request childcare, calendar add/edit event, the whole custody family, activities/trip-idea add/edit, packing add/detail, gifts/saved, settings/activity, execution, intake), replacing the one bespoke breadcrumb and scattered "← X" links that existed before. See QUESTIONS.md Q10 for scope notes. Files: `components/nav/breadcrumb.tsx` (new), ~20 page files.
 
 ## Phase 6 — Today page
 - B1: PENDING

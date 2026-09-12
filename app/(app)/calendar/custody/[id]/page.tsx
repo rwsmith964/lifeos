@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Download, Pencil } from "lucide-react";
+import { Download, Pencil } from "lucide-react";
+import { Breadcrumb } from "@/components/nav/breadcrumb";
 import { format } from "date-fns";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { getZonedNow } from "@/lib/timezones";
@@ -85,9 +86,13 @@ export default async function CustodyScheduleDetailPage({
 
   return (
     <div className="flex flex-col gap-4 p-4">
-      <Link href="/calendar/custody" className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="size-3" /> Custody
-      </Link>
+      <Breadcrumb
+        items={[
+          { label: "Calendar", href: "/calendar" },
+          { label: "Custody", href: "/calendar/custody" },
+          { label: `${peopleById.get(schedule.child_person_id) ?? "Unknown child"}'s schedule` },
+        ]}
+      />
 
       <div className="flex items-start justify-between gap-2">
         <div>

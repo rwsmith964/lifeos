@@ -5,11 +5,12 @@
 // hand -- see lib/flags.ts for the registry and QUEUE-039 for the gap this
 // closes.
 
+import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { useAsyncToastAction } from "@/lib/hooks/use-async-toast-action";
 import { setFeatureFlagAction } from "./feature-flags-actions";
-import { FEATURE_FLAGS, type FeatureFlagKey } from "@/lib/flags";
+import { FEATURE_FLAGS, FLAG_ROUTES, FLAGS_HIDDEN_FROM_SETTINGS, type FeatureFlagKey } from "@/lib/flags";
 
 interface FeatureFlagsProps {
   states: Record<FeatureFlagKey, boolean>;
@@ -43,9 +44,11 @@ export function FeatureFlags({ states, canManage }: FeatureFlagsProps) {
           </p>
         </div>
         <div className="flex flex-col divide-y divide-border">
-          {(Object.keys(FEATURE_FLAGS) as FeatureFlagKey[]).map((key) => (
-            <FlagRow key={key} flagKey={key} enabled={states[key]} canManage={canManage} />
-          ))}
+          {(Object.keys(FEATURE_FLAGS) as FeatureFlagKey[])
+            .filter((key) => !FLAGS_HIDDEN_FROM_SETTINGS.includes(key))
+            .map((key) => (
+              <FlagRow key={key} flagKey={key} enabled={states[key]} canManage={canManage} />
+            ))}
         </div>
         {!canManage && (
           <p className="text-xs text-muted-foreground">
@@ -73,11 +76,23 @@ function FlagRow({
     errorMessage: "Couldn't update that module",
   });
 
+  const route = FLAG_ROUTES[flagKey];
+
   return (
     <div className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
       <div className="flex flex-col gap-0.5">
         <span className="text-sm font-medium">{FLAG_TITLES[flagKey]}</span>
         <span className="text-xs text-muted-foreground">{FEATURE_FLAGS[flagKey]}</span>
+        {/* A3: a module could be switched on with nowhere in the app to
+            actually see it -- once enabled and it has a real destination,
+            link straight to it here rather than leaving the household to
+            guess a URL (the audit's own report tried "/wall" for the
+            ambient display and got a 404). */}
+        {enabled && route && (
+          <Link href={route} className="text-xs font-medium text-primary underline-offset-2 hover:underline">
+            Open →
+          </Link>
+        )}
       </div>
       <FlagSwitch
         checked={enabled}

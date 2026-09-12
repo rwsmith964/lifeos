@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { addDays, format } from "date-fns";
-import { ArrowLeft, Mail, Pencil, Phone } from "lucide-react";
+import { Mail, Pencil, Phone } from "lucide-react";
+import { Breadcrumb } from "@/components/nav/breadcrumb";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { getZonedNow } from "@/lib/timezones";
 import { formatTime } from "@/lib/calendar/work-schedule";
@@ -192,9 +193,7 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
 
   return (
     <div className="flex flex-col gap-4 p-4">
-      <Link href="/people" className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="size-3" /> People
-      </Link>
+      <Breadcrumb items={[{ label: "People", href: "/people" }, { label: personDisplayName(person) }]} />
 
       <div className="flex items-start justify-between gap-2">
         <div>

@@ -48,10 +48,17 @@ export function AvatarMenu({
         onClick={() => setOpen((prev) => !prev)}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="flex w-full items-center gap-2 rounded-control px-2 py-2 text-left motion-safe-transition hover:bg-surface-2"
+        className="flex w-full flex-col items-center gap-1 rounded-control px-2 py-2 text-center motion-safe-transition hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-action/50 xl:flex-row xl:justify-start xl:gap-2 xl:text-left"
       >
         <Avatar name={name} size={32} />
-        <div className="min-w-0 flex-1">
+        {/* A2: "Settings pinned at the bottom under a visible label" -- the
+            72px-244px compact rail has no room for the full name/household
+            text below, so it gets the same short, always-visible label as
+            every other nav item instead (matching SidebarNav's own
+            icon-then-label pattern); the full profile card (name +
+            household) still shows at xl+ where there's room for both. */}
+        <span className="font-sans text-[10.5px] font-bold text-ink xl:hidden">Settings</span>
+        <div className="hidden min-w-0 flex-1 xl:block">
           <p className="truncate font-sans text-metadata font-bold text-ink">{name}</p>
           {householdName && <p className="truncate font-sans text-[11px] text-meta">{householdName}</p>}
         </div>
