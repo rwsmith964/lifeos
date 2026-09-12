@@ -107,4 +107,4 @@ Status per audit item. Updated at the end of each Phase. DONE / PARTIAL / BLOCKE
 - Not independently re-verified: Phase 1-4's own defects (already individually live-verified at the time each was fixed, earlier in this pass); the B2 migration path (still correctly blocked -- no DB credentials in this environment); the returnTo/session-expiry flow end-to-end (would require deliberately invalidating this session's own auth cookie, which risks losing the only working authenticated browser session available for the rest of this verification pass -- flagged for Phase 16's manual-verification list).
 
 ## Phase 16 — Final report
-- PENDING
+- DONE — delivered to Richard in chat: status table for all 59 items, complete unabridged text of this pass's QUESTIONS.md section (Q1-Q20), items found outside the original audit, and the manual-verification list. Per the governing instruction, stopping here to wait for input on the logged questions.
