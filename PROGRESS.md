@@ -10,9 +10,9 @@ Status per audit item. Updated at the end of each Phase. DONE / PARTIAL / BLOCKE
 - B-02: DONE (see Q1 for root-cause confidence caveat) — hardened the two request-wide single points of failure: `proxy.ts`'s per-request Supabase auth-refresh call (no try/catch before), and `app/(app)/layout.tsx`'s unread-notifications fetch (a layout-level throw skips `app/(app)/error.tsx` entirely). Added a new root `app/error.tsx` styled backstop for the (app)-layout case, and a shared `useAutoRetryOnce` hook (silent retry-once-with-backoff before showing any error UI) wired into both `app/(app)/error.tsx` and the new `app/error.tsx`. Files: `proxy.ts`, `app/(app)/layout.tsx`, `app/error.tsx` (new), `app/(app)/error.tsx`, `app/global-error.tsx` (comment only), `lib/hooks/use-auto-retry-once.ts` (new).
 
 ## Phase 2 — Major defects
-- M-01: PENDING
-- M-02: PENDING
-- M-03: PENDING
+- M-01: PARTIAL — fixed the exact reported symptom (person detail page's 3 raw `new Date()` calls, `app/(app)/people/[id]/page.tsx`) plus a large batch of further real instances found by a systematic codebase audit (see QUESTIONS.md). Several higher-effort ones (weekend-planner/opportunities cron, AI daily budget, capture/brain-dump AI date context) need new `timezone` plumbing through existing function signatures and are still in progress.
+- M-02: DONE — work shifts now carry real start/end times (`withTimeOfDay` in `lib/calendar/work-schedule.ts`) instead of being forced into the all-day strip at midnight; raw `HH:MM:SS` DB values on person/Settings pages now go through the existing `formatTime` helper (now exported). Files: `lib/calendar/work-schedule.ts`, `app/(app)/calendar/page.tsx`, `app/(app)/settings/my-schedule.tsx`, `app/(app)/people/[id]/page.tsx`.
+- M-03: DONE — the actual bug was a display-NAME inconsistency (nickname vs. full legal name shown depending on screen), not a query/exclusion bug: `listPeopleForHousehold` is already the single canonical roster query used everywhere (confirmed by reading it — it's already documented as such). New shared `lib/people/display-name.ts` (`personDisplayName`), migrated ~20 call sites that were still using a raw `person.full_name` in a picker/list/label context (calendar event attendee picker, household chores/dietary pickers, custody forms, activities companion pickers, packing traveler picker, relationship-gift-engine forms, the person detail page's own H1). See QUESTIONS.md Q2 for the "Fritz is missing" / owner-in-pickers findings.
 - M-04: PENDING
 - M-05: PENDING
 - M-06: PENDING

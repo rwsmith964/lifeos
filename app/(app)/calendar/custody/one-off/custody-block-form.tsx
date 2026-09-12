@@ -4,6 +4,7 @@ import { useRef } from "react";
 import { useFormPost } from "@/lib/hooks/use-form-post";
 import { useFormValidity } from "@/lib/hooks/use-form-validity";
 import type { PersonRow } from "@/lib/db/database.types";
+import { personDisplayName } from "@/lib/people/display-name";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -79,7 +80,7 @@ export function CustodyBlockForm({
                   defaultChecked={childPeople.length === 1}
                   className="border-input h-4 w-4 rounded"
                 />
-                {child.full_name}
+                {personDisplayName(child)}
               </label>
             ))}
           </div>
@@ -96,7 +97,7 @@ export function CustodyBlockForm({
           >
             {childPeople.map((child) => (
               <option key={child.id} value={child.id}>
-                {child.full_name}
+                {personDisplayName(child)}
               </option>
             ))}
           </select>
@@ -113,7 +114,7 @@ export function CustodyBlockForm({
         >
           {responsibleCandidates.map((person) => (
             <option key={person.id} value={person.id}>
-              {person.full_name}
+              {personDisplayName(person)}
             </option>
           ))}
         </select>

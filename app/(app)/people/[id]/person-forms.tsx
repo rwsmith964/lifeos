@@ -30,6 +30,7 @@ import {
   type GenerateSuggestionsState,
 } from "./actions";
 import type { ChildActivityAttendanceRow, ChildActivityRow, PersonRow } from "@/lib/db/database.types";
+import { personDisplayName } from "@/lib/people/display-name";
 import { useAiHealth } from "@/lib/hooks/use-ai-health";
 import { useFormValidity } from "@/lib/hooks/use-form-validity";
 import { useAsyncToastAction } from "@/lib/hooks/use-async-toast-action";
@@ -1143,7 +1144,7 @@ export function ChildActivityListItem({
           {householdAdults.map((adult) => (
             <div key={adult.id} className="flex items-center gap-1">
               <Label htmlFor={`attendance-${activity.id}-${adult.id}`} className="text-xs text-muted-foreground">
-                {adult.full_name}
+                {personDisplayName(adult)}
               </Label>
               <select
                 id={`attendance-${activity.id}-${adult.id}`}

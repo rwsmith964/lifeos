@@ -3,6 +3,9 @@ import { notFound } from "next/navigation";
 import { addDays, format } from "date-fns";
 import { ArrowLeft, Mail, Pencil, Phone } from "lucide-react";
 import { requireHouseholdContext } from "@/lib/auth/session";
+import { getZonedNow } from "@/lib/timezones";
+import { formatTime } from "@/lib/calendar/work-schedule";
+import { personDisplayName } from "@/lib/people/display-name";
 import { isFeatureEnabled } from "@/lib/flags";
 import { peopleRepo } from "@/lib/db/repositories/people";
 import {
@@ -78,7 +81,7 @@ import {
 
 export default async function PersonDetailPage({ params }: PageProps<"/people/[id]">) {
   const { id } = await params;
-  const { supabase, household } = await requireHouseholdContext();
+  const { supabase, household, timezone } = await requireHouseholdContext();
 
   const person = await peopleRepo.getById(supabase, id);
   if (!person || person.household_id !== household.id) notFound();
@@ -86,7 +89,13 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
   // Module 1: Relationship & Gift Engine (D-117/D-158, relationship_gift_engine_v2).
   const engineEnabled = await isFeatureEnabled(supabase, household.id, "relationship_gift_engine_v2");
 
-  const now = new Date();
+  // M-01: this page previously used a bare `new Date()` (3 call sites) --
+  // the server runs in UTC, so once the household's local evening rolled
+  // past midnight UTC, every "days since"/"overdue" calc here read as one
+  // day ahead of the People list and Today briefing (both already zoned),
+  // producing the exact 9-vs-10-days-since-contact disagreement the audit
+  // reported. One zoned `now`, reused for every date calc on this page.
+  const now = getZonedNow(timezone);
   const isChild = person.relationship_type === "child";
   const todayStr = format(now, "yyyy-MM-dd");
   // index = day_of_week (0 = Sunday .. 6 = Saturday) -- matches
@@ -158,7 +167,7 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
 
   // Moments list participant names by id -- resolve once against the full
   // household roster rather than a per-row lookup.
-  const householdPeopleById = new Map(allHouseholdPeople.map((p) => [p.id, p.full_name]));
+  const householdPeopleById = new Map(allHouseholdPeople.map((p) => [p.id, personDisplayName(p)]));
 
   // Only show time off that hasn't fully passed yet -- past entries stay
   // in the table (informational history, same as gift history below) but
@@ -169,12 +178,12 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
   for (const block of custodyBlocks) {
     if (!responsiblePeople.has(block.responsible_person_id)) {
       const responsible = await peopleRepo.getById(supabase, block.responsible_person_id);
-      if (responsible) responsiblePeople.set(block.responsible_person_id, responsible.full_name);
+      if (responsible) responsiblePeople.set(block.responsible_person_id, personDisplayName(responsible));
     }
   }
 
-  const age = estimateAgeYears(person.birthdate, person.birth_year_known, new Date());
-  const cadenceStatus = cadence ? evaluateCadence(cadence, new Date()) : null;
+  const age = estimateAgeYears(person.birthdate, person.birth_year_known, now);
+  const cadenceStatus = cadence ? evaluateCadence(cadence, now) : null;
 
   // P1-9: default the "Get gift ideas" form to this person's actual
   // nearest upcoming occasion (birthday/anniversary/christmas) instead of
@@ -189,8 +198,13 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
 
       <div className="flex items-start justify-between gap-2">
         <div>
-          <h1 className="text-xl font-semibold">{person.full_name}</h1>
+          {/* M-03: nickname-first, matching every other screen that shows
+              this person (People list, Today, pickers) -- this heading
+              used to be the one place still showing the raw full_name,
+              which read as a different person on a first glance. */}
+          <h1 className="text-xl font-semibold">{personDisplayName(person)}</h1>
           <p className="text-sm text-muted-foreground">
+            {person.nickname && `${person.full_name} · `}
             {person.relationship_type.replace("_", " ")}
             {age != null && ` · ${age} years old`}
             {person.birthdate && ` · born ${format(new Date(person.birthdate), "MMMM d")}`}
@@ -303,7 +317,8 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
                     <p>
                       <span className="font-medium">{DAY_OF_WEEK_LABELS[schedule.day_of_week]}</span>{" "}
                       <span className="text-muted-foreground">
-                        {schedule.label} {schedule.start_time}–{schedule.end_time}
+                        {/* M-02: format the raw "HH:MM:SS" DB value instead of printing it as-is. */}
+                        {schedule.label} {formatTime(schedule.start_time)}–{formatTime(schedule.end_time)}
                       </span>
                     </p>
                     <DeleteWorkScheduleButton personId={id} scheduleId={schedule.id} />

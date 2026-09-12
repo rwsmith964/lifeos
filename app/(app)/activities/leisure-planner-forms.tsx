@@ -12,6 +12,7 @@
 // action -- only the delete actions take an id argument.
 import { useActionState, useEffect, useRef, useState } from "react";
 import { format, parseISO } from "date-fns";
+import { personDisplayName } from "@/lib/people/display-name";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -386,7 +387,7 @@ export function AddOutingLogForm({
                   checked={companionIds.includes(p.id)}
                   onChange={() => toggleId(companionIds, setCompanionIds, p.id)}
                 />
-                {p.full_name}
+                {personDisplayName(p)}
               </label>
             ))}
           </div>

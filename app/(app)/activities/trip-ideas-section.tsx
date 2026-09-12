@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Plus, Pencil } from "lucide-react";
 import type { PersonRow, TripIdeaRow } from "@/lib/db/database.types";
+import { personDisplayName } from "@/lib/people/display-name";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,7 +16,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export function TripIdeasSection({ tripIdeas, people }: { tripIdeas: TripIdeaRow[]; people: PersonRow[] }) {
-  const nameById = new Map(people.map((p) => [p.id, p.full_name]));
+  const nameById = new Map(people.map((p) => [p.id, personDisplayName(p)]));
 
   return (
     <div className="flex flex-col gap-3">

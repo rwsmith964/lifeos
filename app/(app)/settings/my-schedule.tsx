@@ -17,6 +17,7 @@ import {
   DeleteTimeOffButton,
   DeleteWorkScheduleButton,
 } from "@/app/(app)/people/[id]/person-forms";
+import { formatTime } from "@/lib/calendar/work-schedule";
 import type { TimeOffEntryRow, WorkScheduleRow } from "@/lib/db/database.types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -50,7 +51,8 @@ export function MySchedule({
                   <p>
                     <span className="font-medium">{DAY_OF_WEEK_LABELS[schedule.day_of_week]}</span>{" "}
                     <span className="text-muted-foreground">
-                      {schedule.label} {schedule.start_time}–{schedule.end_time}
+                      {/* M-02: format the raw "HH:MM:SS" DB value instead of printing it as-is. */}
+                      {schedule.label} {formatTime(schedule.start_time)}–{formatTime(schedule.end_time)}
                     </span>
                   </p>
                   <DeleteWorkScheduleButton personId={personId} scheduleId={schedule.id} />

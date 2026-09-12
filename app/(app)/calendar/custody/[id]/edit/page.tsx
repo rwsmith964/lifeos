@@ -5,6 +5,7 @@ import { requireHouseholdContext } from "@/lib/auth/session";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
 import { custodySchedulesRepo } from "@/lib/db/repositories/custody-schedules";
 import { filterEligibleResponsibleAdults } from "@/lib/custody/eligible-parents";
+import { personDisplayName } from "@/lib/people/display-name";
 import { EditScheduleForm, type EditScheduleFormDefaults } from "./edit-schedule-form";
 
 // D-125: edit page for a whole recurring custody schedule (cycle or
@@ -22,7 +23,8 @@ export default async function EditCustodySchedulePage({ params }: { params: Prom
 
   const people = await listPeopleForHousehold(supabase, household.id);
   const responsibleCandidates = filterEligibleResponsibleAdults(people);
-  const childName = people.find((p) => p.id === schedule.child_person_id)?.full_name ?? "this child";
+  const childPersonForEdit = people.find((p) => p.id === schedule.child_person_id);
+  const childName = childPersonForEdit ? personDisplayName(childPersonForEdit) : "this child";
 
   const defaults: EditScheduleFormDefaults =
     schedule.recurrence_type === "weekly_segments" && schedule.weekly_segments

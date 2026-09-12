@@ -12,6 +12,7 @@ import { useAsyncToastAction } from "@/lib/hooks/use-async-toast-action";
 import { ConfirmDeleteButton } from "@/components/ui/confirm-delete-button";
 import { TRIP_TYPE_LABELS } from "@/lib/ai/prompts/packing-checklist";
 import type { PackingListItemRow, PackingListRow, PersonRow } from "@/lib/db/database.types";
+import { personDisplayName } from "@/lib/people/display-name";
 import {
   addManualItemAction,
   archivePackingListAction,
@@ -151,7 +152,10 @@ export function PackingListDetail({
 
   const peopleById = new Map(people.map((p) => [p.id, p]));
   const travelerNames = packingList.traveler_person_ids
-    .map((id) => peopleById.get(id)?.full_name)
+    .map((id) => {
+      const person = peopleById.get(id);
+      return person ? personDisplayName(person) : undefined;
+    })
     .filter((name): name is string => !!name);
 
   const checkedCount = items.filter((i) => i.checked).length;

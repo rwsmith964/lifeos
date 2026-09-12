@@ -50,7 +50,7 @@ import { getWeekendPlanForDate } from "@/lib/db/repositories/system";
 import { listOpenOpportunitiesWithSubjectForHouseholdInDateRange } from "@/lib/db/repositories/opportunities";
 import { getPresentedOpportunities } from "@/lib/opportunities/present";
 import { birthdaysInRange, birthdayTitle } from "@/lib/calendar/birthdays";
-import { workShiftsInRange, timeOffInRange, workShiftTitle, timeOffTitle } from "@/lib/calendar/work-schedule";
+import { workShiftsInRange, timeOffInRange, workShiftTitle, timeOffTitle, withTimeOfDay } from "@/lib/calendar/work-schedule";
 import { buildChildColorMap, buildParentColorMap } from "@/lib/custody/colors";
 import { buildMonthCellChips, buildMonthCellCustodyBars, type CustodyBlockLike } from "@/lib/calendar/month-cell";
 import { Card, CardContent } from "@/components/ui/card";
@@ -855,11 +855,14 @@ export default async function CalendarPage({
   // across every day they span. Safe because each day's list is a
   // separate bucket in `byDay`, so ids only need to be unique within a
   // single day's rendered list, not globally.
+  // M-02: real start/end times (not the bare midnight `s.date`), so the
+  // shift lays out at its actual time-of-day on the day/week grid instead
+  // of rendering as "12:00 AM" and getting dumped in the all-day strip.
   const workShiftItems: DayItem[] = workShiftsInRange(workSchedules, timeOffEntries, people, gridStart, gridEnd).map((s) => ({
     id: s.scheduleId,
     kind: "work_shift",
-    startsAt: s.date,
-    endsAt: s.date,
+    startsAt: withTimeOfDay(s.date, s.startTime),
+    endsAt: withTimeOfDay(s.date, s.endTime),
     title: workShiftTitle(s),
     subtitle: "work_shift",
     allDay: false,
@@ -907,13 +910,10 @@ export default async function CalendarPage({
   const selectedDayItems = byDay.get(selectedDayKey) ?? [];
 
   // D-133/D-167: day- and week-view hour-positioned timelines share this
-  // conversion. work_shift items only carry a bare date (no real time --
-  // see lib/calendar/work-schedule.ts's known limitation, QUEUE note
-  // below), so they're forced into the all-day strip alongside birthdays/
-  // time off rather than positioned at a misleading midnight slot. Custody
-  // items keep their real times and DO get positioned, since a same-day
-  // handover is genuinely time-of-day information worth seeing on the
-  // timeline.
+  // conversion. M-02: work_shift items now carry real start/end times
+  // (withTimeOfDay, above) and are positioned on the timeline like custody
+  // items, rather than forced into the all-day strip at a misleading
+  // midnight slot -- that forcing is what produced the "12:00 AM" display.
   function toTimelineItems(dayItems: DayItem[]): DayTimelineItemLike[] {
     return dayItems.map((item) => ({
       id: item.id,
@@ -921,7 +921,7 @@ export default async function CalendarPage({
       title: item.title,
       startsAt: item.startsAt,
       endsAt: item.endsAt,
-      allDay: item.allDay || item.kind === "work_shift",
+      allDay: item.allDay,
     }));
   }
   const dayTimelineItems = toTimelineItems(selectedDayItems);
