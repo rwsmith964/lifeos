@@ -12,6 +12,7 @@ import { HouseholdSwitcher, type HouseholdSwitcherItem } from "./household-switc
 import { CalendarFeeds } from "./calendar-feeds";
 import { MySchedule } from "./my-schedule";
 import { FeatureFlags } from "./feature-flags";
+import { DeleteAccountButton } from "./delete-account-button";
 import { listFeatureFlagStates } from "@/lib/flags";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { PalettePicker } from "@/components/palette-picker";
@@ -105,6 +106,17 @@ export default async function SettingsPage() {
           <Link href="/settings/activity" className="font-sans text-body font-bold text-action underline-offset-2 hover:underline">
             View activity log
           </Link>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent className="flex items-center justify-between gap-2">
+          <div>
+            <h2 className="text-metadata text-ink-2">Delete account</h2>
+            <p className="font-sans text-metadata text-meta">
+              Permanently delete your login and your household&apos;s data.
+            </p>
+          </div>
+          <DeleteAccountButton />
         </CardContent>
       </Card>
     </div>

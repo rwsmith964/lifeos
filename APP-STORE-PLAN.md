@@ -274,3 +274,97 @@ take days.
   activities), live-verified via login, then used to capture all iOS and
   Android store screenshots. See D-105 in DECISIONS.md and
   store-assets/seed-demo-household.sql for the seed script.
+
+## 15. Multi-tenant / commercial-launch readiness audit (2026-09-12)
+
+Prompted by Richard confirming LifeOS's actual business goal: sold nationwide
+to many households, not just used by his own (see
+`memory/project_commercial-saas-goal.md`). This section catalogs what that
+audit found, separate from the packaging/submission-pipeline work in §1-§14
+above.
+
+**Fixed this pass:**
+
+- **[x] Onboarding never set a real timezone.** `users.timezone` defaults to
+  `"America/Los_Angeles"` at the schema level, and nothing in the 5-step
+  onboarding wizard ever asked for or set it — every new signup anywhere in
+  the country silently inherited Pacific time until they happened to find
+  Settings and change it, silently skewing every day-boundary computation in
+  the app (custody, the daily brief, gift-occasion scans, the AI's date
+  context). Fixed by detecting the browser's real IANA zone client-side
+  during onboarding and validating + applying it server-side, failing open
+  to the schema default if detection fails. See git history on `fix/audit-pass`.
+- **[x] No in-app account deletion — Apple Guideline 5.1.1(v).** "Apps that
+  support account creation must also offer the ability to initiate account
+  deletion from within the app." The only path before this was
+  `app/support/page.tsx`'s "email us" instruction, which does not satisfy
+  the guideline. Added a real Settings > Delete account flow
+  (`app/(app)/settings/account-actions.ts`, `delete-account-button.tsx`,
+  `lib/auth/account-deletion.ts` for the unit-tested decision logic): a
+  solo household is fully deleted (every `household_id` foreign key in the
+  schema already cascades, confirmed across all 24+ tables — no migration
+  needed); a non-owner member of a shared household just leaves it, same as
+  the existing "leave household" flow; an owner of a shared household with
+  other real members is refused with an actionable message (transfer
+  ownership or remove the others first) rather than either guessing what to
+  do with their co-parent's data or silently doing nothing. The actual
+  `auth.users` row is deleted via the Supabase Admin API (the one narrow,
+  deliberate exception to this codebase's "service-role client never in a
+  request-scoped context" rule — the id passed is never caller-supplied,
+  only the already-verified session's own user id). Typecheck/lint/899
+  tests/build all clean. **Not live-tested end-to-end** — this session's
+  only available login is Richard's real production account (currently the
+  sole member of his household), and clicking the real confirm button would
+  have deleted it; verified instead via unit tests on the decision logic,
+  code review of the RLS/cascade chain, and a live dialog-open-then-cancel
+  check in the browser. Flagging the full happy-path (confirm → redirect →
+  auth.users row actually gone → household actually gone) for Richard to
+  verify himself against a disposable test account before relying on this
+  for a real App Store submission.
+
+**Found, needs Richard's decision — not built:**
+
+- **No Terms of Service / EULA page exists.** Both stores expect one,
+  especially once subscriptions exist (see below). `/privacy` and
+  `/support` both exist; there is no `/terms`.
+- **No payment/subscription/billing system exists at all.** Nothing in this
+  codebase charges anyone anything — every feature flag is a free on/off
+  toggle. Selling the app needs a real decision on pricing model
+  (subscription vs. one-time, App Store/Play Store in-app purchase vs. a
+  web-based Stripe subscription with the "no purchasing outside the app"
+  implications that carries for a native listing) before there's anything
+  concrete to build.
+- **Geocoding (`lib/external/geocode.ts`) uses Nominatim's free public
+  endpoint**, explicitly reasoned in its own code comment as fine because
+  "a single-household app where this only fires on an explicit 'Save
+  settings' click." That reasoning was accurate for one household; it
+  breaks down at real commercial scale two ways: Nominatim's usage policy
+  caps unauthenticated use at 1 request/second **shared across every
+  customer**, not per-user, and separately discourages this exact
+  free-tier-for-a-paid-product pattern. Worth moving to a paid geocoding
+  provider (Google Geocoding API, Mapbox, or a paid Nominatim-compatible
+  host) before real customer volume, or self-hosting a dedicated Nominatim
+  instance — Richard's call on budget/provider.
+- **Children's personal data (names, birthdates, custody schedules) is
+  collected and already disclosed in `/privacy`** — worth a legal review
+  (COPPA applicability, app store content/age rating, data-safety
+  disclosures) before public launch given real unrelated families will be
+  entering real children's data, not just Richard's own. Not something to
+  self-certify as an engineer.
+
+**Confirmed already solid — no action needed:**
+
+- Multi-tenant data isolation already exists throughout: every real table
+  is `household_id`-scoped with RLS, `/signup` is genuinely self-serve (no
+  invite required to create a new, independent household), and a
+  from-scratch grep for hardcoded references to Richard's own name/household
+  found matches only in test fixtures and one generic UI placeholder
+  string (`placeholder="e.g. Smith Household"`) — no real app-code logic is
+  tied to his specific household.
+- Weather (National Weather Service, `lib/external/nws.ts`) is already
+  nationwide-US-coverage via lat/lng, no regional hardcoding.
+- The various `"America/Los_Angeles"` fallbacks scattered through
+  `lib/ai/client.ts`, `lib/gifts/scan.ts`, `lib/intake/convert.ts`, etc. are
+  legitimate last-resort defaults for contexts with no real timezone in
+  scope (e.g. a cron with no request), not primary logic — every real user
+  now gets their own correct timezone at signup per the fix above.
