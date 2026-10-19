@@ -16,7 +16,8 @@
 // with a single `source` axis (People/Plan/Gifts/Household/Calendar),
 // which is also what predicts each card's primary action.
 import type { BriefContent } from "./schema";
-import type { PersonRow } from "../db/database.types";
+import type { ContactCadenceRow, PersonRow } from "../db/database.types";
+import { evaluateCadence } from "../contact/cadence";
 
 export type PriorityItemKind = "reach_out" | "decide" | "quick_headsup" | "quick_household" | "quick_household_dinner";
 
@@ -54,6 +55,15 @@ export interface BuildPriorityItemsParams {
   household: { id: string; title: string; detail?: string; href?: string }[];
   /** B2: item ids currently hidden (dismissed/snoozed) for this viewer -- filtered out before returning. */
   dismissedItemIds?: Set<string>;
+  /**
+   * The brief's `people` list is frozen when the day's brief was generated,
+   * so on its own a reach-out tile would keep showing "overdue" after you
+   * logged the contact. With live cadences + today, a tile whose person is
+   * no longer overdue right now drops out immediately -- no dismissals
+   * table (which needs a migration) involved.
+   */
+  liveCadencesByPersonId?: Map<string, Pick<ContactCadenceRow, "target_interval_days" | "last_contact_date">>;
+  today?: Date;
 }
 
 /** e.g. "Jackie Smith" -> "Jackie", so button labels read "Text Jackie" not "Text Jackie Smith". */
@@ -135,12 +145,16 @@ export function buildTodayPriorityItems({
   opportunities,
   household,
   dismissedItemIds,
+  liveCadencesByPersonId,
+  today,
 }: BuildPriorityItemsParams): PriorityItem[] {
   const items: PriorityItem[] = [];
 
   // Reach out -- overdue relationships, most urgent (rank 0).
   content.people.forEach((person, i) => {
     const record = householdPeopleByName.get(person.personLabel);
+    const liveCadence = record && liveCadencesByPersonId ? liveCadencesByPersonId.get(record.id) : undefined;
+    if (liveCadence && today && !evaluateCadence(liveCadence, today).isOverdue) return;
     const id = record ? `reach-out:${record.id}` : `reach-out:unresolved-${i}`;
     const name = firstName(person.personLabel);
     // H1: name the outcome, not just "Open" -- who you'd see and where.

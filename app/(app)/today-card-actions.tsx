@@ -11,7 +11,8 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAsyncToastAction } from "@/lib/hooks/use-async-toast-action";
-import { dismissTodayItemAction, logContactFromTodayAction, planDinnerFromTodayAction } from "./today-actions";
+import { dismissTodayItemAction, planDinnerFromTodayAction } from "./today-actions";
+import { LogContactControl } from "@/components/people/log-contact-control";
 import { updateOpportunityStatusAction } from "./opportunities/actions";
 import type { PriorityAction } from "@/lib/brief/today-priority-items";
 
@@ -45,27 +46,20 @@ function DismissSnoozeButtons({ itemKey }: { itemKey: string }) {
 export function ReachOutCardActions({
   itemKey,
   personId,
+  personName,
   primaryAction,
 }: {
   itemKey: string;
   personId?: string;
+  personName: string;
   primaryAction: PriorityAction;
 }) {
-  const logContact = useAsyncToastAction(
-    () => logContactFromTodayAction(personId!).then(throwOnError),
-    { successMessage: "Logged.", errorMessage: "Couldn't log that contact" }
-  );
-
   return (
     <>
       <Button asChild size="sm">
         <Link href={primaryAction.href}>{primaryAction.label}</Link>
       </Button>
-      {personId && (
-        <Button variant="outline" size="sm" disabled={logContact.pending} onClick={logContact.run}>
-          Log contact
-        </Button>
-      )}
+      {personId && <LogContactControl variant="compact" personId={personId} personName={personName} />}
       <DismissSnoozeButtons itemKey={itemKey} />
     </>
   );

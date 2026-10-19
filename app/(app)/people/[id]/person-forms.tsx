@@ -13,7 +13,6 @@ import {
   recordGiftAction,
   updateGiftAction,
   setCadenceAction,
-  logInteractionAction,
   deleteInterestAction,
   deleteBudgetAction,
   deleteGiftSiteAction,
@@ -473,20 +472,6 @@ export function CadenceForm({ personId, currentDays }: { personId: string; curre
         Set
       </Button>
     </form>
-  );
-}
-
-export function LogInteractionButton({ personId }: { personId: string }) {
-  const [pending, startTransition] = useTransition();
-  return (
-    <Button
-      size="sm"
-      variant="outline"
-      disabled={pending}
-      onClick={() => startTransition(() => logInteractionAction(personId))}
-    >
-      Log contact today
-    </Button>
   );
 }
 

@@ -25,6 +25,7 @@ import type { BriefContent } from "@/lib/brief/schema";
 import { PriorityCard } from "@/components/ui/priority-card";
 import { RailCard } from "@/components/ui/rail-card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { buildPersonLabelLookup } from "@/lib/people/label-lookup";
 import { RegenerateBriefButton } from "./regenerate-brief-button";
 import { ReachOutCardActions, DecideCardActions, DinnerCardActions, QuickCardActions } from "./today-card-actions";
 
@@ -81,7 +82,7 @@ export default async function BriefPage() {
     : false;
 
   const householdPeople = await listPeopleForHousehold(supabase, household.id);
-  const householdPeopleByName = new Map(householdPeople.map((p) => [p.full_name, p]));
+  const householdPeopleByName = buildPersonLabelLookup(householdPeople);
 
   // D-061/P1-6/D-070: same threshold/dedupe/tiering the Opportunities page and Calendar nudge use.
   const rawOpportunities = await listOpenOpportunitiesWithSubjectForHousehold(supabase, household.id);
@@ -187,6 +188,8 @@ export default async function BriefPage() {
     opportunities: topOpportunities,
     household: composedHousehold.map((h) => ({ id: h.id, title: h.title, detail: h.detail ?? undefined, href: h.href ?? undefined })),
     dismissedItemIds,
+    liveCadencesByPersonId: new Map(activeCadences.map((c) => [c.person_id, c])),
+    today,
   });
   const lowPriorityCount = Math.max(0, rawOpportunities.length - topOpportunities.length);
 
@@ -275,7 +278,7 @@ export default async function BriefPage() {
                   priority={PRIORITY_BY_KIND[item.kind]}
                   actions={
                     item.kind === "reach_out" ? (
-                      <ReachOutCardActions itemKey={item.id} personId={item.personId} primaryAction={item.primaryAction} />
+                      <ReachOutCardActions itemKey={item.id} personId={item.personId} personName={item.headline} primaryAction={item.primaryAction} />
                     ) : item.kind === "decide" ? (
                       <DecideCardActions itemKey={item.id} opportunityId={item.opportunityId} primaryAction={item.primaryAction} />
                     ) : item.kind === "quick_household_dinner" ? (

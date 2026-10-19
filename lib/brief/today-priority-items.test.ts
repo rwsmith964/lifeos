@@ -233,3 +233,34 @@ describe("buildTodayPriorityItems", () => {
     });
   });
 });
+
+describe("buildTodayPriorityItems -- live cadence filtering", () => {
+  const today = new Date("2026-10-18T12:00:00Z");
+  const content = emptyContent({ people: [{ personLabel: "Fritz", reason: "46 days since last contact — past your usual cadence." }] });
+  const fritz = person({ id: "fritz-1", full_name: "Richard Frederick Smith", nickname: "Fritz", phone: null });
+
+  function build(lastContact: string | null) {
+    return buildTodayPriorityItems({
+      content,
+      householdPeopleByName: new Map([["Fritz", fritz]]),
+      opportunities: [],
+      household: [],
+      liveCadencesByPersonId: new Map([["fritz-1", { target_interval_days: 5, last_contact_date: lastContact }]]),
+      today,
+    });
+  }
+
+  it("keeps the tile while the person is still overdue", () => {
+    expect(build("2026-09-02")).toHaveLength(1);
+  });
+
+  it("drops the tile as soon as a contact is logged today, even though the stored brief still lists them", () => {
+    expect(build("2026-10-18")).toHaveLength(0);
+  });
+
+  it("keeps the tile when no live cadence data is supplied (old behaviour)", () => {
+    const items = buildTodayPriorityItems({ content, householdPeopleByName: new Map([["Fritz", fritz]]), opportunities: [], household: [] });
+    expect(items).toHaveLength(1);
+    expect(items[0]!.personId).toBe("fritz-1");
+  });
+});

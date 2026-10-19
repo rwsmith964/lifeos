@@ -65,9 +65,9 @@ import {
   DeleteTimeOffButton,
   DeleteWorkScheduleButton,
   GenerateSuggestionsForm,
-  LogInteractionButton,
   RecordGiftForm,
 } from "./person-forms";
+import { LogContactControl } from "@/components/people/log-contact-control";
 import {
   AddConversationLogEntryForm,
   AddMomentForm,
@@ -311,7 +311,12 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
             )}
             <div className="flex flex-wrap items-center gap-2">
               <CadenceForm personId={id} currentDays={cadence?.target_interval_days ?? null} />
-              <LogInteractionButton personId={id} />
+              <LogContactControl
+                variant="full"
+                personId={id}
+                personName={personDisplayName(person)}
+                maxDate={format(now, "yyyy-MM-dd")}
+              />
             </div>
             {interactions.length > 0 && (
               <div className="flex flex-col gap-1 border-t pt-2">

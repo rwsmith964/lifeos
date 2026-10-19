@@ -9,8 +9,6 @@ import { addDays, format } from "date-fns";
 import { revalidatePath } from "next/cache";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { getZonedNow } from "@/lib/timezones";
-import { interactionsRepo, recordContactForCadence } from "@/lib/db/repositories/contact";
-import { interactionInsertSchema } from "@/lib/db/schemas";
 import { setItemDismissal } from "@/lib/db/repositories/today-dismissals";
 import { isFeatureEnabled } from "@/lib/flags";
 import { upsertMealPlanSlot } from "@/lib/db/repositories/household";
@@ -48,28 +46,6 @@ export async function dismissTodayItemAction(itemKey: string, mode: "dismiss" | 
   }
 
   revalidatePath("/");
-  return { error: null };
-}
-
-/** B1: "Log contact" directly from a reach-out card, without leaving Today. Same write path as the person page's own Log contact button. */
-export async function logContactFromTodayAction(personId: string): Promise<TodayActionState> {
-  const { supabase, timezone } = await requireHouseholdContext();
-
-  try {
-    const occurredOn = getZonedNow(timezone).toISOString().slice(0, 10);
-    const parsed = interactionInsertSchema.parse({
-      person_id: personId,
-      interaction_type: "in_person",
-      occurred_on: occurredOn,
-    });
-    await interactionsRepo.create(supabase, parsed);
-    await recordContactForCadence(supabase, personId, occurredOn, "in_person");
-  } catch (error) {
-    return { error: friendlyMutationError(error, { fallback: "Couldn't log that contact — please try again." }) };
-  }
-
-  revalidatePath("/");
-  revalidatePath(`/people/${personId}`);
   return { error: null };
 }
 
