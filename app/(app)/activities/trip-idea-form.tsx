@@ -4,6 +4,7 @@ import { useRef } from "react";
 import { useFormPost } from "@/lib/hooks/use-form-post";
 import { useFormValidity } from "@/lib/hooks/use-form-validity";
 import type { PersonRow } from "@/lib/db/database.types";
+import { personDisplayName } from "@/lib/people/display-name";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -121,7 +122,7 @@ export function TripIdeaForm({
                   value={person.id}
                   defaultChecked={companionSet.has(person.id)}
                 />
-                {person.full_name}
+                {personDisplayName(person)}
               </label>
             ))}
           </div>

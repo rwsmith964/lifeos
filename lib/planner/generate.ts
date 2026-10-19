@@ -36,6 +36,7 @@ import { scoreActivityCandidate } from "./score-candidate";
 import { computeDaylightWindow, hasSufficientDaylight, isActivityInSeason } from "./seasonality";
 import { pickBestLocation } from "./travel-estimate";
 import { isViabilityUnmet, resolveViabilityInputs } from "./viability-gate";
+import { getZonedNow } from "../timezones";
 
 const WAKING_HOUR_START = 8;
 const WAKING_HOUR_END = 20;
@@ -68,12 +69,26 @@ export type GenerateWeekendPlanResult =
 export async function generateWeekendPlan(
   client: SupabaseClient,
   householdId: string,
-  today: Date = new Date()
+  // M-01: this used to default to a bare `new Date()`, and the cron route
+  // (the only caller that runs unattended, with no request-scoped timezone
+  // in scope) never passed anything else -- so the weekend planner's
+  // "today" was the server's UTC instant, not the household's local day.
+  // Right at a Fri/Sat boundary in the evening, that can shift which
+  // Saturday nextSaturdayFrom() targets entirely, not just skew by hours.
+  // Fetching the owner here (moved up from further down, where the exact
+  // same lookup used to happen a second time just for lat/lng) means the
+  // household's own stored timezone is always available to fall back on,
+  // with no new caller-side plumbing required.
+  today?: Date
 ): Promise<GenerateWeekendPlanResult> {
   const household = await householdsRepo.getById(client, householdId);
   if (!household) throw new Error(`Household ${householdId} not found`);
 
-  const saturday = nextSaturdayFrom(today);
+  const owner = await findHouseholdOwnerUser(client, householdId);
+  const timezone = owner?.timezone ?? "America/Los_Angeles";
+  const resolvedToday = today ?? getZonedNow(timezone);
+
+  const saturday = nextSaturdayFrom(resolvedToday);
   const sunday = addDays(saturday, 1);
   const forDate = format(saturday, "yyyy-MM-dd");
 
@@ -95,7 +110,6 @@ export async function generateWeekendPlan(
     return { status: "traveling", contentMarkdown };
   }
 
-  const owner = await findHouseholdOwnerUser(client, householdId);
   const home = owner?.home_lat != null && owner?.home_lng != null ? { lat: owner.home_lat, lng: owner.home_lng } : null;
 
   const activities = await listActivitiesWithLocations(client, householdId);
@@ -110,7 +124,7 @@ export async function generateWeekendPlan(
     listEventsInRange(client, householdId, windowStart.toISOString(), windowEnd.toISOString()),
     listCustodyBlocksForHouseholdInRange(client, householdId, windowStart.toISOString(), windowEnd.toISOString()),
     listActiveCadencesForHousehold(client, householdId),
-    listRecentlyProposedActivityTypes(client, householdId, today),
+    listRecentlyProposedActivityTypes(client, householdId, resolvedToday),
   ]);
 
   const busyPeriods = [
@@ -199,7 +213,7 @@ export async function generateWeekendPlan(
       targetDate: saturday,
       availableMinutes,
       weeksSinceLastProposed: weeksSinceLastProposed(activity.activity_type, recentActivityTypes),
-      weeksSinceLastDone: weeksSinceLastDone(activity.last_done_at, today),
+      weeksSinceLastDone: weeksSinceLastDone(activity.last_done_at, resolvedToday),
     });
     const point = candidate.travel.point;
     const todayPeriod = candidate.forecastPeriod;
@@ -226,7 +240,7 @@ export async function generateWeekendPlan(
     // activity type.
     const solunar = viabilityFlags.wantsSolunar ? computeSolunarPeriods(saturday, point.lat, point.lng) : null;
 
-    const overdueCompanions = findOverdueCompanions(activity.preferred_companions, cadenceByPersonId, today);
+    const overdueCompanions = findOverdueCompanions(activity.preferred_companions, cadenceByPersonId, resolvedToday);
     const overdueCompanionLabels = await labelPeople(
       client,
       overdueCompanions.map((c) => c.personId),
@@ -301,6 +315,7 @@ export async function generateWeekendPlan(
   try {
     const result = await callAi(client, {
       householdId,
+      timezone,
       feature: "weekend_plan",
       systemPrompt: WEEKEND_PLAN_SYSTEM_PROMPT,
       userPrompt,

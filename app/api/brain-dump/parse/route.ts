@@ -17,6 +17,7 @@
 import { NextResponse } from "next/server";
 import { format } from "date-fns";
 import { requireHouseholdContext } from "@/lib/auth/session";
+import { getZonedNow } from "@/lib/timezones";
 import { AiBudgetExceededError, AiUnavailableError, callAi, isAiConfigured } from "@/lib/ai/client";
 import { buildChildTokenMap } from "@/lib/ai/context";
 import { parseAiJson } from "@/lib/ai/parse-json";
@@ -31,7 +32,7 @@ interface BrainDumpParseRequestBody {
 }
 
 export async function POST(request: Request) {
-  const { supabase, household, selfPerson } = await requireHouseholdContext();
+  const { supabase, household, selfPerson, timezone } = await requireHouseholdContext();
 
   let body: BrainDumpParseRequestBody;
   try {
@@ -100,12 +101,19 @@ export async function POST(request: Request) {
   // AI's response are restored back to real names below via
   // tokenMap.restoreRealNames, same as before.
   const redactedTranscript = tokenMap.redactMentions(transcript);
-  const userPrompt = buildBrainDumpUserPrompt(format(new Date(), "EEEE, MMMM d, yyyy"), dumpPeople, redactedTranscript);
+  // M-01 follow-up: was a bare `new Date()` -- see the identical fix/
+  // comment in app/api/capture/route.ts, which shares this exact prompt.
+  const userPrompt = buildBrainDumpUserPrompt(
+    format(getZonedNow(timezone), "EEEE, MMMM d, yyyy"),
+    dumpPeople,
+    redactedTranscript
+  );
 
   let aiResult;
   try {
     aiResult = await callAi(supabase, {
       householdId: household.id,
+      timezone,
       feature: "brain_dump",
       systemPrompt: BRAIN_DUMP_SYSTEM_PROMPT,
       userPrompt,

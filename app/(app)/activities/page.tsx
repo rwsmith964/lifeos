@@ -228,7 +228,13 @@ export default async function PlanPage() {
               {dayOpportunities.length > 0 ? (
                 dayOpportunities.map((opp) => <PlanProposalCard key={opp.id} opportunity={opp} dayLabel={day.label} />)
               ) : (
-                <EmptyState message={`Nothing stands out for ${day.label.toLowerCase()} yet — check back closer to the date, or add more activities.`} />
+                // P-03: the heading above renders `day.label` all-caps via
+                // CSS only (text-transform: uppercase) -- the string itself
+                // is already properly cased ("Saturday"). This used to
+                // call .toLowerCase() on it, so mid-sentence prose read
+                // "for saturday" with no capital, as if the heading's CSS
+                // transform had been baked into the data.
+                <EmptyState message={`Nothing stands out for ${day.label} yet — check back closer to the date, or add more activities.`} />
               )}
             </div>
           );

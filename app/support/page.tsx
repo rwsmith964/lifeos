@@ -48,12 +48,14 @@ export default function SupportPage() {
 
       <h3 className="mb-1 mt-6 font-medium">How do I delete my account or data?</h3>
       <p className="mb-4">
-        Email{" "}
+        From Settings, scroll to &quot;Delete account&quot; and confirm — this permanently
+        deletes your login and, for any household only you belong to, all of its data. If
+        you share a household with other people and own it, you&apos;ll be asked to transfer
+        ownership or remove the other members first. If you can&apos;t sign in, email{" "}
         <a href={`mailto:${CONTACT_EMAIL}`} className="underline">
           {CONTACT_EMAIL}
         </a>{" "}
-        with your account&apos;s email address and we will delete your account and all
-        associated household data.
+        with your account&apos;s email address instead.
       </p>
 
       <p className="mt-10 text-muted-foreground">

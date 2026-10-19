@@ -38,7 +38,31 @@ export async function proxy(request: NextRequest) {
     },
   });
 
-  await supabase.auth.getUser();
+  try {
+    // B-02: this runs on every navigation and RSC prefetch, for every
+    // route, with no fallback -- a transient network blip talking to
+    // Supabase Auth here (this is the one network call that gates literally
+    // every request in the app) would previously throw straight out of the
+    // proxy invocation, which is consistent with the audit's observation of
+    // unrelated routes (/, /activities, /notifications, a calendar URL) all
+    // 503'ing in the same session rather than one page's own data query
+    // failing. The session-refresh is best-effort: each protected layout
+    // already re-checks auth itself (see this file's top comment), so
+    // failing soft here just means that one refresh is skipped, not that
+    // the request itself should fail.
+    await supabase.auth.getUser();
+  } catch (error) {
+    console.error("proxy: session refresh failed, continuing without it:", error);
+  }
+
+  // I2 (audit pass 2026-09-11): "Add a returnTo redirect after sign-in."
+  // requireHouseholdContext() (lib/auth/session.ts) is a Server Component
+  // helper -- it has no direct access to the request's own URL, only to
+  // this response's headers via next/headers' headers(). Proxy is the one
+  // place that genuinely has the request URL for every route, so it's
+  // threaded through here rather than plumbing a path parameter through
+  // every one of the ~50 pages that call requireHouseholdContext.
+  response.headers.set("x-pathname", request.nextUrl.pathname + request.nextUrl.search);
 
   return response;
 }

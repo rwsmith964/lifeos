@@ -2,16 +2,24 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Phone, Plus } from "lucide-react";
+import { Phone, Plus, Search } from "lucide-react";
 import type { RelationshipType, SuggestionStatus } from "@/lib/db/database.types";
 import type { RhythmTier } from "@/lib/people/rhythm";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { TableRow, RhythmCell } from "@/components/ui/table-row";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Sheet } from "@/components/ui/sheet";
+
+// F3 (audit pass 2026-09-11): "No search, sort or filter on People beyond
+// four tabs... make most-overdue the default sort." Lower rank sorts
+// first; a person with no cadence tracked reads as "settled" already (see
+// PersonTableRow's own construction in page.tsx), so it naturally sorts
+// after anyone genuinely slipping/warning without a separate case here.
+const RHYTHM_TIER_RANK: Record<RhythmTier, number> = { slipping: 0, warning: 1, settled: 2 };
 
 export interface PersonTableRow {
   id: string;
@@ -74,22 +82,36 @@ function useIsDesktop(): boolean {
 
 export function PeopleTableClient({ rows, archivedRows }: { rows: PersonTableRow[]; archivedRows: PersonTableRow[] }) {
   const [tab, setTab] = useState<Tab>("circle");
+  const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(rows[0]?.id ?? null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const isDesktop = useIsDesktop();
 
   const visibleRows = useMemo(() => {
-    switch (tab) {
-      case "kids":
-        return rows.filter((r) => r.relationshipType === "child");
-      case "childcare":
-        return rows.filter((r) => r.isChildcareProvider);
-      case "archive":
-        return archivedRows;
-      default:
-        return rows;
-    }
-  }, [tab, rows, archivedRows]);
+    const base = (() => {
+      switch (tab) {
+        case "kids":
+          return rows.filter((r) => r.relationshipType === "child");
+        case "childcare":
+          return rows.filter((r) => r.isChildcareProvider);
+        case "archive":
+          return archivedRows;
+        default:
+          return rows;
+      }
+    })();
+    const trimmedQuery = query.trim().toLowerCase();
+    const filtered = trimmedQuery
+      ? base.filter(
+          (r) => r.name.toLowerCase().includes(trimmedQuery) || r.fullName.toLowerCase().includes(trimmedQuery)
+        )
+      : base;
+    // F3: most-overdue first by default -- fine at five people, matters at fifty.
+    return [...filtered].sort((a, b) => {
+      const tierDiff = RHYTHM_TIER_RANK[a.rhythmTier] - RHYTHM_TIER_RANK[b.rhythmTier];
+      return tierDiff !== 0 ? tierDiff : a.rhythmHealthPct - b.rhythmHealthPct;
+    });
+  }, [tab, query, rows, archivedRows]);
 
   const selected = rows.find((r) => r.id === selectedId) ?? visibleRows[0] ?? null;
 
@@ -98,16 +120,29 @@ export function PeopleTableClient({ rows, archivedRows }: { rows: PersonTableRow
       <div className="flex min-w-0 flex-1 flex-col gap-3">
         <SegmentedControl aria-label="Filter people" options={TABS} value={tab} onChange={setTab} />
 
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-meta" aria-hidden="true" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search people…"
+            aria-label="Search people"
+            className="max-w-md pl-9"
+          />
+        </div>
+
         {visibleRows.length === 0 ? (
           <EmptyState
             message={
-              tab === "archive"
-                ? "No one archived."
-                : tab === "childcare"
-                  ? "No childcare providers tagged yet. Tag someone as a provider from their page."
-                  : tab === "kids"
-                    ? "No kids added yet."
-                    : "No one added yet. Add the people in your life to start getting gift reminders and contact nudges."
+              query.trim()
+                ? `No one matches "${query.trim()}".`
+                : tab === "archive"
+                  ? "No one archived."
+                  : tab === "childcare"
+                    ? "No childcare providers tagged yet. Tag someone as a provider from their page."
+                    : tab === "kids"
+                      ? "No kids added yet."
+                      : "No one added yet. Add the people in your life to start getting gift reminders and contact nudges."
             }
           />
         ) : (
@@ -134,12 +169,13 @@ export function PeopleTableClient({ rows, archivedRows }: { rows: PersonTableRow
                       </div>
                     </div>
                   }
-                  rhythm={row.hasCadence ? <RhythmCell label={row.rhythmLabel} healthPct={row.rhythmHealthPct} tier={row.rhythmTier} /> : <span className="font-sans text-metadata text-meta">—</span>}
-                  lastContact={row.lastContact}
-                  nextThing={row.nextThing}
+                  rhythm={row.hasCadence ? <RhythmCell label={row.rhythmLabel} healthPct={row.rhythmHealthPct} tier={row.rhythmTier} /> : null}
+                  lastContact={row.hasCadence ? row.lastContact : null}
+                  nextThing={row.nextThing === "—" ? null : row.nextThing}
                   action={
                     <Button asChild size="sm" variant={row.rhythmTier === "slipping" ? "default" : "ghost"}>
-                      <Link href={`/people/${row.id}`}>{row.rhythmTier === "slipping" ? "Reach out" : "Open"}</Link>
+                      {/* H1: "Open" named no outcome -- the row already names the person, so "View" (their profile) is enough without repeating the name. */}
+                      <Link href={`/people/${row.id}`}>{row.rhythmTier === "slipping" ? "Reach out" : "View"}</Link>
                     </Button>
                   }
                 />

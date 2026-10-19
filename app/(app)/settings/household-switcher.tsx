@@ -12,7 +12,6 @@ import type { HouseholdRole } from "@/lib/db/database.types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Label } from "@/components/ui/label";
 
 const roleLabel: Record<HouseholdRole, string> = {
   owner: "Owner",
@@ -67,7 +66,7 @@ export function HouseholdSwitcher({
   return (
     <Card>
       <CardContent className="flex flex-col gap-3">
-        <Label>Your households</Label>
+        <h2 className="text-metadata text-ink-2">Your households</h2>
         <p className="text-xs text-muted-foreground">
           You belong to more than one household. Switch which one shows up across the app.
         </p>

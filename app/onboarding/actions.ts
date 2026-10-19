@@ -8,6 +8,7 @@ import { requireHouseholdContext } from "@/lib/auth/session";
 import { userInsertSchema } from "@/lib/db/schemas";
 import { friendlyMutationError } from "@/lib/db/errors";
 import { geocodeAddress } from "@/lib/external/geocode";
+import { isValidTimezone } from "@/lib/timezones";
 
 export interface OnboardingState {
   error: string | null;
@@ -39,6 +40,20 @@ export async function createHouseholdAction(
   const birthdate = String(formData.get("birthdate") ?? "").trim();
   if (birthdate && birthdate > new Date().toISOString().slice(0, 10)) {
     return { error: "Birthdate can't be in the future." };
+  }
+
+  // The users.timezone column defaults to "America/Los_Angeles" at the
+  // schema level -- fine for a single Pacific-time household, a real
+  // correctness bug for a nationwide product, since every day-boundary
+  // computation in the app (custody, the daily brief, gift-occasion
+  // scans) depends on this value and nothing else in onboarding ever
+  // asked for it. onboarding-form.tsx detects the browser's real IANA
+  // zone and submits it here; apply it only if it's genuinely valid, so
+  // a browser that can't detect it (or a bot/non-browser submission)
+  // silently keeps the schema default rather than failing signup.
+  const detectedTimezone = String(formData.get("timezone") ?? "").trim();
+  if (isValidTimezone(detectedTimezone)) {
+    await usersRepo.update(supabase, user.id, { timezone: detectedTimezone });
   }
 
   const household = await createHouseholdWithOwner(supabase, user.id, householdName);

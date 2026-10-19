@@ -19,7 +19,6 @@ export default async function NotFound() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const homeHref = user ? "/calendar" : "/login";
 
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center gap-6 p-6 text-center">
@@ -30,9 +29,24 @@ export default async function NotFound() {
           That page doesn&apos;t exist, or it moved. {APP_NAME} can still get you back to something useful.
         </p>
       </div>
-      <Button asChild>
-        <Link href={homeHref}>{user ? "Go to calendar" : "Go to sign in"}</Link>
-      </Button>
+      {/* P-05: the single escape hatch used to always say "Go to
+          calendar", even though Today (not Calendar) is the app's actual
+          front door -- offer both instead of guessing which one whoever
+          hit this 404 actually wanted. */}
+      {user ? (
+        <div className="flex items-center gap-2">
+          <Button asChild>
+            <Link href="/">Go to Today</Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href="/calendar">Go to Calendar</Link>
+          </Button>
+        </div>
+      ) : (
+        <Button asChild>
+          <Link href="/login">Go to sign in</Link>
+        </Button>
+      )}
     </div>
   );
 }

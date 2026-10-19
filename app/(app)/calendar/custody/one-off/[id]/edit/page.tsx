@@ -3,6 +3,7 @@ import { requireHouseholdContext } from "@/lib/auth/session";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
 import { custodyBlocksRepo } from "@/lib/db/repositories/calendar";
 import { filterEligibleResponsibleAdults } from "@/lib/custody/eligible-parents";
+import { Breadcrumb } from "@/components/nav/breadcrumb";
 import { CustodyBlockForm, type CustodyBlockFormDefaults } from "../../custody-block-form";
 
 // D-097: edit page for a one-off custody block. Only reachable for
@@ -43,6 +44,13 @@ export default async function EditCustodyBlockPage({ params }: { params: Promise
 
   return (
     <div className="flex flex-col gap-4 p-4">
+      <Breadcrumb
+        items={[
+          { label: "Calendar", href: "/calendar" },
+          { label: "Custody", href: "/calendar/custody" },
+          { label: "Edit block" },
+        ]}
+      />
       <h1 className="text-xl font-semibold">Edit custody block</h1>
       <CustodyBlockForm
         childPeople={children}

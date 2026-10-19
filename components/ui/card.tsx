@@ -29,9 +29,22 @@ function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
   );
 }
 
-function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
+// C3/J1 (audit pass 2026-09-11): "Section titles are the same size as body
+// text... none is a heading element." CardTitle always rendered a plain
+// `<div>` regardless of context -- fine for a card that's genuinely one
+// object among peers (a gift, a person row), but wrong for a page's own
+// section headings, which need to be real heading elements for anyone
+// navigating by heading (screen reader rotor, browser "jump to heading").
+// `as` defaults to "div" so every existing CardTitle usage elsewhere is
+// unaffected; pass `as="h2"` (or h3, etc.) where a title is really a page
+// section heading.
+function CardTitle({
+  className,
+  as: Tag = "div",
+  ...props
+}: React.ComponentProps<"div"> & { as?: "div" | "h2" | "h3" | "h4" }) {
   return (
-    <div
+    <Tag
       data-slot="card-title"
       className={cn("font-sans text-card-headline text-ink", className)}
       {...props}

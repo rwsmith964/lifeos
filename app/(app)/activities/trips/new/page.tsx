@@ -1,5 +1,6 @@
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
+import { Breadcrumb } from "@/components/nav/breadcrumb";
 import { TripIdeaForm } from "../../trip-idea-form";
 
 export default async function NewTripIdeaPage() {
@@ -9,6 +10,7 @@ export default async function NewTripIdeaPage() {
 
   return (
     <div className="flex flex-col gap-4 p-4">
+      <Breadcrumb items={[{ label: "Plan", href: "/activities" }, { label: "Add a trip idea" }]} />
       <h1 className="text-xl font-semibold">Add a trip idea</h1>
       <p className="text-xs text-muted-foreground">
         For the someday/bucket-list bigger trips — not routine outings. Add one whenever a &ldquo;we should do this

@@ -10,6 +10,7 @@ import { isFeatureEnabled } from "@/lib/flags";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
 import { listActionableDraftsForHousehold, listRecentResolvedDraftsForHousehold } from "@/lib/db/repositories/intake";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Breadcrumb } from "@/components/nav/breadcrumb";
 import { IntakeCaptureForm } from "./intake-capture-form";
 import { IntakeReviewQueue } from "./intake-review-queue";
 
@@ -35,6 +36,7 @@ export default async function IntakePage() {
 
   return (
     <div className="flex flex-col gap-4 p-4">
+      <Breadcrumb items={[{ label: "Settings", href: "/settings" }, { label: "Add anything" }]} />
       <div>
         <h1 className="text-xl font-semibold">Add anything</h1>
         <p className="text-sm text-muted-foreground">

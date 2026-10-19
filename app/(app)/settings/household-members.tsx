@@ -164,7 +164,7 @@ export function HouseholdMembers({
     <Card>
       <CardContent className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
-          <Label>Household members</Label>
+          <h2 className="text-metadata text-ink-2">Household members</h2>
           {/* Redesign (Part 5 — States: Read-only): non-destructive controls
               stay visible but disabled with a reason when the viewer lacks
               access, rather than disappearing -- only destructive actions
@@ -202,7 +202,7 @@ export function HouseholdMembers({
 
         {pendingInvites.length > 0 && (
           <div className="flex flex-col gap-2 border-t pt-3">
-            <Label>Pending invites</Label>
+            <h3 className="text-metadata text-ink-2">Pending invites</h3>
             <ul className="flex flex-col gap-2">
               {pendingInvites.map((invite) => (
                 <li key={invite.id} className="flex items-center justify-between gap-2 text-sm">

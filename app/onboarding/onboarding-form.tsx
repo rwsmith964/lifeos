@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { createHouseholdAction, type OnboardingState } from "./actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +23,28 @@ export function OnboardingForm({
 }) {
   const [state, action, pending] = useActionState(createHouseholdAction, initialState);
   const handledRef = useRef(false);
+  // Every new signup used to silently inherit the users.timezone column's
+  // schema default ("America/Los_Angeles") until they happened to find
+  // Settings and change it -- fine for a single Pacific-time household,
+  // a real correctness bug once households anywhere in the country are
+  // real customers (every day-boundary computation in the app --
+  // custody, the daily brief, gift-occasion scans -- depends on this
+  // value). The browser already knows the real answer; detect it here
+  // and let createHouseholdAction validate + apply it server-side,
+  // rather than asking a new user a timezone-picker question on the
+  // very first screen they see.
+  const [detectedTimezone, setDetectedTimezone] = useState("");
+  useEffect(() => {
+    // Same one-time-after-mount pattern as components/theme-toggle.tsx --
+    // the real timezone is only knowable client-side.
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setDetectedTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone);
+    } catch {
+      // Leave blank -- createHouseholdAction treats a missing/invalid
+      // value as "keep the schema default" rather than failing signup.
+    }
+  }, []);
 
   useEffect(() => {
     if (state.selfPersonId && state.selfFullName && !handledRef.current) {
@@ -35,6 +57,7 @@ export function OnboardingForm({
     <Card className="w-full max-w-sm">
       <CardContent>
         <form action={action} className="flex flex-col gap-4">
+          <input type="hidden" name="timezone" value={detectedTimezone} />
           <div className="flex flex-col gap-2">
             <Label htmlFor="fullName">Your full name</Label>
             <Input id="fullName" name="fullName" defaultValue={defaultName} required />

@@ -94,9 +94,16 @@ export async function listActiveAndConvertedSuggestionTitlesForPerson(
 export async function listSuggestionsDueForOrder(
   client: SupabaseClient,
   householdId: string,
-  withinDays: number
+  withinDays: number,
+  // M-01: optional, defaulting to `new Date()` for any caller that doesn't
+  // have a household timezone in scope -- but the brief generator (the one
+  // real caller) already computes a correctly-zoned "today" for its own
+  // date math and should pass it here too, instead of this function
+  // silently recomputing its own UTC-anchored cutoff internally and
+  // potentially disagreeing with the rest of that same brief by a day.
+  now: Date = new Date()
 ): Promise<GiftSuggestionRow[]> {
-  const cutoff = new Date();
+  const cutoff = new Date(now);
   cutoff.setDate(cutoff.getDate() + withinDays);
   const { data, error } = await client
     .from("gift_suggestions")

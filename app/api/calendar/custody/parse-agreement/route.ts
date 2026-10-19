@@ -26,7 +26,7 @@ interface ParseAgreementRequestBody {
 }
 
 export async function POST(request: Request) {
-  const { supabase, household } = await requireHouseholdContext();
+  const { supabase, household, timezone } = await requireHouseholdContext();
 
   if (!isAiConfigured()) {
     return NextResponse.json({
@@ -83,6 +83,7 @@ export async function POST(request: Request) {
   try {
     const result = await callAi(supabase, {
       householdId: household.id,
+      timezone,
       feature: "custody_agreement_parse",
       systemPrompt: CUSTODY_AGREEMENT_SYSTEM_PROMPT,
       userPrompt: buildCustodyAgreementUserPrompt(truncated, adults, children),

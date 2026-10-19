@@ -47,6 +47,8 @@ export interface GenerateGiftSuggestionsParams {
   personId: string;
   occasionType: OccasionType;
   occasionDate: Date;
+  /** M-01 follow-up: only feeds callAi's spend-ceiling day boundary; optional + defaulted like every other caller-supplied timezone in this codebase. */
+  timezone?: string;
 }
 
 const ISO_DATE_FORMAT = "yyyy-MM-dd";
@@ -97,6 +99,7 @@ export async function generateGiftSuggestions(
     try {
       const result = await callAi(client, {
         householdId: params.householdId,
+        timezone: params.timezone,
         feature: "gift_suggestion",
         systemPrompt: GIFT_SUGGESTION_SYSTEM_PROMPT,
         userPrompt,

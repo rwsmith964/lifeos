@@ -16,19 +16,13 @@ import {
   setAttendanceForActivity,
 } from "@/lib/db/repositories/child-activities";
 import { giftsRepo } from "@/lib/db/repositories/gifts";
-import {
-  contactCadencesRepo,
-  interactionsRepo,
-  getCadenceForPerson,
-  recordContactForCadence,
-} from "@/lib/db/repositories/contact";
+import { contactCadencesRepo, getCadenceForPerson } from "@/lib/db/repositories/contact";
 import {
   personInterestInsertSchema,
   personGiftBudgetInsertSchema,
   personGiftSiteInsertSchema,
   giftInsertSchema,
   contactCadenceInsertSchema,
-  interactionInsertSchema,
   workScheduleInsertSchema,
   timeOffEntryInsertSchema,
   childActivityInsertSchema,
@@ -74,6 +68,7 @@ export async function generateSuggestionsAction(
     personId,
     occasionType,
     occasionDate,
+    timezone,
   });
 
   if (result.status === "ai_unavailable" || result.status === "budget_exceeded") {
@@ -495,22 +490,6 @@ export async function setCadenceAction(
   return { error: null };
 }
 
-export async function logInteractionAction(personId: string): Promise<void> {
-  const { supabase, timezone } = await requireHouseholdContext();
-
-  // D-143: household-local today, not a bare `new Date()` -- see
-  // lib/timezones.ts's getZonedNow for why.
-  const occurredOn = getZonedNow(timezone).toISOString().slice(0, 10);
-  const parsed = interactionInsertSchema.parse({
-    person_id: personId,
-    interaction_type: "in_person",
-    occurred_on: occurredOn,
-  });
-  await interactionsRepo.create(supabase, parsed);
-  await recordContactForCadence(supabase, personId, occurredOn, "in_person");
-  revalidatePath(`/people/${personId}`);
-}
-
 export async function updatePersonAction(
   personId: string,
   _prevState: SimpleFormState,
@@ -646,5 +625,24 @@ export async function archivePersonAction(personId: string): Promise<SimpleFormS
     return { error: friendlyMutationError(error, { fallback: "Couldn't archive that person — please try again." }) };
   }
   revalidatePath("/people");
-  redirect("/people");
+  revalidatePath(`/people/${personId}`);
+  // I3 (audit pass 2026-09-11): "Undo exists in one place and is needed in
+  // several... archiving a person." This used to redirect("/people")
+  // immediately on success -- a Next.js redirect thrown from a server
+  // action short-circuits the whole call, so the caller's toast-with-Undo
+  // flow never even got a chance to show. Staying put (same pattern gift
+  // Dismiss already uses) lets ConfirmDeleteButton's Undo actually work.
+  return { error: null };
+}
+
+export async function unarchivePersonAction(personId: string): Promise<SimpleFormState> {
+  const { supabase } = await requireHouseholdContext();
+  try {
+    await peopleRepo.update(supabase, personId, { is_archived: false });
+  } catch (error) {
+    return { error: friendlyMutationError(error, { fallback: "Couldn't restore that person — please try again." }) };
+  }
+  revalidatePath("/people");
+  revalidatePath(`/people/${personId}`);
+  return { error: null };
 }

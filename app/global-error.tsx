@@ -1,11 +1,15 @@
 "use client";
 
-// Root-level backstop: catches an error thrown in the root layout itself,
-// or anything that somehow escapes every nested error.tsx (see
-// app/(app)/error.tsx for the normal case). global-error replaces the
-// entire document, so it can't rely on globals.css or the app's own
-// components — inline styles only, per Next's docs. Next 16.3: the retry
-// callback here is `retry`, not `reset` — see app/(app)/error.tsx's note.
+// Final backstop: catches an error thrown in the ROOT layout itself (the
+// one that sets up fonts/theme/palette), or anything that somehow escapes
+// every nested error.tsx -- see app/error.tsx for errors from
+// app/(app)/layout.tsx (the normal "app shell" case, B-02), and
+// app/(app)/error.tsx for errors from an individual page. Since this one
+// fires only when the ROOT layout itself failed, its own providers can't be
+// trusted either -- global-error replaces the entire document, so it can't
+// rely on globals.css or the app's own components — inline styles only, per
+// Next's docs. Next 16.3: the retry callback here is `retry`, not `reset` —
+// see app/(app)/error.tsx's note.
 export default function GlobalError({ retry }: { error: Error & { digest?: string }; retry: () => void }) {
   return (
     <html lang="en">

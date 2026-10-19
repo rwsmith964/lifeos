@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronDown, ChevronLeft, ChevronRight, MapPin, Plus, TriangleAlert } from "lucide-react";
+import { ChevronLeft, ChevronRight, MapPin, Plus, TriangleAlert } from "lucide-react";
 import {
   addDays,
   addMonths,
@@ -47,21 +47,16 @@ import {
 } from "@/lib/calendar/day-timeline";
 import { listWorkSchedulesForPeople, listTimeOffForPeopleInRange } from "@/lib/db/repositories/work-schedule";
 import { getWeekendPlanForDate } from "@/lib/db/repositories/system";
-import { listOpenOpportunitiesWithSubjectForHouseholdInDateRange } from "@/lib/db/repositories/opportunities";
-import { getPresentedOpportunities } from "@/lib/opportunities/present";
 import { birthdaysInRange, birthdayTitle } from "@/lib/calendar/birthdays";
-import { workShiftsInRange, timeOffInRange, workShiftTitle, timeOffTitle } from "@/lib/calendar/work-schedule";
+import { workShiftsInRange, timeOffInRange, workShiftTitle, timeOffTitle, withTimeOfDay } from "@/lib/calendar/work-schedule";
 import { buildChildColorMap, buildParentColorMap } from "@/lib/custody/colors";
 import { buildMonthCellChips, buildMonthCellCustodyBars, type CustodyBlockLike } from "@/lib/calendar/month-cell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { RenderedMarkdown } from "@/components/ui/rendered-markdown";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { DeleteCalendarItemButton } from "./delete-item-button";
 import { Pencil } from "lucide-react";
-import { GenerateWeekendPlanButton } from "./generate-weekend-plan-button";
-import { AcceptWeekendPlanButton } from "./accept-weekend-plan-button";
 
 const MONTH_PARAM_FORMAT = "yyyy-MM";
 const DAY_PARAM_FORMAT = "yyyy-MM-dd";
@@ -126,6 +121,26 @@ const TIMELINE_WEEK_DAY_MIN_PX = 104;
 // hid "Em with Richard Smith" behind "Cal with Richard Smith" at the same
 // time). `compact` drops the inline time label for the narrower week-view
 // columns, where there usually isn't room for it.
+// E2 (audit pass 2026-09-11): "Work shifts appear as truncated chips...
+// Draw the recurring schedule as a faint tinted band behind 7 AM-4 PM in
+// the day column instead." M-02 already gave shifts real start/end times
+// (so they're positioned correctly on the hour grid at all), but they
+// still rendered as an ordinary bordered event box, competing for the same
+// visual weight as a real appointment. This renders full-width, behind
+// everything else (no border, no side-by-side column math -- a recurring
+// shift is background context, not a foreground item you'd click).
+function WorkShiftBand({ item }: { item: DayTimelinePositionedItem }) {
+  return (
+    <div
+      className="absolute inset-x-0 overflow-hidden bg-slate-500/10 px-1 pt-0.5 text-[10px] text-slate-600 dark:bg-slate-300/10 dark:text-slate-400"
+      style={{ top: `${item.topPercent}%`, height: `${item.heightPercent}%`, minHeight: "18px" }}
+      title={item.title}
+    >
+      {item.title}
+    </div>
+  );
+}
+
 function TimelineItemBlock({ item, dayStart, compact }: { item: DayTimelinePositionedItem; dayStart: Date; compact?: boolean }) {
   const widthPercent = 100 / item.columnCount;
   const leftPercent = item.column * widthPercent;
@@ -220,9 +235,16 @@ function DayTimelineView({ timeline, day }: { timeline: DayTimelineLayout; day: 
                 {Math.round(segment.minutes)} min drive
               </div>
             ))}
-            {timeline.positioned.map((item) => (
-              <TimelineItemBlock key={item.id} item={item} dayStart={dayStart} />
-            ))}
+            {timeline.positioned
+              .filter((item) => item.kind === "work_shift")
+              .map((item) => (
+                <WorkShiftBand key={item.id} item={item} />
+              ))}
+            {timeline.positioned
+              .filter((item) => item.kind !== "work_shift")
+              .map((item) => (
+                <TimelineItemBlock key={item.id} item={item} dayStart={dayStart} />
+              ))}
             {timeline.nowPercent != null && <NowIndicatorLine nowPercent={timeline.nowPercent} />}
           </div>
         </div>
@@ -431,9 +453,16 @@ function WeekTimelineView({
                     className={cn("relative flex-1 border-l first:border-l-0", isWeekend && "bg-surface-2/40")}
                     style={{ minWidth: `${TIMELINE_WEEK_DAY_MIN_PX}px` }}
                   >
-                    {d.positioned.map((item) => (
-                      <TimelineItemBlock key={item.id} item={item} dayStart={dayStart} compact />
-                    ))}
+                    {d.positioned
+                      .filter((item) => item.kind === "work_shift")
+                      .map((item) => (
+                        <WorkShiftBand key={item.id} item={item} />
+                      ))}
+                    {d.positioned
+                      .filter((item) => item.kind !== "work_shift")
+                      .map((item) => (
+                        <TimelineItemBlock key={item.id} item={item} dayStart={dayStart} compact />
+                      ))}
                     {d.nowPercent != null && <NowIndicatorLine nowPercent={d.nowPercent} />}
                   </div>
                 );
@@ -855,11 +884,14 @@ export default async function CalendarPage({
   // across every day they span. Safe because each day's list is a
   // separate bucket in `byDay`, so ids only need to be unique within a
   // single day's rendered list, not globally.
+  // M-02: real start/end times (not the bare midnight `s.date`), so the
+  // shift lays out at its actual time-of-day on the day/week grid instead
+  // of rendering as "12:00 AM" and getting dumped in the all-day strip.
   const workShiftItems: DayItem[] = workShiftsInRange(workSchedules, timeOffEntries, people, gridStart, gridEnd).map((s) => ({
     id: s.scheduleId,
     kind: "work_shift",
-    startsAt: s.date,
-    endsAt: s.date,
+    startsAt: withTimeOfDay(s.date, s.startTime),
+    endsAt: withTimeOfDay(s.date, s.endTime),
     title: workShiftTitle(s),
     subtitle: "work_shift",
     allDay: false,
@@ -907,13 +939,10 @@ export default async function CalendarPage({
   const selectedDayItems = byDay.get(selectedDayKey) ?? [];
 
   // D-133/D-167: day- and week-view hour-positioned timelines share this
-  // conversion. work_shift items only carry a bare date (no real time --
-  // see lib/calendar/work-schedule.ts's known limitation, QUEUE note
-  // below), so they're forced into the all-day strip alongside birthdays/
-  // time off rather than positioned at a misleading midnight slot. Custody
-  // items keep their real times and DO get positioned, since a same-day
-  // handover is genuinely time-of-day information worth seeing on the
-  // timeline.
+  // conversion. M-02: work_shift items now carry real start/end times
+  // (withTimeOfDay, above) and are positioned on the timeline like custody
+  // items, rather than forced into the all-day strip at a misleading
+  // midnight slot -- that forcing is what produced the "12:00 AM" display.
   function toTimelineItems(dayItems: DayItem[]): DayTimelineItemLike[] {
     return dayItems.map((item) => ({
       id: item.id,
@@ -921,7 +950,7 @@ export default async function CalendarPage({
       title: item.title,
       startsAt: item.startsAt,
       endsAt: item.endsAt,
-      allDay: item.allDay || item.kind === "work_shift",
+      allDay: item.allDay,
     }));
   }
   const dayTimelineItems = toTimelineItems(selectedDayItems);
@@ -977,21 +1006,11 @@ export default async function CalendarPage({
   // is one (round-2 brief 3.1: hard-coded phrasing reading wrong on a
   // weekend).
   const upcomingSaturday = format(new Date(today.getTime() + daysUntilSaturday * 86400000), DAY_PARAM_FORMAT);
-  const upcomingSunday = format(new Date(today.getTime() + (daysUntilSaturday + 1) * 86400000), DAY_PARAM_FORMAT);
   const weekendLabel = daysUntilSaturday === 0 ? "This weekend" : `This weekend (${format(new Date(upcomingSaturday), "MMM d")})`;
+  // E4: still fetched (the compact link below names whether a plan
+  // exists/was accepted), but its full narrative + opportunities preview no
+  // longer render here -- see the link below and its comment for why.
   const weekendPlan = await getWeekendPlanForDate(supabase, household.id, upcomingSaturday);
-  // D-061: surface a nudge here (in addition to the Opportunities page and
-  // Brief card) when a detected opportunity falls within the same
-  // Saturday/Sunday window this card already computes.
-  const rawWeekendOpportunities = await listOpenOpportunitiesWithSubjectForHouseholdInDateRange(
-    supabase,
-    household.id,
-    upcomingSaturday,
-    upcomingSunday
-  );
-  // P1-6/D-070: same threshold/dedupe/tiering the Opportunities page and
-  // Brief card use, scoped to just this weekend's window.
-  const weekendOpportunities = getPresentedOpportunities(rawWeekendOpportunities).flat;
 
   // Redesign (Part 2 — Calendar): "Layers legend: you / Mel / work /
   // childcare / suggested." Built from real, already-computed colours --
@@ -1055,7 +1074,10 @@ export default async function CalendarPage({
               components/ui/segmented-control.tsx primitive -- that
               primitive is controlled client state, while this needs a
               real, bookmarkable/shareable URL per view (existing
-              app convention). */}
+              app convention). B-01: every option must pass its own
+              &range= explicitly -- Month previously omitted it (relying
+              on parseRangeParam's default), which silently rendered Week
+              instead of Month on click. */}
           <div className="inline-flex items-center gap-1 rounded-control border border-line bg-surface-2 p-1">
             {(
               [
@@ -1067,9 +1089,15 @@ export default async function CalendarPage({
             ).map((option) => (
               <Link
                 key={option.value}
-                href={`/calendar?month=${monthLabel}&day=${selectedDayKey}${viewQuery}${option.value === "month" ? "" : `&range=${option.value}`}`}
+                href={`/calendar?month=${monthLabel}&day=${selectedDayKey}${viewQuery}&range=${option.value}`}
                 className={cn(
-                  "rounded-chip px-3 py-1.5 font-sans text-[12.5px] font-bold motion-safe-transition",
+                  // F1: this hand-rolled Link-based switcher deliberately
+                  // doesn't reuse components/ui/segmented-control.tsx (see
+                  // this control's own comment on why it needs real URLs
+                  // instead of client state), so it needs the same
+                  // touch/md height fix applied here directly instead of
+                  // inheriting it from that component.
+                  "flex h-control-touch items-center rounded-chip px-3 font-sans text-[12.5px] font-bold motion-safe-transition md:h-control-compact",
                   range === option.value ? "bg-surface text-ink shadow-sm" : "text-meta hover:text-ink-2"
                 )}
               >
@@ -1139,62 +1167,26 @@ export default async function CalendarPage({
         </div>
       )}
 
-      {/* D-079 (P2-4): the AI weekend-plan narrative could run ~400px tall,
-          burying the month grid below the fold on every visit. A native
-          <details> starts closed by default with zero extra client JS --
-          the plan is one tap away instead of forced screen real estate. */}
+      {/* E4 (audit pass 2026-09-11): "The 'This weekend (Sep 12)' accordion
+          sits between the toolbar and the grid on every view including
+          Month, costing ~60px before you see any calendar." It was already
+          a collapsed-by-default <details> (D-079), but the closed summary
+          bar itself still cost that ~60px on every single view/range. The
+          Plan page (app/(app)/activities/page.tsx) already IS "This
+          weekend" -- its own h1, the weather banner, the plan narrative,
+          Accept/Regenerate, and real per-day scored opportunity cards, all
+          more fully than this accordion ever showed. Rather than keep a
+          second, thinner copy of the same surface costing space on every
+          Calendar view, this is now a single compact line pointing there. */}
       {view === "all" && (
-        <details className="group bg-card text-card-foreground rounded-xl border shadow-sm">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-4 py-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">
-            {weekendLabel}
-            <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
-          </summary>
-          <div className="flex flex-col gap-2 px-4 pb-4">
-            {weekendPlan ? (
-              <>
-                <RenderedMarkdown content={weekendPlan.content_markdown} className="flex flex-col gap-1.5 text-sm text-muted-foreground" />
-                {/* D-131: one-click "add the recommended activity (and its
-                    prep time, if any) to the calendar" -- only offered when
-                    generate.ts found a feasible recommendation to persist,
-                    and swapped for a plain confirmation once accepted so a
-                    second click can't double-book the same weekend. */}
-                {weekendPlan.accepted_at ? (
-                  <p className="text-xs text-muted-foreground">Added to your calendar.</p>
-                ) : weekendPlan.recommended_activity_id && weekendPlan.recommended_block_start && weekendPlan.recommended_block_end ? (
-                  // D-131 (live-verify finding): recommended_activity_id can be set from
-                  // the AI's narration even when no open block exists this weekend (e.g.
-                  // the whole window is inside a vacation custody block) -- generate.ts
-                  // leaves recommended_block_start/end null in that case. Only offer the
-                  // button when there's an actual feasible block to schedule against, so
-                  // it never surfaces just to fail with a "no recommendation" error.
-                  <div>
-                    <AcceptWeekendPlanButton />
-                  </div>
-                ) : null}
-                <div>
-                  <GenerateWeekendPlanButton variant="regenerate" />
-                </div>
-              </>
-            ) : (
-              <>
-                <p className="text-sm text-muted-foreground">No plan generated yet.</p>
-                <GenerateWeekendPlanButton />
-              </>
-            )}
-            {weekendOpportunities.length > 0 && (
-              <div className="flex flex-col gap-1 rounded-md border border-dashed p-2">
-                {weekendOpportunities.slice(0, 2).map((opp) => (
-                  <p key={opp.id} className="text-sm">
-                    <span className="font-medium">{opp.headline}</span>
-                  </p>
-                ))}
-                <Link href="/opportunities" className="text-xs text-muted-foreground underline-offset-2 hover:underline">
-                  See opportunities
-                </Link>
-              </div>
-            )}
-          </div>
-        </details>
+        <Link
+          href="/activities"
+          className="flex items-center justify-between gap-2 rounded-control border border-line bg-surface-2 px-4 py-2 font-sans text-metadata font-bold text-ink-2 motion-safe-transition hover:text-ink"
+        >
+          {weekendLabel}
+          {weekendPlan?.accepted_at ? " — added to your calendar" : weekendPlan ? " — plan ready" : " — no plan yet"}
+          <ChevronRight className="size-4" />
+        </Link>
       )}
 
       {/* D-065/D-167: day AND week range now both skip this compact chip
@@ -1219,6 +1211,34 @@ export default async function CalendarPage({
                 <span key={i}>{label}</span>
               ))}
             </div>
+            {/* P-06: the custody band's container used to only render (and
+                take up space) on days that actually had a custody block,
+                so the date number sat right under the band on some days
+                and right at the top of the cell on others -- the grid
+                looked broken/misaligned even though each cell was correct
+                in isolation. maxCustodyRows reserves one fixed-height track
+                for the WHOLE grid (computed from every day, not just this
+                one), so every cell's date number lines up on the same row
+                regardless of whether that particular day has a band. */}
+            {(() => {
+              const monthCustodyRowCounts = gridDays.map((day) => {
+                const key = format(day, DAY_PARAM_FORMAT);
+                const dayItems = byDay.get(key) ?? [];
+                const custodyBlocksForDay: CustodyBlockLike[] = dayItems
+                  .filter((item): item is typeof item & { childPersonId: string; responsiblePersonId: string } =>
+                    item.kind === "custody" && item.childPersonId != null && item.responsiblePersonId != null
+                  )
+                  .map((item) => ({
+                    id: item.id,
+                    childPersonId: item.childPersonId,
+                    responsiblePersonId: item.responsiblePersonId,
+                    startsAt: item.startsAt,
+                    endsAt: item.endsAt,
+                  }));
+                return buildMonthCellCustodyBars(day, custodyBlocksForDay).length;
+              });
+              const maxCustodyRows = Math.max(0, ...monthCustodyRowCounts);
+              return (
             <div className="grid grid-cols-7 gap-1">
               {gridDays.map((day) => {
                 const key = format(day, DAY_PARAM_FORMAT);
@@ -1267,8 +1287,9 @@ export default async function CalendarPage({
                       !selected && isSameDay(day, today) && "font-semibold text-primary"
                     )}
                   >
-                    {custodyRows.length > 0 && (
-                      <div className="relative h-1" style={{ height: `${custodyRows.length * 4}px` }}>
+                    <span className="text-center">{format(day, "d")}</span>
+                    {maxCustodyRows > 0 && (
+                      <div className="relative" style={{ height: `${maxCustodyRows * 4}px` }}>
                         {custodyRows.map((row, rowIndex) => (
                           <div key={row.childPersonId} className="absolute left-0 h-[3px] w-full" style={{ top: `${rowIndex * 4}px` }}>
                             {row.segments.map((segment, segmentIndex) => (
@@ -1285,7 +1306,6 @@ export default async function CalendarPage({
                         ))}
                       </div>
                     )}
-                    <span className="text-center">{format(day, "d")}</span>
                     <div className="flex flex-col gap-px overflow-hidden">
                       {chips.visible.map((chip) => (
                         <span
@@ -1308,6 +1328,8 @@ export default async function CalendarPage({
                 );
               })}
             </div>
+              );
+            })()}
           </CardContent>
       </Card>
       )}

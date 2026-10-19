@@ -4,6 +4,7 @@
 // redirected. Centralizing it means the redirect rules (no session ->
 // /login, no household yet -> /onboarding) are defined exactly once.
 import { cache } from "react";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "../db/client-server";
@@ -13,6 +14,7 @@ import {
 } from "../db/repositories/households";
 import { listPeopleForHousehold } from "../db/repositories/people";
 import type { HouseholdRow, PersonRow } from "../db/database.types";
+import { isSafeRedirectPath } from "../http/safe-redirect";
 
 export interface HouseholdContext {
   supabase: SupabaseClient;
@@ -45,7 +47,18 @@ export const requireHouseholdContext = cache(async (): Promise<HouseholdContext>
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  if (!user) {
+    // I2: "Add a returnTo redirect after sign-in" -- proxy.ts carries the
+    // request's own path/query through as a response header (this Server
+    // Component has no direct access to the incoming request URL
+    // otherwise), so a session drop mid-use sends the user back to
+    // /login?next=<where they were> instead of always to the bare
+    // default. isSafeRedirectPath guards the same open-redirect vector
+    // the existing invite-flow `next` param already guards against.
+    const currentPath = (await headers()).get("x-pathname");
+    const loginUrl = isSafeRedirectPath(currentPath) ? `/login?next=${encodeURIComponent(currentPath)}` : "/login";
+    redirect(loginUrl);
+  }
 
   const memberships = await listHouseholdMembershipsForUser(supabase, user.id);
   if (memberships.length === 0) redirect("/onboarding");

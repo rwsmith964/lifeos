@@ -56,9 +56,17 @@ export default async function PeoplePage() {
           }
         }
 
+        // M-06: this feeds the person drawer's "GIFT SHORTLIST" block --
+        // "shortlist" means shortlisted, not "every open idea." The
+        // household-wide query above returns every active status
+        // (suggested/saved/ordered) since that's the right set for the
+        // Gifts page itself; narrow to saved+ordered here so this panel
+        // actually agrees with /gifts/saved, which uses the same filter.
         const [interests, giftSuggestions] = await Promise.all([
           listInterestsForPerson(supabase, person.id),
-          Promise.resolve(suggestionsByPersonId.get(person.id) ?? []),
+          Promise.resolve(
+            (suggestionsByPersonId.get(person.id) ?? []).filter((s) => s.status === "saved" || s.status === "ordered")
+          ),
         ]);
 
         return {
@@ -126,7 +134,7 @@ export default async function PeoplePage() {
 
       <PeopleTableClient rows={rows} archivedRows={archivedRows} />
 
-      <ChildcareSection requests={childcareRequests} people={allPeopleForChildcare} />
+      <ChildcareSection requests={childcareRequests} people={allPeopleForChildcare} today={format(today, "yyyy-MM-dd")} />
     </div>
   );
 }

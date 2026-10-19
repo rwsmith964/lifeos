@@ -40,7 +40,15 @@ export async function generateDailyBrief(
   client: SupabaseClient,
   householdId: string,
   forPersonId: string,
-  today: Date = new Date()
+  today: Date = new Date(),
+  // D-03: a user-initiated "Rebuild" deletes the day's existing brief row
+  // and calls this again, which used to dispatch a brand new notification
+  // every single time -- the feed accumulated one near-identical
+  // "daily_brief" notification per rebuild, all unread. The cron's own
+  // once-a-day generation is the only call that should ever notify;
+  // regenerateBriefAction (app/(app)/actions.ts) passes `notify: false`
+  // since the person doing the rebuild is already looking at the result.
+  notify: boolean = true
 ): Promise<GenerateBriefResult> {
   const todayStart = startOfDay(today);
   const todayDateStr = format(todayStart, "yyyy-MM-dd");
@@ -57,6 +65,7 @@ export async function generateDailyBrief(
   ]);
   if (!household) throw new Error(`Household ${householdId} not found`);
   if (!person) throw new Error(`Person ${forPersonId} not found`);
+  const timezone = owner?.timezone ?? "America/Los_Angeles";
 
   const windowStart = todayStart;
   const windowEnd = addDays(todayStart, 2); // today + tomorrow
@@ -131,7 +140,7 @@ export async function generateDailyBrief(
   // version (inner-joins people.household_id) but wasn't being used here;
   // switched to it, then re-applied the original lower bound (>= today)
   // that the helper itself doesn't take as a parameter.
-  const giftSuggestions = (await listSuggestionsDueForOrder(client, householdId, 14)).filter(
+  const giftSuggestions = (await listSuggestionsDueForOrder(client, householdId, 14, todayStart)).filter(
     (g) => g.order_by_date >= todayDateStr
   );
   const giftReminders = await Promise.all(
@@ -257,6 +266,7 @@ export async function generateDailyBrief(
   try {
     const result = await callAi(client, {
       householdId,
+      timezone,
       feature: "daily_brief",
       systemPrompt: BRIEF_SYSTEM_PROMPT,
       userPrompt: buildBriefUserPrompt(context),
@@ -290,25 +300,27 @@ export async function generateDailyBrief(
     delivered_channels: [],
   });
 
-  const delivered = await dispatchNotification(
-    client,
-    {
-      householdId,
-      personId: forPersonId,
-      notificationType: "daily_brief",
-      title: restoredContent.headline,
-      body: markdown,
-      linkPath: `/brief/${todayDateStr}`,
-    },
-    // P3-5: in_app is always sent (it backs the notification bell itself);
-    // everything beyond that is the household's own opt-in preference from
-    // Settings, not a hardcoded literal. Dedup with a Set in case in_app was
-    // ever stored in the preference array too.
-    Array.from(new Set<NotificationChannel>(["in_app", ...household.notification_channels]))
-  );
-  await briefsRepo.update(client, brief.id, {
-    delivered_channels: delivered.filter((d) => d.result.delivered).map((d) => d.channel),
-  });
+  if (notify) {
+    const delivered = await dispatchNotification(
+      client,
+      {
+        householdId,
+        personId: forPersonId,
+        notificationType: "daily_brief",
+        title: restoredContent.headline,
+        body: markdown,
+        linkPath: `/brief/${todayDateStr}`,
+      },
+      // P3-5: in_app is always sent (it backs the notification bell itself);
+      // everything beyond that is the household's own opt-in preference from
+      // Settings, not a hardcoded literal. Dedup with a Set in case in_app was
+      // ever stored in the preference array too.
+      Array.from(new Set<NotificationChannel>(["in_app", ...household.notification_channels]))
+    );
+    await briefsRepo.update(client, brief.id, {
+      delivered_channels: delivered.filter((d) => d.result.delivered).map((d) => d.channel),
+    });
+  }
 
   return { status: "generated", briefId: brief.id, contentMarkdown: markdown };
 }

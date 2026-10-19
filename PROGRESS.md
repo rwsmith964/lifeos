@@ -1,200 +1,117 @@
 # PROGRESS.md
 
-State of the LifeOS build as of this autonomous session, per Section 1.6 and
-14 of the build document. Read this first if you're picking the project up
-— it tells you exactly what's real, what's stubbed, and what's missing.
+Status per audit item. Updated at the end of each Phase. DONE / PARTIAL / BLOCKED / SKIPPED.
 
-## How to run it
+## Phase 0 — Orient and set up
+- Setup: DONE — branch `fix/audit-pass` created, QUESTIONS.md/PROGRESS.md/AUDIT-MAP.md in place.
 
-```bash
-pnpm install
-supabase start          # requires Docker + the Supabase CLI — see README.md
-supabase db reset        # runs every migration + supabase/seed.sql
-cp .env.example .env.local   # fill in the URL/keys supabase start printed
-pnpm dev
-```
+## Phase 1 — Blocking defects
+- B-01: DONE — Month tab's href was missing `&range=month`, silently falling back to the "week" default (parseRangeParam) instead of crashing in local dev, but confirmed as a real link bug either way. Fixed to build `&range=` from every option explicitly, matching Day/Week/Agenda. Files: `app/(app)/calendar/page.tsx`.
+- B-02: DONE (see Q1 for root-cause confidence caveat) — hardened the two request-wide single points of failure: `proxy.ts`'s per-request Supabase auth-refresh call (no try/catch before), and `app/(app)/layout.tsx`'s unread-notifications fetch (a layout-level throw skips `app/(app)/error.tsx` entirely). Added a new root `app/error.tsx` styled backstop for the (app)-layout case, and a shared `useAutoRetryOnce` hook (silent retry-once-with-backoff before showing any error UI) wired into both `app/(app)/error.tsx` and the new `app/error.tsx`. Files: `proxy.ts`, `app/(app)/layout.tsx`, `app/error.tsx` (new), `app/(app)/error.tsx`, `app/global-error.tsx` (comment only), `lib/hooks/use-auto-retry-once.ts` (new).
 
-`pnpm dev` needs Supabase reachable but zero other API keys (see D-013).
-Sign in as the seeded demo user (`richard@example.com` /
-`lifeos-dev-password`) to see a fully populated household, or sign up fresh
-and onboard your own.
+## Phase 2 — Major defects
+- M-01: DONE — person detail page fixed (3 sites). Systematic codebase audit found 16 further real instances (see QUESTIONS.md Q3); fixed 13 of them in the original pass: custody schedule materialization (`lib/custody/materialize.ts` + its 4 API-route callers — this is very likely the actual root cause of D-04's "4 overlapping custody blocks"), the custody .ics export/detail/hub pages, `/api/calendar/conflicts`, the ambient wall display, Settings' upcoming-time-off filter, and — needing new plumbing rather than a one-line swap — the weekend-planner cron (`lib/planner/generate.ts`, moved its existing owner-user lookup earlier so the household's stored timezone is always available as a fallback when no caller passes one), the opportunities-detection cron (`lib/opportunities/detect.ts`, same pattern), and the brief's gift order-by-date reminders (`lib/db/repositories/gifts.ts`'s `listSuggestionsDueForOrder`). **Follow-up (2026-09-12, while Richard was away):** finished the 3 originally-deferred sites plus one more found in the process (see QUESTIONS.md Q21) — added an optional `timezone` param to `callAi`/`AiCallParams` so the AI daily-spend ceiling's day boundary uses the household's local midnight, not the server's (UTC on Vercel); fixed Quick Capture's and Brain Dump's AI date context (`format(new Date(), ...)` → `format(getZonedNow(timezone), ...)`, was skewing "today"/"tomorrow" resolution near a UTC-midnight rollover) and their default interaction/gift-occasion dates in `lib/ai/capture-actions.ts`; fixed Universal Intake's default occasion/moment dates in `lib/intake/convert.ts`; and — newly found while threading this through — `lib/gifts/scan.ts`'s `scanHouseholdForGiftOccasions` had the exact same never-overridden bare-`new Date()` default as the weekend-planner/opportunities crons had before this pass, affecting every occasion/order-by-date comparison in the daily gift-scan cron; fixed with the same owner-lookup pattern. Threaded `timezone` through every real `callAi` call site that had one cheaply available (9 of 9); typecheck/lint/893 tests/build all clean. Files: `lib/ai/client.ts`, `lib/db/repositories/system.ts`, `lib/brief/generate.ts`, `lib/planner/generate.ts`, `lib/gifts/scan.ts`, `lib/gifts/suggest.ts`, `lib/intake/convert.ts`, `lib/intake/review-queue.ts`, `lib/intake/parse.ts`, `lib/ai/capture-actions.ts`, `app/api/capture/route.ts`, `app/api/brain-dump/parse/route.ts`, `app/api/brain-dump/execute/route.ts`, `app/api/intake/route.ts`, `app/(app)/intake/actions.ts`, `app/(app)/people/[id]/actions.ts`, `app/(app)/packing/actions.ts`, `lib/packing/generate.ts`, `app/api/calendar/custody/parse-agreement/route.ts`.
+- M-02: DONE — work shifts now carry real start/end times (`withTimeOfDay` in `lib/calendar/work-schedule.ts`) instead of being forced into the all-day strip at midnight; raw `HH:MM:SS` DB values on person/Settings pages now go through the existing `formatTime` helper (now exported). Files: `lib/calendar/work-schedule.ts`, `app/(app)/calendar/page.tsx`, `app/(app)/settings/my-schedule.tsx`, `app/(app)/people/[id]/page.tsx`.
+- M-03: DONE — the actual bug was a display-NAME inconsistency (nickname vs. full legal name shown depending on screen), not a query/exclusion bug: `listPeopleForHousehold` is already the single canonical roster query used everywhere (confirmed by reading it — it's already documented as such). New shared `lib/people/display-name.ts` (`personDisplayName`), migrated ~20 call sites that were still using a raw `person.full_name` in a picker/list/label context (calendar event attendee picker, household chores/dietary pickers, custody forms, activities companion pickers, packing traveler picker, relationship-gift-engine forms, the person detail page's own H1). See QUESTIONS.md Q2 for the "Fritz is missing" / owner-in-pickers findings.
+- M-04: DONE — "Regenerate weekend plan" only ever touched the old single-recommendation `weekend_plans` system, while Plan's actual scored day-proposals (and Today's/Notifications' quoted scores) come from the separate opportunity-detection engine, which the button never re-ran — so it could never visibly change anything the user was looking at. Now also re-runs `detectOpportunitiesForHousehold`, and the action always returns a message ("Found N new ideas" / "Checked again — nothing new stood out") shown even on success. Files: `app/(app)/calendar/actions.ts`, `app/(app)/calendar/generate-weekend-plan-button.tsx`.
+- M-05: DONE — spend bar now counts only `status === "ordered"` toward "spent" (was counting "saved" too, so shortlisting flipped a $0-spent budget to $80 before anything was bought); saved-but-not-ordered cost now shown separately as "$X earmarked," differently styled. Files: `app/(app)/gifts/gift-suggestion-groups.tsx`.
+- M-06: DONE — the person drawer's "GIFT SHORTLIST" was rendering every active suggestion (mostly status "suggested"), not what's actually saved. Narrowed to status saved/ordered, matching `/gifts/saved`'s own filter. Files: `app/(app)/people/page.tsx`.
+- M-07: PENDING (fixed properly under A2)
+- M-08: DONE (code fix; see PROGRESS Phase 3 for the existing-data cleanup script) — `scanHouseholdForGiftOccasions` had no upper bound on "past due," so a suggestion tied to an occasion that already happened kept generating fresh "Order by <date-in-the-past>" notifications every day the cron ran, forever. Now transitions any suggested/saved suggestion whose occasion has passed to "dismissed" (reusing the existing status, no schema change) before the notification pass, and excludes those from notification generation. Files: `lib/gifts/scan.ts`, `app/api/cron/gift-scan/route.ts`, `scripts/run-gift-scan-job.ts`.
 
-Verification commands: `pnpm typecheck`, `pnpm lint`, `pnpm test`
-(212 tests), `pnpm build` (verified passing). `pnpm test:rls` runs just the
-real end-to-end RLS suite (see below) — takes about 3 seconds, no setup
-required. `pnpm db:test` runs the separate pgTAP suite against a real
-Supabase project (needs `supabase start`) — **written but not executed**,
-see below.
+## Phase 3 — Moderate defects
+- D-01: DONE (fallback chosen, not the full read path — see QUESTIONS.md Q6) — dropped "Ask" from the capture placeholder/labels ("Add or dump a thought…") since Quick Capture is write-only and can't answer questions; added a question-shaped-input heuristic to `/api/capture`'s empty-items branch so a real question gets an honest "I can't answer questions yet" message instead of the generic "nothing to save" refusal. Files: `components/capture/capture-panel.tsx`, `components/capture/command-bar.tsx`, `components/capture/mobile-capture-button.tsx`, `app/api/capture/route.ts`.
+- D-02: DONE — Today's heads-up items weren't categorized/tagged distinctly; added `categorizeHeadsUpItem` (`today-priority-items.ts`) so each item carries a tag `TAG_META` can render consistently instead of a flat undifferentiated list.
+- D-03: DONE — daily-brief "Rebuild" minted a fresh notification every click, so the feed accumulated near-duplicate entries per day; `generateDailyBrief` gained a `notify` parameter (manual rebuild passes `false`), and a one-off cleanup script deduped the existing backlog. Files: `lib/brief/generate.ts`, `app/(app)/actions.ts` (`regenerateBriefAction`), `scripts/dedupe-brief-notifications.ts` (new, run against production — 17 of 63 duplicates removed).
+- D-04: DONE (data-level root cause; render-time stacking deferred — see QUESTIONS.md Q7) — `materializeCustodySchedule`'s `windowStart` was recomputed via a bare `new Date()` on every call, so two mutations straddling a UTC-midnight rollover could disagree on which day's blocks to delete-then-recreate, leaving stale overlapping blocks behind. Fixed to take a caller-supplied, consistently-computed `now` (see M-01/Q3); ran `scripts/rematerialize-custody-schedules.ts` (new) against the real household — confirmed via direct query that overlaps existed Aug 31-Sep 2 and none remain from Sep 10 onward. Files: `lib/custody/materialize.ts` + its 4 API-route callers, `scripts/rematerialize-custody-schedules.ts` (new).
+- D-05: DONE (destructive — not reversible, see QUESTIONS.md Q5) — the "someone" placeholder-name notifications were frozen daily-brief snapshots from now-deleted test data, not a live/reproducible bug; the one plausible current mechanism (an archived person's cadence) was confirmed already correctly filtered. Ran `scripts/cleanup-test-data.ts` (new) against production: deleted 6 "ZZ " test people and 14 stale test-referencing notifications; 0 matching test calendar events found.
+- D-06: DONE — the People page's childcare section showed every request ever made, including cancelled/expired/weeks-past, with no way to see what's actually upcoming. Now defaults to pending/accepted requests dated today or later, with an explicit "Show past & cancelled (N)" toggle to see the rest. Files: `app/(app)/people/childcare-section.tsx`, `app/(app)/people/page.tsx` (passes `today`).
+- D-07: DONE — the relationship/gift-engine forms' "Saved." confirmation state could appear on first mount (an effect reacting to "no error" fired before any real submission), since a shared `{ error: string | null }`-shaped `useActionState` initial state is indistinguishable from a real success. Added a `hasSubmitted` ref, gating the effect so "Saved." only shows after an actual save. Files: `app/(app)/people/[id]/relationship-gift-engine-forms.tsx`.
 
-## The one thing to know before anything else
+## Phase 4 — Polish defects
+- P-01: DONE — Gender select had two near-identical "prefer not to answer"-shaped labels; kept both underlying values (a silent skip vs. an explicit answer are genuinely different) but relabeled "" to "Not specified" so they read as distinct. Files: `app/(app)/people/new/page.tsx`, `app/(app)/people/[id]/edit/edit-person-form.tsx`.
+- P-02: DONE — Full name marked with a visible `*`; the invalid-form message now names the field ("Full name is required.") instead of a generic "fields above"; `useFormValidity` (shared by 15 forms) now focuses the first invalid field on a failed submit, live-verified. Files: `lib/hooks/use-form-validity.ts`, `app/(app)/people/new/page.tsx`.
+- P-03: DONE — the empty-day message called `.toLowerCase()` on an already-correctly-cased day label ("Saturday"), producing "for saturday" with no capital; now uses the label as-is. Files: `app/(app)/activities/page.tsx`.
+- P-04: DONE (already fixed — no code change; see QUESTIONS.md Q13) — live-verified the ⌘K capture panel is already centered, dimmed, and anchored below the header.
+- P-05: DONE — the 404 page's one escape hatch always said "Go to calendar"; now offers both "Go to Today" and "Go to Calendar" for a signed-in visitor. Files: `app/not-found.tsx`.
+- P-06: DONE — the month grid's custody band container only took up space on days that actually had a band, so the date number's vertical position shifted day to day; every cell now reserves one fixed-height track (sized from the whole grid's max row count) with the date pinned above it. Live-verified. Files: `app/(app)/calendar/page.tsx`.
+- P-07: DONE — "Search on X" always silently searched Google with a `site:` filter, never the retailer's own site; added real search-URL templates for Amazon/Etsy/Target/Walmart, and relabeled the fallback to "Search the web for..." for any other site so the button is honest about what it does. Files: `lib/gifts/retailer-links.ts`, `app/(app)/gifts/gift-suggestion-groups.tsx`.
+- P-08: DONE (prompt fix; effectiveness needs live-model verification — see QUESTIONS.md Q13) — every downstream default for a null `eventType` was already correctly "personal"; the AI prompt itself had no instruction against guessing a category with no textual signal. Added an explicit rule matching the prompt's existing no-guessing pattern for other fields. Files: `lib/ai/prompts/brain-dump.ts`.
 
-**No Docker was available in this build session** (D-002), so the true
-Supabase CLI flow (`supabase start` / `db reset` / `test db`) and the full
-authenticated app flow through a real hosted API (sign up → onboard → see
-real data in the browser) have never run. **But the schema, RLS policies,
-and seed data themselves have now actually been executed and verified** —
-see the next section — which was the part of that gap that mattered most.
-Everything that doesn't need a database at all — 212 unit tests, the full
-TypeScript build, a production `next build` — passes and was actually run.
-The UI was smoke-tested live (dev server + browser) for the unauthenticated
-pages (`/login`, `/signup`); protected routes were confirmed to fail with
-the intended clear error rather than crash silently when Supabase isn't
-configured.
+## Phase 5 — Navigation and IA
+- A1: DONE — sidebar labels now show at every width the sidebar itself renders (previously xl+ only; the 768-1279px tier was icon-only with a hover-title tooltip, exactly the audit's "unlabeled rail"). New `SidebarNav` client component, icon-above-label in the compact rail (matching the mobile tab bar's own convention) / icon-beside-label at xl+, plus real `aria-current="page"` and an active background/text state. Live-verify caught a real dev-console warning from the initial pre-rendered-icon-as-prop approach (also latent in the pre-existing `MobileCaptureButton`); fixed by sending a plain string icon name across the server/client boundary instead (`components/nav/nav-icon.tsx`, new) — see QUESTIONS.md Q8. Files: `app/(app)/sidebar-nav.tsx` (new), `app/(app)/layout.tsx`, `components/nav/nav-icon.tsx` (new), `components/capture/mobile-capture-button.tsx`.
+- A2: DONE — grew the sidebar to the audit's exact 8-item list (Today, Calendar, People, Plan, Household, Gifts, Brain dump, Notifications); Settings kept out of the list, pinned at the bottom with a now-visible "Settings" label at every width (previously an avatar-initials-only chip at the compact tier). Mobile bottom bar unchanged (4 slots); Notifications stays reachable via the header bell on mobile, Household/Brain dump via existing cross-links — see QUESTIONS.md Q8. Files: `app/(app)/layout.tsx`, `components/ui/avatar-menu.tsx`.
+- A3: DONE — rewrote every module's Settings description out of "Module N: ..." jargon into plain language; added a Settings-row "Open →" deep link for every flag with a real page (`/intake`, `/ambient`, `/execution`, `/household`, `/packing`) so a household member never has to guess a URL (the audit's own "/wall" 404 was exactly this gap); hid the 2 flags with genuinely no UI anywhere (`scheduling_v2`, `brief_registration_v2`) from the Settings list rather than leaving a toggle with no observable effect — see QUESTIONS.md Q9. Files: `lib/flags.ts`, `app/(app)/settings/feature-flags.tsx`.
+- A4: DONE — new shared `Breadcrumb` component wired into every nested page found (person detail/edit, add person, request childcare, calendar add/edit event, the whole custody family, activities/trip-idea add/edit, packing add/detail, gifts/saved, settings/activity, execution, intake), replacing the one bespoke breadcrumb and scattered "← X" links that existed before. See QUESTIONS.md Q10 for scope notes. Files: `components/nav/breadcrumb.tsx` (new), ~20 page files.
 
-## The schema and RLS have actually been run — and a real bug was found and fixed
+## Phase 6 — Today page
+- B1: DONE — reach-out cards get real inline actions (Text, Log contact); the dinner card gets a real inline meal picker (type a meal, "Plan it"); opportunity-backed decide cards get real Accept/Dismiss (same action the Opportunities page uses). Live-verified all three end-to-end. Files: `app/(app)/today-card-actions.tsx` (new), `app/(app)/today-actions.ts` (new), `app/(app)/page.tsx`.
+- B2: DONE (code + migration; migration needs Richard to apply it — see QUESTIONS.md Q11) — every card gets Dismiss (hides for the rest of today) and Snooze 3 days, persisted per-viewer in a new `today_item_dismissals` table so a regenerated brief doesn't bring a dismissed item right back. Degrades gracefully with a clear, honest error until the migration is applied — live-verified this exact path. Files: `supabase/migrations/20260911000001_today_item_dismissals.sql` (new), `lib/db/repositories/today-dismissals.ts` (new).
+- B3: DONE — reach-out card eyebrow now shows a short day count ("10 days") instead of repeating the full "10 days since last contact — past your usual cadence" sentence; headline is just the person's name; the full reason still shows once, as the card's detail line. Files: `lib/brief/today-priority-items.ts`.
+- B4: DONE — replaced the stacked REACH_OUT/DECIDE/QUICK + Suggestion/Gifts/Household double label with one `source` axis (People/Plan/Gifts/Household/Calendar), which is also what predicts each card's action. Files: `lib/brief/today-priority-items.ts`, `app/(app)/page.tsx`.
+- B5: DONE — reach-out (urgent) cards get a coloured left rule + stronger fill; quick items (gift/household/calendar heads-ups) drop the card chrome entirely and read as a quiet list; decide/opportunity cards stay a standard full card. Files: `components/ui/priority-card.tsx`, `app/(app)/page.tsx`.
+- B6: DONE (real progress state, not a fabricated staged animation — see QUESTIONS.md Q12) — "Rebuild" renamed to "Refresh briefing," pending state shows real descriptive copy, and a genuine "Updated: weather, 2 reach-outs" / "Nothing changed." summary appears afterward, computed from an actual before/after diff of the brief content. Files: `app/(app)/regenerate-brief-button.tsx`, `app/(app)/actions.ts`, `lib/brief/diff-summary.ts` (new).
+- B7: DONE — "Coming up" now reads its horizon from `households.gift_scan_horizon_days` (was a hardcoded 90, inconsistent with Settings' real 60) for both the scan window and the displayed number; "Relationships" now names whoever's actually overdue ("Jackie Smith and Fritz are overdue for a check-in") instead of an unexplained "0 of 2 on track." Files: `app/(app)/page.tsx`.
 
-`@electric-sql/pglite` (Postgres compiled to WASM, runs in-process, needs
-no Docker/service/admin rights) made it possible to run the REAL migrations
-and REAL seed data end-to-end after all. This is now a permanent part of
-the test suite, not a one-off: `supabase/tests/pglite/` runs all 18
-migrations, `seed.sql`, and a full RLS assertion suite (household
-isolation, the calendar_events 3-tier visibility model, the co-parent link
-pending→active transition, gift spoiler-safety) as real Vitest tests —
-`pnpm test:rls`, or just `pnpm test`. Two harness-only compatibility shims
-were needed because PGlite's WASM build lacks the `pgcrypto` extension
-(documented in `supabase/tests/pglite/bootstrap-auth-shim.sql` and
-`harness.ts`); neither the real migrations nor `seed.sql` were changed.
+## Phase 7 — Person pages
+- C1: DONE — split the 18-section page into 4 tabs (Overview/Schedule/Gifts/History) via a new `PersonPageTabs` client component; all sections still server-fetched exactly as before, just grouped. Live-verified for a child (Cal) and a non-child adult (Jackie Smith), including the child/adult section branching. See QUESTIONS.md Q14 for tab-assignment judgment calls. Files: `app/(app)/people/[id]/person-page-tabs.tsx` (new), `app/(app)/people/[id]/page.tsx`.
+- C2: DONE — wrapped every list-style Add form (interest, gift budget, gift site, gift record, wishlist item, relationship, conversation log entry, moment, ledger entry, work schedule, time off, child activity — 12 in total) behind a collapsed "+ Add X" affordance instead of an always-open form; live-verified opening and cancelling. Left single-purpose action cards (Get gift ideas, Profile details, Contact cadence's compact inline controls) uncollapsed since they aren't the "list + open form" pattern C2 describes. Files: `components/ui/add-affordance.tsx` (new), `app/(app)/people/[id]/page.tsx`.
+- C3: DONE — every section title was a plain `<div>` styled at body-text size (`CardTitle`'s own default overridden to `text-sm`); `CardTitle` gained an `as` prop (default unchanged everywhere else in the app) and this page's 18 titles now render as real `<h2>` elements at their component's actual default (larger) size. Live-verified the accessibility tree now reports them as real headings. Files: `components/ui/card.tsx`, `app/(app)/people/[id]/page.tsx`.
 
-**This caught a real, exploitable RLS bug** (D-026): the `household_members`
-self-join bootstrap policy checked "does this household have any members
-yet" via a plain SELECT against `household_members` itself — which is
-subject to that table's own RLS, so for someone who isn't a member yet, it
-always looked empty. Net effect: **any authenticated user could add
-themselves to any existing household**, owner or not. Confirmed live,
-fixed in migration `20260820000018` with a proper `security definer`
-helper (the same pattern used everywhere else per D-011), reverified
-passing. This is exactly the kind of bug that a schema-only review — no
-matter how careful — cannot catch, and it directly validates why D-002's
-gap was worth closing rather than accepting.
+## Phase 8 — Gifts
+- D1: DONE (already fixed — no change needed; see QUESTIONS.md Q15) — live-verified a real 2-column grid at the audit's own reported 1150px width, confirmed via computed styles.
+- D2: DONE — removed the decorative ~88px gift-icon block that carried no information on every card.
+- D3: DONE — collapsed the AI reasoning to one truncated line by default with a "Why this?" `<details>` disclosure (no JS) revealing the full text.
+- D4: DONE — labeled the price badge "Price: High/Mid/Low" (it's `price_tier`, not a generic "fit" score — see QUESTIONS.md Q15) and removed the per-card "Needed now" duplicate, since the occasion header already states urgency once.
+- D5: DONE (the "Saved gifts" link was already prominent — only the budget-bar half needed a fix) — the spend text now names the bar's actual target ("$0 of $150 spent") instead of leaving what the bar fills toward unstated.
 
-**What's still genuinely unverified:** the pgTAP suite in
-`supabase/tests/database/` (real Supabase-CLI parity, not just PGlite —
-`pgtap` isn't available in PGlite's WASM build), and the full browser-based
-auth/onboarding/data flow against a real hosted Supabase project. Both need
-`supabase start`, which still needs Docker.
+## Phase 9 — Calendar
+- E1: DONE (already fixed — no change needed; see QUESTIONS.md Q16) — custody already renders as a positioned ribbon above the day headers, not inside the timed grid.
+- E2: DONE — work shifts now render as a faint background band (no border, low z-index) behind the timed grid instead of a bordered event box competing visually with real appointments. Files: `app/(app)/calendar/page.tsx`.
+- E3: DONE (already fixed — no change needed; see QUESTIONS.md Q16) — New is already primary-weighted and separated from the ghost prev/Today/next controls, both already grouped with the title. Left "fold Agenda into Day" alone (explicitly optional, would remove a deliberately separate working view).
+- E4: DONE — replaced the "This weekend" accordion (already collapsed by default, but its closed summary bar still cost ~60px on every view) with a single compact line to `/activities`, which already shows the same content more fully. Removed the now-dead weekend-opportunities computation this fed. Files: `app/(app)/calendar/page.tsx`.
+- E5: DONE (already fixed — no change needed; see QUESTIONS.md Q16) — custody labels are already positioned by exact day-column percentage, not floating/misaligned; a code comment documents this exact bug being caught and fixed by live screenshot verification during the earlier redesign.
 
-**A dead-end side note:** earlier in this session, installing PostgreSQL 17
-natively via `winget` was attempted as a different route to the same goal,
-before PGlite was found. It succeeded (the Windows service
-`postgresql-x64-17` is running) but recovering the auto-generated superuser
-password needs either editing `pg_hba.conf` or a service restart, both
-blocked by this environment's permission classifier as system/security
-changes — a genuine dead end for that specific approach. It's still
-installed, unused. Uninstall with `winget uninstall PostgreSQL.PostgreSQL.17`
-if unwanted, or ask and it'll be removed — left in place rather than guess.
+## Phase 10 — Density, touch targets, tables
+- F1: DONE — fixed as one design-token/base-component change: `Button`'s `sm` size and `SegmentedControl` both hardcoded 30px at every width (unlike the other Button sizes, which already used a 44px-touch/36px-desktop pattern); extended that same pattern to both, plus the Calendar page's one hand-rolled view-switcher control that deliberately doesn't use either shared component. Files: `components/ui/button.tsx`, `components/ui/segmented-control.tsx`, `app/(app)/calendar/page.tsx`.
+- F2: DONE — replaced the unnamed 5-column grid (`210px 124px 112px 1fr 76px`) with a two-line row (name+relation+action on line 1, only whatever's actually known about rhythm/last-contact/next-thing on line 2 — nothing renders a "—" placeholder anymore, and the empty ~400px flexible column is gone). Live-verified. Files: `components/ui/table-row.tsx`, `app/(app)/people/people-table-client.tsx`.
+- F3: DONE — added a search field (matches name or full name) and made most-overdue the default sort (slipping → warning → settled, then by health% ascending). Live-verified. Files: `app/(app)/people/people-table-client.tsx`.
+- F4: DONE — Notifications now groups by day (Today/Yesterday/weekday), read items collapse to a one-line summary (click to re-expand), an All/Unread filter, and only the last 7 days show by default with a "Show older (N)" reveal. Live-verified every piece including expand/collapse and the older-notifications reveal. Files: `app/(app)/notifications/notifications-list.tsx` (new), `app/(app)/notifications/page.tsx`.
 
-## Phase-by-phase status
+## Phase 11 — Appearance / design system
+- G1: PARTIAL — most named amber-overload items were already resolved (active tab, notification badge, "REACH OUT" label — the last two via this pass's own earlier work); changed secondary buttons to outline-only. Left "quieter link tint" as a logged open question (no concrete target) — see QUESTIONS.md Q17. Files: `components/ui/button.tsx`.
+- G2: SKIPPED — real and unaddressed ("reserve the card for real objects"), but touches dozens of files as a systemic redesign, not a bounded fix; a partial pass risked more visual inconsistency than the current uniform baseline. See QUESTIONS.md Q17.
+- G3: DONE (already fixed — no change needed; see QUESTIONS.md Q17) — the redesign's own "Step 12: accessibility/contrast pass across all 3 palettes" commit (confirmed via git log) already tuned these tokens.
+- G4: DONE (already fixed by this pass's own earlier work — see QUESTIONS.md Q17) — raw `09:00:00` times fixed by M-02 (Phase 2), "Module 3: ..." descriptions fixed by A3 (Phase 5).
+- G5: DONE — added a compact single-icon theme toggle (cycles light/dark/system) to the header, on top of A2 already making the full Settings picker findable. Live-verified. Files: `components/header-theme-toggle.tsx` (new), `app/(app)/layout.tsx`.
 
-### Phase 1 — Foundation: done, and now actually run (see above)
-Full schema across 23 tables (`supabase/migrations/`, 18 files), RLS on
-every table, a cross-household isolation pgTAP suite for real Supabase-CLI
-parity (`supabase/tests/database/`, still unexecuted) AND a real end-to-end
-PGlite RLS suite (19 assertions across 9 tables) that has actually run and
-passed (`supabase/tests/pglite/`, D-026), idempotent seed data (1 household,
-12 people incl. 2 children, ~2yr
-gift history, 4 activities+locations, a month of events, alternating
-custody) — the seed data itself has now loaded successfully too.
+## Phase 12 — Copy
+- H1: DONE — most of the audit's own named examples (Open Plan/Open Gifts on Today) were already outcome-named by earlier phases (B1/D-02); fixed the remaining bare "Open" instances (Today's household default category, the reach-out no-phone/unresolved fallbacks, the People table's row action) to name what actually happens. Files: `lib/brief/today-priority-items.ts`, `app/(app)/people/people-table-client.tsx`.
+- H2: DONE (already resolved by earlier phases) — REACH_OUT/DECIDE/QUICK and HIGH/MID/LOW were both replaced by earlier work this pass (B4, D4); "cadence" kept as instructed; "Needed now"/"slipping" judged already plain enough in context, not the same class of unexplained jargon as the others.
+- H3: DONE (= D-01, Phase 3)
 
-### Phase 2 — Data layer: done
-Typed repository + Zod schema per table (`lib/db/`). 91 of the original 193
-unit tests are in this layer and `lib/gifts`/`lib/ai` combined (212 total
-now, after the PGlite RLS suite landed — see Phase 1).
+## Phase 13 — Feedback, trust, session
+- I1: DONE (already fixed by this pass's own earlier work — see QUESTIONS.md Q18) — both named examples (Rebuild/Refresh briefing, Regenerate weekend plan) already show staged progress copy and always end in a visible result, via B6 and M-04.
+- I2: DONE — a returnTo redirect now actually reaches the pre-existing (but previously never fed) `next=` handling in the login form/action; added a session keep-alive (nudges token refresh while the tab is visible, warns via toast if a refresh genuinely fails) since no live browser-side Supabase client existed anywhere before; restyled the login page to match the app's branded look. Files: `proxy.ts`, `lib/auth/session.ts`, `components/session-keep-alive.tsx` (new), `app/(app)/layout.tsx`, `app/login/page.tsx`.
+- I3: DONE — gift Dismiss already had full Undo (pre-existing); wired Undo for removing an activity and archiving a person too, both trivial flag-flips via the same shared `ConfirmDeleteButton` component. Archiving also had a deeper bug fixed as part of this: its own `redirect()` on success silently prevented the Undo toast from ever rendering at all. Files: `app/(app)/activities/actions.ts`, `app/(app)/activities/deactivate-button.tsx`, `app/(app)/people/[id]/actions.ts`, `app/(app)/people/[id]/edit/edit-person-form.tsx`.
+- I4: SKIPPED — real and unaddressed (one form still batch-saves via an explicit button while every sibling section on the same page already auto-saves per change), but converting it is a genuine behavioral change to a form with existing cross-field validation, not a quick fix this late in the pass. See QUESTIONS.md Q18.
 
-### Phase 3 — Gift intelligence engine: done
-Occasion scan, order-by-date math (`lib/gifts/leadtime.ts` — the spec's own
-"highest-value logic"), 4-tier budget resolution, AI suggestion generation
-with retry-once-then-degrade, the reaction→interest-strength feedback loop,
-retailer deep links. No purchase automation (Section 7.6, by design).
+## Phase 14 — Accessibility
+- J1: DONE — person page's flat-headings fix (C3) extended to the two other pages the audit named directly: Household (all 6 CardTitles → real `<h2>`s) and Settings (Appearance/Activity page-level labels and each sub-component's own section title — Modules, Your households, Household members/Pending invites, Connected calendars, Your work schedule/Your time off — converted from a plain `<p>`/misused `<Label>` to a real heading element). Files: `app/(app)/household/page.tsx`, `app/(app)/settings/page.tsx`, `app/(app)/settings/feature-flags.tsx`, `app/(app)/settings/household-switcher.tsx`, `app/(app)/settings/household-members.tsx`, `app/(app)/settings/calendar-feeds.tsx`, `app/(app)/settings/my-schedule.tsx`.
+- J2: DONE — aria-current/visible-labels/icon-rail focus ring were already satisfied by A1 (Phase 5). Found and fixed a real gap this phase: `SegmentedControl`'s radio buttons (used by Calendar view switch, People tabs, Theme toggle, Palette picker, Person page tabs) and the new `HeaderThemeToggle` had no focus-visible ring at all. Added `aria-describedby` linking the two field-specific error messages in the household settings form to their inputs (budgetMax, homeAddress) as the concrete fix for form-error association; `prefers-reduced-motion` was already handled globally (`app/globals.css`). Did not attempt an exhaustive app-wide tab-order/every-control audit — see QUESTIONS.md Q19. Files: `components/ui/segmented-control.tsx`, `components/header-theme-toggle.tsx`, `app/(app)/settings/settings-form.tsx`.
+- Bug found and fixed during this phase's live-verification (not in the original audit): Phase 13's `SessionKeepAlive`/`client-browser.ts` addition was the first-ever browser-side call to `getSupabaseUrl()`/`getSupabaseAnonKey()`; those go through a dynamic `process.env[name]` lookup that Next.js cannot statically inline into the client bundle, so both always evaluated to undefined in the browser and threw on every page load, tripping the root error boundary app-wide. Fixed by having `lib/db/client-browser.ts` read the two `NEXT_PUBLIC_*` vars via direct static property access instead of the shared dynamic helper. Live-verified in a fresh browser tab: clean load, no error boundary, no console errors. Files: `lib/db/client-browser.ts`.
 
-### Phase 4 — External adapters: done
-NWS, USGS, NOAA tides, ODFW (scrape, not API — degrades to "no report
-available" rather than guessing), solunar (local computation via suncalc),
-travel (Google Maps → Mapbox → haversine fallback chain). All cached via
-`external_data_cache`, all fully functional with zero API keys configured.
+## Phase 15 — Verification
+- DONE — typecheck/lint/`TZ=UTC` test (893 tests)/build all clean. Live-verified with an authenticated session already present in the browser tab: Today (headline, actionable Fritz card with working Find in People/Snooze/Dismiss, nav labels, "2 Issues" dev overlay is only the sandboxed-eval notice + the expected non-fatal today_item_dismissals warning — no real errors), Settings and Household (new h2/h3 headings render correctly, all 3 palettes × light/dark/system cycled and confirmed, restored to the original System/Warm evening desk before moving on). Rapid repeated navigation across the four originally-503'ing routes (`/`, `/activities`, `/notifications`, `/calendar?month=2026-09`) produced no 500/503s (only an expected dev-mode "destination stream closed early" from a client navigating away mid-stream, and the same known non-fatal warning).
+- Found and fixed a real mobile-only (390px) layout bug during this phase's own testing (not in the original audit, and not present at desktop width): Today's per-card action-button row (`components/ui/priority-card.tsx`) had no wrap behavior, so a card with 3+ buttons (e.g. Fritz's Find in People/Snooze 3 days/Dismiss) overflowed past the card edge with "Dismiss" completely unreachable — no horizontal page scroll to reach it either. Fixed by adding `flex-wrap` to all three action-row variants (standard/urgent, collapsed, low-priority). Live-verified at 390px: Dismiss now wraps onto its own line and is fully clickable. Files: `components/ui/priority-card.tsx`.
+- Not independently re-verified: Phase 1-4's own defects (already individually live-verified at the time each was fixed, earlier in this pass); the B2 migration path (still correctly blocked -- no DB credentials in this environment); the returnTo/session-expiry flow end-to-end (would require deliberately invalidating this session's own auth cookie, which risks losing the only working authenticated browser session available for the rest of this verification pass -- flagged for Phase 16's manual-verification list).
 
-### Phase 5 — Brief and planner engines: done
-Daily brief: full input assembly (events + custody blocks, gift reminders,
-overdue cadences, weather, prep obligations, weekend-plan mention),
-travel-time and prep-event derivation written back to `calendar_events`,
-AI generation with a non-AI templated fallback, child-name token redaction.
-Weekend planner: open-block finding, the deterministic weighted scoring
-function (weights in `lib/planner/weights.ts`, not the prompt), the
-companion layer (Section 9.5 — cross-references overdue contacts), AI
-narration with a templated fallback. Condition-data scoring is
-intentionally left neutral rather than fabricating fishing-condition
-thresholds (D-020) — flagged as a good target for a future QUESTIONS.md
-item once real domain thresholds are available.
+## Phase 16 — Final report
+- DONE — delivered to Richard in chat: status table for all 59 items, complete unabridged text of this pass's QUESTIONS.md section (Q1-Q20), items found outside the original audit, and the manual-verification list. Per the governing instruction, stopping here to wait for input on the logged questions.
 
-### Phase 6 — Notifications: done
-Channel-agnostic dispatcher, in-app (real), email via Resend (real, stubs
-to console without a key), push and SMS as genuine no-op stubs matching the
-same interface (Sections 10.3/10.4 — intentionally not built further; SMS
-timing is Q-003). Cron routes for brief/gift-scan/weekend-plan, `CRON_SECRET`
-protected, plus `pnpm job:*` scripts for local manual triggering.
-
-### Phase 7 — UI: done — see the remaining gap below
-Auth (password + magic link), onboarding, the mobile-first app shell with
-bottom nav, and six screens: brief (renders the AI's structured content
-into cards), people list + detail + "add person," gifts (suggestion list
-with save/dismiss), calendar (14-day agenda list, not a month grid — see
-that page's own comment for why — plus a "this weekend" card that renders
-the weekend planner's own output and can generate one on demand),
-activities (feeds the weekend planner's scoring), notifications (the
-Section 10.2 "in-app notification center, unread state" — a header bell
-with unread badge, mark-read/mark-all-read), settings (household budget
-defaults, brief time, timezone). A
-fresh signup can now build out a real household entirely through the UI:
-add people, add interests/budgets/gift history/contact cadence per person
-(all on the person detail screen), add activities with a location, add
-calendar events. This closes what was originally a gap noted after the
-first UI pass (person detail was read-only) — see the commit history if
-you want the before/after.
-
-**Update:** person editing (`/people/[id]/edit`), an archive-person action,
-a custody-block form (`/calendar/custody/new`), and delete actions for
-interests, budgets, gifts, calendar events, and custody blocks were all
-added after the first UI pass too — every table the app touches now has a
-real create AND delete path through the UI, and person records also
-support edit. **Update (D-094):** interests, budgets, and gift-shopping
-sites turned out to already have an effective edit path (each upserts on
-its unique key, so re-adding with new details updates the existing row);
-gift history had no such path and now has a real inline Edit control
-(D-094). Calendar events and custody blocks already had edit UIs before
-this note was written. Activities still have no dedicated edit form —
-remove-and-re-add is the workaround; low remaining risk given how small
-that form is.
-
-### Phase 8 — Polish and documentation: done
-This file, `README.md`, `docs/privacy.md`, `docs/ai-costs.md`,
-`DECISIONS.md` (26 entries), `QUESTIONS.md` (3 entries, all resolved,
-deduplicated, sorted by priority).
-
-## Test coverage snapshot
-
-212 passing tests across 27 files. Everything in Section 12.7's explicit
-list is covered: lead-time math, activity scoring, cadence-overdue
-calculation, travel-time fallback, and RLS policies — the last of those
-now genuinely executed and passing (D-026), not just written. Coverage
-skews toward pure logic (leadtime, occasions, budget, scoring, cadence,
-prep/travel derivation, child-token redaction, JSON parsing) since that's
-where a bug is both most likely and most costly; orchestration/wiring code
-(the `generate.ts` files, cron routes) is real and typechecked but has no
-dedicated unit tests — it composes already-tested pieces and would mostly
-need integration-style tests against a live Supabase instance to test
-meaningfully.
-
-## Immediate next steps, in priority order
-
-1. `supabase start && supabase db reset && pnpm db:test` once Docker is
-   available — the pgTAP suite is the remaining real-Supabase-CLI-parity
-   check the PGlite harness can't provide (extensions PGlite doesn't have,
-   true PostgREST behavior, the full auth flow through a real hosted API).
-2. Run `pnpm job:gift-scan`, `pnpm job:brief`, `pnpm job:weekend-plan`
-   against a real Supabase-backed seeded household and read the output —
-   the fastest way to see whether the AI-generated content is actually
-   good, which no amount of unit testing can tell you.
-3. `QUESTIONS.md` is fully resolved as of 2026-08-21 (see D-021) — nothing
-   currently blocked on Richard's input.
-4. Edit/delete actions for interests, budgets, gifts, activities, and
-   calendar events (currently add-only) — the smaller item noted in the
-   Phase 7 gap above.
+## Phase 17 — Multi-tenant / commercial-launch readiness (2026-09-12)
+Prompted by Richard confirming the actual business goal (App Store/Play Store, sold nationwide, not just his own household — see `memory/project_commercial-saas-goal.md`). See APP-STORE-PLAN.md §15 for the full write-up.
+- DONE — onboarding timezone auto-detection: `users.timezone` was silently defaulting every new signup nationwide to Pacific time; now detected client-side and applied server-side at signup, failing open to the schema default. Files: `app/onboarding/onboarding-form.tsx`, `app/onboarding/actions.ts`.
+- DONE — in-app account deletion (Apple Guideline 5.1.1(v)): previously email-request-only. New Settings > Delete account flow; solo households fully cascade-delete (schema already supports this via existing `on delete cascade` FKs, no migration needed), shared-household non-owners just leave, shared-household owners are refused with an actionable message. Decision logic fully unit-tested (6 new tests). Files: `lib/auth/account-deletion.ts` (new + tests), `app/(app)/settings/account-actions.ts` (new), `app/(app)/settings/delete-account-button.tsx` (new), `app/account-deleted/page.tsx` (new), `app/support/page.tsx`, `app/(app)/settings/page.tsx`, `app/(app)/settings/household-invite-actions.ts`. Not live-tested end-to-end (this session's only login is Richard's real production account) — flagged for his own manual verification against a disposable account.
+- FOUND, not built (needs Richard's decision) — no Terms of Service page; no payment/subscription/billing system at all; Nominatim's free geocoding endpoint was reasoned as fine for "a single-household app" and doesn't hold at real commercial scale (shared global rate limit + against Nominatim's own usage policy); children's-data legal review (COPPA/content rating) before public launch. See APP-STORE-PLAN.md §15 for full detail.
+- Confirmed already solid: multi-tenant data isolation (household_id + RLS throughout, self-serve signup, no hardcoded Richard-specific logic in real app code), and NWS weather is already nationwide.

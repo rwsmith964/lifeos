@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useFormValidity } from "@/lib/hooks/use-form-validity";
+import { personDisplayName } from "@/lib/people/display-name";
 import { useAsyncToastAction } from "@/lib/hooks/use-async-toast-action";
 import { occasionTypeDisplayLabel, reciprocityDirectionDisplayLabel } from "@/lib/gifts/occasions";
 import type {
@@ -81,14 +82,22 @@ export function ProfileDetailsForm({
   const formRef = useRef<HTMLFormElement>(null);
   const { clearInvalid } = useFormValidity(formRef);
   const [saved, setSaved] = useState(false);
+  // D-07: `state` starts as `{ error: null }` -- the exact same shape a
+  // successful save leaves it in -- so the effect below used to fire on
+  // first mount too (pending is false and state.error is null before any
+  // submission has ever happened), showing "Saved." with zero interaction.
+  // Only flip `saved` in response to a save this component actually
+  // dispatched.
+  const hasSubmitted = useRef(false);
 
   function handleSave() {
     setSaved(false);
+    hasSubmitted.current = true;
     dispatch(new FormData(formRef.current!));
   }
 
   useEffect(() => {
-    if (!pending && !state.error && formRef.current) setSaved(true);
+    if (hasSubmitted.current && !pending && !state.error && formRef.current) setSaved(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
 
@@ -299,13 +308,13 @@ export function AddRelationshipForm({
               className="border-input h-8 rounded-md border bg-transparent px-2 text-sm"
               onChange={(e) => {
                 const selected = otherPeople.find((p) => p.id === e.target.value);
-                if (selected && nameInputRef.current) nameInputRef.current.value = selected.full_name;
+                if (selected && nameInputRef.current) nameInputRef.current.value = personDisplayName(selected);
               }}
             >
               <option value="">Not in the app</option>
               {otherPeople.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.full_name}
+                  {personDisplayName(p)}
                 </option>
               ))}
             </select>
@@ -528,7 +537,7 @@ export function AddMomentForm({
             {householdPeople.map((p) => (
               <label key={p.id} className="flex items-center gap-1.5 text-sm">
                 <input type="checkbox" name="participantPersonIds" value={p.id} defaultChecked={p.id === personId} />
-                {p.full_name}
+                {personDisplayName(p)}
               </label>
             ))}
           </div>

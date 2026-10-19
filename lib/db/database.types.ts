@@ -1745,4 +1745,17 @@ export type PackingListItemInsert = Insert<
   PackingListItemRow,
   "id" | "category" | "checked" | "sort_order" | "source" | "created_at" | "updated_at"
 >;
+
+// B2 (audit pass 2026-09-11): Dismiss/Snooze state for Today's priority
+// cards -- see supabase/migrations/20260911000001_today_item_dismissals.sql.
+export interface TodayItemDismissalRow {
+  id: string;
+  household_id: string;
+  person_id: string;
+  item_key: string;
+  hidden_until: string;
+  created_at: string;
+  updated_at: string;
+}
+export type TodayItemDismissalInsert = Insert<TodayItemDismissalRow, "id" | "created_at" | "updated_at">;
 export type PackingListItemUpdate = Update<PackingListItemRow>;
