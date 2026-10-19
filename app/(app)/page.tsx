@@ -278,7 +278,7 @@ export default async function BriefPage() {
                   priority={PRIORITY_BY_KIND[item.kind]}
                   actions={
                     item.kind === "reach_out" ? (
-                      <ReachOutCardActions itemKey={item.id} personId={item.personId} personName={item.headline} primaryAction={item.primaryAction} />
+                      <ReachOutCardActions itemKey={item.id} personId={item.personId} personName={item.headline} phone={item.phone} primaryAction={item.primaryAction} />
                     ) : item.kind === "decide" ? (
                       <DecideCardActions itemKey={item.id} opportunityId={item.opportunityId} primaryAction={item.primaryAction} />
                     ) : item.kind === "quick_household_dinner" ? (

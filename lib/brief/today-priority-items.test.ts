@@ -264,3 +264,20 @@ describe("buildTodayPriorityItems -- live cadence filtering", () => {
     expect(items[0]!.personId).toBe("fritz-1");
   });
 });
+
+describe("buildTodayPriorityItems -- reach-out contact actions", () => {
+  const content = emptyContent({ people: [{ personLabel: "Fritz", reason: "46 days since last contact." }] });
+
+  it("offers Text when a phone number is on file", () => {
+    const p = person({ nickname: "Fritz", phone: "555-1234" });
+    const items = buildTodayPriorityItems({ content, householdPeopleByName: new Map([["Fritz", p]]), opportunities: [], household: [] });
+    expect(items[0]!.primaryAction).toEqual({ label: "Text Fritz", href: "sms:555-1234" });
+    expect(items[0]!.phone).toBe("555-1234");
+  });
+
+  it("offers a direct 'add number' route (not a vague Open) when there is no phone", () => {
+    const p = person({ id: "fritz-1", nickname: "Fritz", phone: null });
+    const items = buildTodayPriorityItems({ content, householdPeopleByName: new Map([["Fritz", p]]), opportunities: [], household: [] });
+    expect(items[0]!.primaryAction).toEqual({ label: "Add Fritz's number", href: "/people/fritz-1/edit" });
+  });
+});

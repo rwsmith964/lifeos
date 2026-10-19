@@ -157,11 +157,15 @@ export function buildTodayPriorityItems({
     if (liveCadence && today && !evaluateCadence(liveCadence, today).isOverdue) return;
     const id = record ? `reach-out:${record.id}` : `reach-out:unresolved-${i}`;
     const name = firstName(person.personLabel);
-    // H1: name the outcome, not just "Open" -- who you'd see and where.
+    // Everyone who needs a reach-out gets the same shape of action: with a
+    // number on file, Text (and a Call button, see ReachOutCardActions);
+    // without one, a direct route to adding it -- not a vague "Open" that
+    // made two identical-looking tiles behave differently for no visible
+    // reason.
     const primaryAction: PriorityAction = record?.phone
       ? { label: `Text ${name}`, href: `sms:${record.phone}` }
       : record
-        ? { label: `Open ${name}`, href: `/people/${record.id}` }
+        ? { label: `Add ${name}'s number`, href: `/people/${record.id}/edit` }
         : { label: "Find in People", href: "/people" };
     items.push({
       id,

@@ -47,11 +47,13 @@ export function ReachOutCardActions({
   itemKey,
   personId,
   personName,
+  phone,
   primaryAction,
 }: {
   itemKey: string;
   personId?: string;
   personName: string;
+  phone?: string | null;
   primaryAction: PriorityAction;
 }) {
   return (
@@ -59,6 +61,11 @@ export function ReachOutCardActions({
       <Button asChild size="sm">
         <Link href={primaryAction.href}>{primaryAction.label}</Link>
       </Button>
+      {phone && (
+        <Button asChild variant="outline" size="sm">
+          <a href={`tel:${phone}`}>Call {personName.split(/\s+/)[0]}</a>
+        </Button>
+      )}
       {personId && <LogContactControl variant="compact" personId={personId} personName={personName} />}
       <DismissSnoozeButtons itemKey={itemKey} />
     </>
