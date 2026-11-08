@@ -1,7 +1,9 @@
 import Link from "next/link";
-import { AlertTriangle, ArrowLeft, Plus } from "lucide-react";
+import { AlertTriangle, Plus } from "lucide-react";
+import { Breadcrumb } from "@/components/nav/breadcrumb";
 import { format } from "date-fns";
 import { requireHouseholdContext } from "@/lib/auth/session";
+import { getZonedNow } from "@/lib/timezones";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
 import { listCustodySchedulesForHousehold } from "@/lib/db/repositories/custody-schedules";
 import { listCustodyBlocksForHouseholdInRange } from "@/lib/db/repositories/calendar";
@@ -46,7 +48,7 @@ function detectPresetLabel(cycleLengthDays: number, cycleAssignments: { dayIndex
 }
 
 export default async function CustodyHubPage() {
-  const { supabase, household } = await requireHouseholdContext();
+  const { supabase, household, timezone } = await requireHouseholdContext();
   const [people, schedules] = await Promise.all([
     listPeopleForHousehold(supabase, household.id),
     listCustodySchedulesForHousehold(supabase, household.id),
@@ -54,25 +56,35 @@ export default async function CustodyHubPage() {
   const peopleById = new Map(people.map((p) => [p.id, p.nickname || p.full_name]));
   const childColors = buildChildColorMap(people.filter((p) => p.relationship_type === "child").map((p) => p.id));
 
-  const now = new Date();
-  const rangeEnd = new Date(now.getTime() + 14 * 86400000);
+  // M-01: household-local "today," not a bare `new Date()` -- matches the
+  // rest of the app's convention (getZonedNow) so this page's "next 14
+  // days" agrees with the main calendar's own idea of what day it is,
+  // instead of drifting a day near a household-evening/UTC-midnight
+  // rollover.
+  const zonedToday = getZonedNow(timezone);
+  const zonedRangeEnd = new Date(zonedToday.getTime() + 14 * 86400000);
   const householdPersonIds = people.map((p) => p.id);
   const [upcomingBlocks, workSchedules, timeOffEntries] = await Promise.all([
-    listCustodyBlocksForHouseholdInRange(supabase, household.id, now.toISOString(), rangeEnd.toISOString()),
+    listCustodyBlocksForHouseholdInRange(supabase, household.id, zonedToday.toISOString(), zonedRangeEnd.toISOString()),
     // D-068: fetched for every household person regardless of their
     // show_work_schedule_on_calendar toggle -- that flag only controls the
     // main /calendar view. The custody calendar's whole point is to reveal
     // scheduling conflicts, so it deliberately always sees every shift.
     listWorkSchedulesForPeople(supabase, householdPersonIds),
-    listTimeOffForPeopleInRange(supabase, householdPersonIds, format(now, "yyyy-MM-dd"), format(rangeEnd, "yyyy-MM-dd")),
+    listTimeOffForPeopleInRange(
+      supabase,
+      householdPersonIds,
+      format(zonedToday, "yyyy-MM-dd"),
+      format(zonedRangeEnd, "yyyy-MM-dd")
+    ),
   ]);
 
   const coParents = people.filter((p) => p.relationship_type === "co_parent");
   const coParentIds = new Set(coParents.map((p) => p.id));
   const coParentSchedules = workSchedules.filter((s) => coParentIds.has(s.person_id));
   const coParentTimeOff = timeOffEntries.filter((t) => coParentIds.has(t.person_id));
-  const coParentShifts = workShiftsInRange(coParentSchedules, timeOffEntries, people, now, rangeEnd);
-  const coParentDaysOff = timeOffInRange(coParentTimeOff, people, now, rangeEnd);
+  const coParentShifts = workShiftsInRange(coParentSchedules, timeOffEntries, people, zonedToday, zonedRangeEnd);
+  const coParentDaysOff = timeOffInRange(coParentTimeOff, people, zonedToday, zonedRangeEnd);
 
   const conflicts = detectCustodyWorkConflicts(upcomingBlocks, workSchedules, timeOffEntries, people);
   const conflictsByBlockId = new Map<string, typeof conflicts>();
@@ -84,9 +96,7 @@ export default async function CustodyHubPage() {
 
   return (
     <div className="flex flex-col gap-4 p-4">
-      <Link href="/calendar" className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="size-3" /> Calendar
-      </Link>
+      <Breadcrumb items={[{ label: "Calendar", href: "/calendar" }, { label: "Custody" }]} />
 
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Custody</h1>

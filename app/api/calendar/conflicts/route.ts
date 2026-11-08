@@ -8,6 +8,7 @@
 // app/api/intake/route.ts for universal_intake_v2.
 import { NextResponse } from "next/server";
 import { requireHouseholdContext } from "@/lib/auth/session";
+import { getZonedNow } from "@/lib/timezones";
 import { isFeatureEnabled } from "@/lib/flags";
 import { detectScheduleConflictsForHousehold } from "@/lib/scheduling/detect-conflicts";
 import { peopleRepo } from "@/lib/db/repositories/people";
@@ -31,7 +32,7 @@ async function findHouseholdOwnerHome(client: SupabaseClient, householdId: strin
 }
 
 export async function GET() {
-  const { supabase, household } = await requireHouseholdContext();
+  const { supabase, household, timezone } = await requireHouseholdContext();
 
   const enabled = await isFeatureEnabled(supabase, household.id, "scheduling_v2");
   if (!enabled) {
@@ -46,8 +47,9 @@ export async function GET() {
     return NextResponse.json({ warnings: [] });
   }
 
-  const now = new Date();
-  const windowStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  // M-01: household-local "today," not server-local (UTC) date parts.
+  const windowStart = getZonedNow(timezone);
+  windowStart.setHours(0, 0, 0, 0);
   const windowEnd = new Date(windowStart);
   windowEnd.setDate(windowEnd.getDate() + WINDOW_DAYS);
 

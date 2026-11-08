@@ -19,6 +19,7 @@ export async function GET(request: Request) {
 
   let suggestionsGenerated = 0;
   let notificationsSent = 0;
+  let suggestionsMissed = 0;
   const errors: string[] = [];
 
   for (const household of households) {
@@ -26,10 +27,11 @@ export async function GET(request: Request) {
       const result = await scanHouseholdForGiftOccasions(client, household.id);
       suggestionsGenerated += result.suggestionsGenerated;
       notificationsSent += result.notificationsSent;
+      suggestionsMissed += result.suggestionsMissed;
     } catch (error) {
       errors.push(`${household.id}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
-  return NextResponse.json({ suggestionsGenerated, notificationsSent, errors });
+  return NextResponse.json({ suggestionsGenerated, notificationsSent, suggestionsMissed, errors });
 }

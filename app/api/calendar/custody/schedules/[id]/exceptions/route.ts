@@ -4,13 +4,14 @@
 // the change. See lib/custody/materialize.ts and DECISIONS.md D-033.
 import { NextResponse } from "next/server";
 import { requireHouseholdContext } from "@/lib/auth/session";
+import { getZonedNow } from "@/lib/timezones";
 import { custodySchedulesRepo, custodyScheduleExceptionsRepo } from "@/lib/db/repositories/custody-schedules";
 import { custodyScheduleExceptionInsertSchema } from "@/lib/db/schemas";
 import { materializeCustodySchedule } from "@/lib/custody/materialize";
 import { friendlyMutationError } from "@/lib/db/errors";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { supabase, household } = await requireHouseholdContext();
+  const { supabase, household, timezone } = await requireHouseholdContext();
   const { id } = await params;
 
   const schedule = await custodySchedulesRepo.getById(supabase, id);
@@ -28,7 +29,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   try {
     const exception = await custodyScheduleExceptionsRepo.create(supabase, parsed.data);
-    const { blocksCreated } = await materializeCustodySchedule(supabase, schedule);
+    const { blocksCreated } = await materializeCustodySchedule(supabase, schedule, getZonedNow(timezone));
     return NextResponse.json({ id: exception.id, blocksCreated });
   } catch (error) {
     return NextResponse.json(

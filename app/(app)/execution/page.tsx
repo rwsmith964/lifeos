@@ -25,6 +25,7 @@ import { assistantEmailAddress } from "@/lib/execution/assistant-address";
 import type { ExecutionCategory } from "@/lib/db/database.types";
 import { EXECUTION_CATEGORIES } from "@/lib/execution/labels";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Breadcrumb } from "@/components/nav/breadcrumb";
 import { CategoryAllowlist } from "./category-allowlist";
 import { AssistantAddressCard } from "./assistant-address-card";
 import { ContactExclusionList } from "./contact-exclusion-list";
@@ -69,6 +70,7 @@ export default async function ExecutionPage() {
 
   return (
     <div className="flex flex-col gap-4 p-4">
+      <Breadcrumb items={[{ label: "Settings", href: "/settings" }, { label: "Execution (draft-only)" }]} />
       <div>
         <h1 className="text-xl font-semibold">Execution (draft-only)</h1>
         <p className="text-sm text-muted-foreground">

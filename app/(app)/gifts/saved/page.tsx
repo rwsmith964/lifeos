@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft, BookmarkCheck } from "lucide-react";
+import { BookmarkCheck } from "lucide-react";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { getZonedNow } from "@/lib/timezones";
 import { listActiveSuggestionsForHousehold } from "@/lib/db/repositories/gifts";
@@ -7,6 +7,7 @@ import { listBudgetsForPerson } from "@/lib/db/repositories/people";
 import { dedupeSuggestionsPerPerson } from "@/lib/gifts/dedupe";
 import { groupSuggestionsByPersonAndRun } from "@/lib/gifts/group-suggestions";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Breadcrumb } from "@/components/nav/breadcrumb";
 import { GiftSuggestionGroups } from "../gift-suggestion-groups";
 
 /**
@@ -42,12 +43,8 @@ export default async function SavedGiftsPage() {
 
   return (
     <div className="flex flex-col gap-[18px]">
-      <div className="flex items-center gap-2">
-        <Link href="/gifts" className="text-ink-2 hover:text-ink" aria-label="Back to gift suggestions">
-          <ArrowLeft className="size-4" aria-hidden="true" />
-        </Link>
-        <h1 className="font-serif text-page-title text-ink">Saved gifts</h1>
-      </div>
+      <Breadcrumb items={[{ label: "Gifts", href: "/gifts" }, { label: "Saved gifts" }]} />
+      <h1 className="font-serif text-page-title text-ink">Saved gifts</h1>
 
       {saved.length === 0 ? (
         <EmptyState

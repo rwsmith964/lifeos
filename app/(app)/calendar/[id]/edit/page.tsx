@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
 import { calendarEventsRepo, listAttendeesForEvent } from "@/lib/db/repositories/calendar";
+import { Breadcrumb } from "@/components/nav/breadcrumb";
 import { EventForm, type EventFormDefaults } from "../../event-form";
 
 export default async function EditCalendarEventPage({ params }: { params: Promise<{ id: string }> }) {
@@ -41,6 +42,7 @@ export default async function EditCalendarEventPage({ params }: { params: Promis
 
   return (
     <div className="flex flex-col gap-4 p-4">
+      <Breadcrumb items={[{ label: "Calendar", href: "/calendar" }, { label: "Edit event" }]} />
       <h1 className="text-xl font-semibold">Edit event</h1>
       <EventForm
         people={people}

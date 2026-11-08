@@ -22,6 +22,15 @@ export function useFormValidity(formRef: RefObject<HTMLFormElement | null>) {
     if (!form) return false;
     const ok = form.checkValidity();
     setInvalid(!ok);
+    // P-02 (audit pass 2026-09-11): "Only fullName is required and nothing
+    // is marked... move focus to it." Applies to every form built on this
+    // shared hook, not just Add Person -- :invalid is exactly the field(s)
+    // that just failed checkValidity(), so focusing the first one is
+    // always the right field, whichever form this is.
+    if (!ok) {
+      const firstInvalid = form.querySelector<HTMLElement>(":invalid");
+      firstInvalid?.focus();
+    }
     return ok;
   }
 

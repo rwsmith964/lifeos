@@ -84,7 +84,7 @@ export default async function HouseholdPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Dietary preferences</CardTitle>
+          <CardTitle as="h2">Dietary preferences</CardTitle>
           <CardDescription>Restrictions and preferences the meal planner can take into account.</CardDescription>
         </CardHeader>
         <CardContent>
@@ -94,7 +94,7 @@ export default async function HouseholdPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Pantry</CardTitle>
+          <CardTitle as="h2">Pantry</CardTitle>
           <CardDescription>What&apos;s already on hand — skipped automatically on generated grocery lists.</CardDescription>
         </CardHeader>
         <CardContent>
@@ -104,7 +104,7 @@ export default async function HouseholdPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Recipes</CardTitle>
+          <CardTitle as="h2">Recipes</CardTitle>
           <CardDescription>Saved recipes to plan meals with.</CardDescription>
         </CardHeader>
         <CardContent>
@@ -114,7 +114,7 @@ export default async function HouseholdPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Meal plan — next 7 days</CardTitle>
+          <CardTitle as="h2">Meal plan — next 7 days</CardTitle>
           <CardDescription>Plan a recipe or a freeform meal for any slot.</CardDescription>
         </CardHeader>
         <CardContent>
@@ -124,7 +124,7 @@ export default async function HouseholdPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Grocery lists</CardTitle>
+          <CardTitle as="h2">Grocery lists</CardTitle>
           <CardDescription>Generate an aisle-organized list from the meal plan above.</CardDescription>
         </CardHeader>
         <CardContent>
@@ -139,7 +139,7 @@ export default async function HouseholdPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Chores</CardTitle>
+          <CardTitle as="h2">Chores</CardTitle>
           <CardDescription>Assign and track completion — no recurrence engine, just add it again next time.</CardDescription>
         </CardHeader>
         <CardContent>

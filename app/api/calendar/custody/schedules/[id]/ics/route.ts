@@ -8,6 +8,7 @@
 import { NextResponse } from "next/server";
 import { addDays } from "date-fns";
 import { requireHouseholdContext } from "@/lib/auth/session";
+import { getZonedNow } from "@/lib/timezones";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
 import { custodySchedulesRepo, listExceptionsForSchedule } from "@/lib/db/repositories/custody-schedules";
 import { projectCustodySchedule, projectWeeklySegmentSchedule } from "@/lib/custody/schedule";
@@ -16,7 +17,7 @@ import { mergeCustodyRuns, buildCustodyIcs, buildTimedCustodyIcs } from "@/lib/c
 const EXPORT_WINDOW_DAYS = 365;
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { supabase, household } = await requireHouseholdContext();
+  const { supabase, household, timezone } = await requireHouseholdContext();
   const { id } = await params;
 
   const schedule = await custodySchedulesRepo.getById(supabase, id);
@@ -31,7 +32,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const peopleNamesById = new Map(people.map((p) => [p.id, p.nickname || p.full_name]));
   const exceptionsByDate = new Map(exceptions.map((e) => [e.exception_date, e.responsible_person_id]));
 
-  const windowStart = new Date();
+  const windowStart = getZonedNow(timezone);
   windowStart.setHours(0, 0, 0, 0);
   const windowEnd = addDays(windowStart, EXPORT_WINDOW_DAYS);
 

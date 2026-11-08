@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { timeOffInRange, timeOffTitle, workShiftsInRange, workShiftTitle } from "./work-schedule";
+import { timeOffInRange, timeOffTitle, withTimeOfDay, workShiftsInRange, workShiftTitle } from "./work-schedule";
 
 const RICHARD = { id: "person-1", full_name: "Richard Smith", nickname: null };
 
@@ -75,6 +75,24 @@ describe("workShiftTitle", () => {
       new Date(2026, 7, 26)
     );
     expect(workShiftTitle(item)).toBe("Richard Smith: Work 8:30 AM\u20134:45 PM");
+  });
+});
+
+describe("withTimeOfDay", () => {
+  it("combines a bare date with an HH:MM time (M-02)", () => {
+    const result = withTimeOfDay(new Date(2026, 7, 26), "07:00");
+    expect(result.getFullYear()).toBe(2026);
+    expect(result.getMonth()).toBe(7);
+    expect(result.getDate()).toBe(26);
+    expect(result.getHours()).toBe(7);
+    expect(result.getMinutes()).toBe(0);
+  });
+
+  it("preserves minutes and doesn't roll the date over on a late shift", () => {
+    const result = withTimeOfDay(new Date(2026, 7, 26), "23:45");
+    expect(result.getDate()).toBe(26);
+    expect(result.getHours()).toBe(23);
+    expect(result.getMinutes()).toBe(45);
   });
 });
 

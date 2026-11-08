@@ -5,12 +5,16 @@ import { revalidatePath } from "next/cache";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { getZonedNow } from "@/lib/timezones";
 import { generateDailyBrief } from "@/lib/brief/generate";
+import { summarizeBriefChanges } from "@/lib/brief/diff-summary";
+import type { BriefContent } from "@/lib/brief/schema";
 import { createSupabaseServiceRoleClient } from "@/lib/db/client-service-role";
 import { briefsRepo, getBriefForPersonAndDate } from "@/lib/db/repositories/system";
 import { friendlyMutationError } from "@/lib/db/errors";
 
 export interface RegenerateBriefState {
   error: string | null;
+  /** B6: a short "what changed" summary shown after a refresh completes -- null on error, or when there was no prior brief to diff against. */
+  changesSummary: string | null;
 }
 
 /**
@@ -33,17 +37,28 @@ export async function regenerateBriefAction(): Promise<RegenerateBriefState> {
   const today = getZonedNow(timezone);
   const todayDateStr = format(today, "yyyy-MM-dd");
 
+  let changesSummary: string | null = null;
   try {
     const serviceRoleClient = createSupabaseServiceRoleClient();
     const existing = await getBriefForPersonAndDate(serviceRoleClient, selfPerson.id, todayDateStr);
+    const beforeContent = (existing?.content_json as BriefContent | undefined) ?? null;
     if (existing) {
       await briefsRepo.remove(serviceRoleClient, existing.id);
     }
-    await generateDailyBrief(serviceRoleClient, household.id, selfPerson.id, today);
+    // D-03: a manual rebuild is already visible to whoever clicked it --
+    // it shouldn't also mint a new unread "daily_brief" notification, the
+    // way the cron's once-a-day generation should.
+    const result = await generateDailyBrief(serviceRoleClient, household.id, selfPerson.id, today, false);
+    const newBrief = await briefsRepo.getById(serviceRoleClient, result.briefId);
+    const afterContent = newBrief?.content_json as BriefContent | undefined;
+    if (afterContent) changesSummary = summarizeBriefChanges(beforeContent, afterContent);
   } catch (error) {
-    return { error: friendlyMutationError(error, { fallback: "Couldn't regenerate the brief — please try again." }) };
+    return {
+      error: friendlyMutationError(error, { fallback: "Couldn't refresh the briefing — please try again." }),
+      changesSummary: null,
+    };
   }
 
   revalidatePath("/");
-  return { error: null };
+  return { error: null, changesSummary };
 }

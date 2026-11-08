@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Bell, CalendarDays, Compass, Gift, Sun, Users } from "lucide-react";
+import { Bell } from "lucide-react";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { listUnreadNotifications } from "@/lib/db/repositories/system";
 import { APP_NAME } from "@/lib/constants";
@@ -10,44 +10,66 @@ import { CaptureProvider } from "@/components/capture/capture-provider";
 import { CommandBar } from "@/components/capture/command-bar";
 import { MobileCaptureButton } from "@/components/capture/mobile-capture-button";
 import { AppLockGate } from "@/components/native/app-lock-gate";
+import { HeaderThemeToggle } from "@/components/header-theme-toggle";
+import { SessionKeepAlive } from "@/components/session-keep-alive";
 import { SignOutButton } from "./sign-out-button";
+import { SidebarNav } from "./sidebar-nav";
 
-// Redesign (Part 2 — Information architecture): five destinations
-// replacing the old six. Settings moved into the avatar menu; Notifications
-// moved into the header bell; Quick capture moved into the header command
-// bar / mobile tab-bar button (see components/capture/*). Route paths are
-// unchanged (Activities' route still serves what's now labelled "Plan" --
-// the brief absorbs Activities into Plan as a relabel + rebuild, not a new
-// route, per Part 2's table).
+// A2 (audit pass 2026-09-11): Household, Brain dump and Notifications had no
+// nav entry at all -- reachable only via a Today card, the capture panel's
+// "Brain dump ->" link, or the header bell, respectively. Grown from the
+// prior redesign's 5-item list to the audit's explicit 8-item target list,
+// in its stated order. Settings stays out of this list and pinned at the
+// bottom via AvatarMenu, per the same target description. `icon` is a plain
+// string name (see components/nav/nav-icon.tsx), not a component reference
+// -- this array is passed into Client Components below, and a component
+// reference (or even a pre-rendered element wrapping one) isn't reliably
+// serializable across that boundary as a prop.
 const NAV_ITEMS = [
-  { href: "/", label: "Today", icon: Sun },
-  { href: "/people", label: "People", icon: Users },
-  { href: "/calendar", label: "Calendar", icon: CalendarDays },
-  { href: "/activities", label: "Plan", icon: Compass },
-  { href: "/gifts", label: "Gifts", icon: Gift },
+  { href: "/", label: "Today", icon: "today" },
+  { href: "/calendar", label: "Calendar", icon: "calendar" },
+  { href: "/people", label: "People", icon: "people" },
+  { href: "/activities", label: "Plan", icon: "plan" },
+  { href: "/household", label: "Household", icon: "household" },
+  { href: "/gifts", label: "Gifts", icon: "gifts" },
+  { href: "/brain-dump", label: "Brain dump", icon: "brain-dump" },
+  { href: "/notifications", label: "Notifications", icon: "notifications" },
 ] as const;
 
-// Mobile bottom tab bar drops Gifts (Part 6: "Gifts moves into an overflow
-// or the People tab") and splits around the centred capture button. Icons
-// are pre-rendered to JSX here (not passed as bare component references)
-// since MobileCaptureButton is a Client Component -- see its own doc
-// comment for why that distinction matters.
-const MOBILE_NAV_ITEMS = NAV_ITEMS.map((item) => ({
-  href: item.href,
-  label: item.label,
-  icon: <item.icon className="size-5" />,
-}));
+// Mobile bottom tab bar keeps only the original 4 (Part 6: "Gifts moves
+// into an overflow or the People tab" -- the same reasoning now also
+// covers Household, Brain dump and Notifications, none of which fit a
+// 5-slot bar built around a centred capture button). Notifications stays
+// reachable on mobile via the always-visible header bell; Household and
+// Brain dump stay reachable via their existing in-app cross-links (Today's
+// dinner card, the capture panel's "Brain dump ->" link) -- see QUESTIONS.md
+// for this tradeoff logged against A2.
+const MOBILE_NAV_ITEMS = NAV_ITEMS.slice(0, 4);
 const MOBILE_NAV_LEFT = MOBILE_NAV_ITEMS.slice(0, 2);
 const MOBILE_NAV_RIGHT = MOBILE_NAV_ITEMS.slice(2, 4);
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const { supabase, household, selfPerson } = await requireHouseholdContext();
-  const unread = await listUnreadNotifications(supabase, selfPerson.id);
+  // B-02: this runs on every page render (it's in the shared layout), and an
+  // uncaught throw here escapes app/(app)/error.tsx entirely -- a layout's
+  // own error boundary only catches errors from its children, never from the
+  // layout itself, so this used to escalate all the way to the unstyled
+  // root app/global-error.tsx (no sidebar, no fonts, no chrome) on any
+  // transient failure (a Supabase 503, a dropped connection). The unread
+  // count is cosmetic (just the bell badge), so fail soft here instead of
+  // taking down every page in the app over it.
+  let unread: Awaited<ReturnType<typeof listUnreadNotifications>> = [];
+  try {
+    unread = await listUnreadNotifications(supabase, selfPerson.id);
+  } catch (error) {
+    console.error("Failed to load unread notifications (non-fatal):", error);
+  }
   const displayName = selfPerson.nickname || selfPerson.full_name;
 
   return (
     <AppLockGate>
       <CaptureProvider>
+        <SessionKeepAlive />
         <div className="flex min-h-dvh w-full bg-ground">
           {/* Sidebar: hidden below md (768), 72px icon rail 768-1279, full
               244px at xl+ (1280) -- Part 6's three breakpoints exactly. */}
@@ -61,21 +83,9 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
                 <p className="font-sans text-metadata text-meta">{household.name}</p>
               </div>
             </div>
-            <nav className="flex flex-1 flex-col gap-1 px-2 xl:px-3">
-              {NAV_ITEMS.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  title={item.label}
-                  className="flex items-center gap-3 rounded-control px-3 py-2 font-sans text-body text-ink-2 motion-safe-transition hover:bg-surface-2 hover:text-ink"
-                >
-                  <item.icon className="size-5 shrink-0" />
-                  <span className="hidden xl:inline">{item.label}</span>
-                </Link>
-              ))}
-            </nav>
+            <SidebarNav items={NAV_ITEMS} />
             <div className="border-t border-line p-2 xl:p-3">
-              <AvatarMenu name={displayName} householdName={household.name} className="xl:block">
+              <AvatarMenu name={displayName} householdName={household.name}>
                 <SignOutButton />
               </AvatarMenu>
             </div>
@@ -98,6 +108,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
               </div>
               <CommandBar className="hidden md:flex" />
               <div className="ml-auto flex items-center gap-2">
+                <HeaderThemeToggle />
                 <Link
                   href="/notifications"
                   aria-label={unread.length > 0 ? `Notifications (${unread.length} unread)` : "Notifications"}

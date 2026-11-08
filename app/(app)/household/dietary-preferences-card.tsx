@@ -8,6 +8,7 @@ import { useToast } from "@/components/ui/toast";
 import { ConfirmDeleteButton } from "@/components/ui/confirm-delete-button";
 import { addDietaryPreferenceAction, removeDietaryPreferenceAction } from "./actions";
 import { DIETARY_RESTRICTIONS, DIETARY_RESTRICTION_LABELS } from "@/lib/household/labels";
+import { personDisplayName } from "@/lib/people/display-name";
 import type { DietaryPreferenceRow, DietaryRestriction, PersonRow } from "@/lib/db/database.types";
 
 export function DietaryPreferencesCard({
@@ -53,7 +54,7 @@ export function DietaryPreferencesCard({
             return (
               <div key={pref.id} className="flex items-center justify-between gap-2 rounded-md border p-2">
                 <div className="text-sm">
-                  <span className="font-medium">{person?.full_name ?? "Someone"}</span>{" "}
+                  <span className="font-medium">{person ? personDisplayName(person) : "Someone"}</span>{" "}
                   <span className="text-muted-foreground">— {DIETARY_RESTRICTION_LABELS[pref.restriction]}</span>
                   {pref.notes && <span className="text-muted-foreground"> ({pref.notes})</span>}
                 </div>
@@ -81,7 +82,7 @@ export function DietaryPreferencesCard({
           >
             {people.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.full_name}
+                {personDisplayName(p)}
               </option>
             ))}
           </select>

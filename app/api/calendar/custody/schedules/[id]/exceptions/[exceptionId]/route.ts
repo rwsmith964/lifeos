@@ -3,6 +3,7 @@
 // rolling window so the cycle's default assignment takes back over.
 import { NextResponse } from "next/server";
 import { requireHouseholdContext } from "@/lib/auth/session";
+import { getZonedNow } from "@/lib/timezones";
 import { custodySchedulesRepo, custodyScheduleExceptionsRepo } from "@/lib/db/repositories/custody-schedules";
 import { materializeCustodySchedule } from "@/lib/custody/materialize";
 import { friendlyMutationError } from "@/lib/db/errors";
@@ -11,7 +12,7 @@ export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string; exceptionId: string }> }
 ) {
-  const { supabase, household } = await requireHouseholdContext();
+  const { supabase, household, timezone } = await requireHouseholdContext();
   const { id, exceptionId } = await params;
 
   const schedule = await custodySchedulesRepo.getById(supabase, id);
@@ -26,7 +27,7 @@ export async function DELETE(
 
   try {
     await custodyScheduleExceptionsRepo.remove(supabase, exceptionId);
-    const { blocksCreated } = await materializeCustodySchedule(supabase, schedule);
+    const { blocksCreated } = await materializeCustodySchedule(supabase, schedule, getZonedNow(timezone));
     return NextResponse.json({ ok: true, blocksCreated });
   } catch (error) {
     return NextResponse.json(

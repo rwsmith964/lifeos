@@ -14,6 +14,8 @@
 // can build a verified confirmation message instead of trusting the
 // extraction's own claim.
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { format } from "date-fns";
+import { getZonedNow } from "../timezones";
 import { peopleRepo, listPeopleForHousehold } from "../db/repositories/people";
 import { giftsRepo } from "../db/repositories/gifts";
 import { calendarEventsRepo } from "../db/repositories/calendar";
@@ -46,6 +48,16 @@ export interface ConvertContext {
    * cascade's drive-time estimate. Every other case ignores this.
    */
   userId?: string | null;
+  /**
+   * M-01 follow-up: used only as the fallback "today" for a draft whose
+   * extraction left giftOccasionDate/occurredOn null -- was a bare
+   * `new Date()` (the server's raw UTC instant), which could label a
+   * default gift-occasion or moment date as tomorrow instead of today near
+   * a UTC-midnight rollover. Optional + defaulted, matching every other
+   * caller-supplied timezone in this codebase, so existing tests (which
+   * never set it) are unaffected.
+   */
+  timezone?: string | null;
 }
 
 export const NON_CONVERTIBLE_TYPES = ["task", "ambiguous"] as const;
@@ -121,7 +133,9 @@ export async function convertDraftToRecord(ctx: ConvertContext, draft: IntakeDra
       if (!ctx.resolvedPersonId) throw new Error("gift_idea draft needs a resolved person before it can be converted");
       const description = requireString(fields, "giftDescription");
       const occasionType = (fieldValue(fields, "giftOccasionType") as string | null) ?? "just_because";
-      const occasionDate = (fieldValue(fields, "giftOccasionDate") as string | null) ?? new Date().toISOString().slice(0, 10);
+      const occasionDate =
+        (fieldValue(fields, "giftOccasionDate") as string | null) ??
+        format(getZonedNow(ctx.timezone ?? "America/Los_Angeles"), "yyyy-MM-dd");
       const costDollars = fieldValue(fields, "giftCostDollars");
       const costCents = typeof costDollars === "number" ? Math.round(costDollars * 100) : null;
 
@@ -211,7 +225,9 @@ export async function convertDraftToRecord(ctx: ConvertContext, draft: IntakeDra
 
     case "moment": {
       const title = requireString(fields, "title");
-      const occurredOn = (fieldValue(fields, "occurredOn") as string | null) ?? new Date().toISOString().slice(0, 10);
+      const occurredOn =
+        (fieldValue(fields, "occurredOn") as string | null) ??
+        format(getZonedNow(ctx.timezone ?? "America/Los_Angeles"), "yyyy-MM-dd");
       const place = fieldValue(fields, "place");
       const notes = fieldValue(fields, "notes");
 

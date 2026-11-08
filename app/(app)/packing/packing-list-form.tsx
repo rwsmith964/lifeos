@@ -5,6 +5,7 @@ import { useFormPost } from "@/lib/hooks/use-form-post";
 import { useFormValidity } from "@/lib/hooks/use-form-validity";
 import { TRIP_TYPE_LABELS } from "@/lib/ai/prompts/packing-checklist";
 import type { PersonRow, TripType } from "@/lib/db/database.types";
+import { personDisplayName } from "@/lib/people/display-name";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -92,7 +93,7 @@ export function PackingListForm({ travelers }: { travelers: PersonRow[] }) {
             {travelers.map((person) => (
               <label key={person.id} className="flex items-center gap-2 text-sm">
                 <input type="checkbox" name="travelerPersonIds" value={person.id} defaultChecked />
-                {person.full_name}
+                {personDisplayName(person)}
               </label>
             ))}
           </div>

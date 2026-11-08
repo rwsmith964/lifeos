@@ -31,13 +31,28 @@ const buttonVariants = cva(
         default: "bg-action text-on-action hover:bg-action/90 border border-transparent",
         destructive: "bg-destructive-soft-bg text-destructive-soft-fg border border-transparent hover:opacity-90",
         outline: "bg-transparent text-ink-2 border border-line-strong hover:bg-surface-2 hover:text-ink",
-        secondary: "bg-surface-2 text-ink border border-transparent hover:bg-surface-2/70",
+        // G1 (audit pass 2026-09-11): "make secondary buttons outline-only"
+        // -- secondary used to be a filled surface-tinted button,
+        // visually a half-step between `default` (amber) and `ghost`,
+        // adding one more "what does this weight mean" question. Same
+        // look as `outline` now (transparent, bordered) so there are only
+        // two real weights: filled (primary) and outline (everything
+        // else), matching Part 3's own two-variant button spec.
+        secondary: "bg-transparent text-ink-2 border border-line-strong hover:bg-surface-2 hover:text-ink",
         ghost: "bg-transparent text-ink-2 border border-line-strong hover:bg-surface-2 hover:text-ink",
         link: "text-action underline-offset-4 hover:underline h-auto px-0 border-none",
       },
       size: {
         default: "h-control-touch md:h-control-default px-4",
-        sm: "h-control-compact px-3 text-[12.5px]",
+        // F1 (audit pass 2026-09-11): "Every control in the app is 30px
+        // tall... Raise every interactive control to a 44px minimum hit
+        // area... as a design-token/base-component change." `sm` was the
+        // one size variant still hardcoded to `control-compact` (30px) at
+        // every width -- the other three sizes already used exactly this
+        // touch/md pattern (see the header comment above), `sm` just never
+        // got it. Named audit examples (Add, Save, Dismiss, Reach out,
+        // Request childcare) are all `size="sm"` buttons.
+        sm: "h-control-touch md:h-control-compact px-3 text-[12.5px]",
         lg: "h-control-touch md:h-control-default px-6",
         icon: "size-control-touch md:size-control-default px-0",
       },

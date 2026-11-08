@@ -181,7 +181,10 @@ export async function leaveHouseholdAction(): Promise<HouseholdMutationState> {
     return { error: "You're not a member of this household." };
   }
   if (selfMembership.role === "owner") {
-    return { error: "The owner can't leave a household — delete it instead if you want to disband it." };
+    return {
+      error:
+        "The owner can't leave a household — use \"Delete account\" further down Settings if you want to disband it.",
+    };
   }
   try {
     await householdMembersRepo.remove(ctx.supabase, selfMembership.id);

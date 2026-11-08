@@ -1,5 +1,6 @@
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
+import { Breadcrumb } from "@/components/nav/breadcrumb";
 import { ActivityForm } from "../activity-form";
 
 export default async function NewActivityPage() {
@@ -9,6 +10,7 @@ export default async function NewActivityPage() {
 
   return (
     <div className="flex flex-col gap-4 p-4">
+      <Breadcrumb items={[{ label: "Plan", href: "/activities" }, { label: "Add an activity" }]} />
       <h1 className="text-xl font-semibold">Add an activity</h1>
       <ActivityForm
         possibleCompanions={possibleCompanions}

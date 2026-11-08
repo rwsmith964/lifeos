@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { isFeatureEnabled } from "@/lib/flags";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
+import { Breadcrumb } from "@/components/nav/breadcrumb";
 import { PackingListForm } from "../packing-list-form";
 
 export const metadata = {
@@ -20,6 +21,7 @@ export default async function NewPackingListPage() {
 
   return (
     <div className="flex max-w-lg flex-col gap-4 p-4">
+      <Breadcrumb items={[{ label: "Packing lists", href: "/packing" }, { label: "New packing list" }]} />
       <h1 className="text-xl font-semibold">New packing list</h1>
       <p className="text-xs text-muted-foreground">
         A few quick questions, then we&apos;ll generate a tailored checklist for the trip.

@@ -88,10 +88,12 @@ async function extractWithAi(
   household: HouseholdRow,
   parser: IntakeParserKey,
   userPrompt: string,
-  attachment?: { base64Data: string; mediaType: "image/png" | "image/jpeg" | "image/webp" | "application/pdf" }
+  attachment?: { base64Data: string; mediaType: "image/png" | "image/jpeg" | "image/webp" | "application/pdf" },
+  timezone?: string
 ): Promise<{ extraction: IntakeExtraction; aiCallResult: AiCallResult }> {
   const aiCallResult = await callAi(supabase, {
     householdId: household.id,
+    timezone,
     feature: "universal_intake",
     systemPrompt: systemPromptForParser(parser),
     userPrompt,
@@ -119,10 +121,11 @@ export async function parseTextSource(
   supabase: SupabaseClient,
   household: HouseholdRow,
   text: string,
-  parserHint?: IntakeParserKey
+  parserHint?: IntakeParserKey,
+  timezone?: string
 ): Promise<IntakeParseResult> {
   const parser = parserHint ?? detectParser(text);
-  const { extraction, aiCallResult } = await extractWithAi(supabase, household, parser, text);
+  const { extraction, aiCallResult } = await extractWithAi(supabase, household, parser, text, undefined, timezone);
   return {
     parserUsed: parser,
     detectedRecordType: extraction.recordType,
@@ -138,10 +141,11 @@ export async function parseEmailSource(
   supabase: SupabaseClient,
   household: HouseholdRow,
   subject: string | null,
-  bodyText: string
+  bodyText: string,
+  timezone?: string
 ): Promise<IntakeParseResult> {
   const combined = subject ? `Subject: ${subject}\n\n${bodyText}` : bodyText;
-  return parseTextSource(supabase, household, combined);
+  return parseTextSource(supabase, household, combined, undefined, timezone);
 }
 
 /** Image/screenshot/PDF: same three prompts, but the user turn carries the
@@ -153,7 +157,8 @@ export async function parseAttachmentSource(
   household: HouseholdRow,
   base64Data: string,
   mediaType: "image/png" | "image/jpeg" | "image/webp" | "application/pdf",
-  parserHint?: IntakeParserKey
+  parserHint?: IntakeParserKey,
+  timezone?: string
 ): Promise<IntakeParseResult> {
   const parser = parserHint ?? "generic";
   const { extraction, aiCallResult } = await extractWithAi(
@@ -161,7 +166,8 @@ export async function parseAttachmentSource(
     household,
     parser,
     "Extract the structured draft from the attached image/document per your instructions.",
-    { base64Data, mediaType }
+    { base64Data, mediaType },
+    timezone
   );
   return {
     parserUsed: parser,

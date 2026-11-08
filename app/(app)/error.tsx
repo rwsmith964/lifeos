@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { useAutoRetryOnce } from "@/lib/hooks/use-auto-retry-once";
 
 // Route-segment error boundary for everything under the authenticated app
 // shell. Before this file existed, ANY uncaught error from a page or the
@@ -23,6 +24,19 @@ export default function AppError({ error, retry }: { error: Error & { digest?: s
   useEffect(() => {
     console.error("App error boundary caught:", error);
   }, [error]);
+
+  // B-02: a single transient 503/dropped-connection shouldn't read as a
+  // hard crash -- retry once, silently, before showing the error screen.
+  const readyToShow = useAutoRetryOnce(error, retry);
+
+  if (!readyToShow) {
+    // Deliberately near-blank rather than a spinner: this state is meant to
+    // last under a second in the common case (the retry just works), and a
+    // spinner that flashes for 700ms reads as more broken than nothing at
+    // all. Kept inside the app shell (unlike the bare root fallback) so the
+    // sidebar/header stay visible while this resolves.
+    return <div className="flex-1" />;
+  }
 
   return (
     <div className="flex flex-1 items-center justify-center p-4">

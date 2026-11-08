@@ -1,5 +1,6 @@
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
+import { Breadcrumb } from "@/components/nav/breadcrumb";
 import { EventForm } from "../event-form";
 
 export default async function NewCalendarEventPage({
@@ -23,6 +24,7 @@ export default async function NewCalendarEventPage({
 
   return (
     <div className="flex flex-col gap-4 p-4">
+      <Breadcrumb items={[{ label: "Calendar", href: "/calendar" }, { label: "Add event" }]} />
       <h1 className="text-xl font-semibold">Add event</h1>
       <EventForm
         people={people}

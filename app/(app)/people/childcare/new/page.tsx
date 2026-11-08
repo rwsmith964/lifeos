@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { listChildcareProvidersForHousehold, listChildrenForHousehold } from "@/lib/db/repositories/people";
 import { Card, CardContent } from "@/components/ui/card";
+import { Breadcrumb } from "@/components/nav/breadcrumb";
 import { ChildcareRequestForm } from "./childcare-request-form";
 
 export default async function NewChildcareRequestPage() {
@@ -13,6 +14,7 @@ export default async function NewChildcareRequestPage() {
 
   return (
     <div className="flex flex-col gap-4 p-4">
+      <Breadcrumb items={[{ label: "People", href: "/people" }, { label: "Request childcare" }]} />
       <h1 className="text-xl font-semibold">Request childcare</h1>
 
       {providers.length === 0 ? (

@@ -4,6 +4,7 @@ import { useMemo, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import type { PersonRow } from "@/lib/db/database.types";
+import { personDisplayName } from "@/lib/people/display-name";
 import {
   buildPresetCycle,
   CUSTODY_PRESET_LABELS,
@@ -293,7 +294,8 @@ export function NewScheduleForm({
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-          const childName = childPeople.find((c) => c.id === childPersonId)?.full_name ?? "one of the selected children";
+          const childPersonForError = childPeople.find((c) => c.id === childPersonId);
+          const childName = childPersonForError ? personDisplayName(childPersonForError) : "one of the selected children";
           setError(
             `Couldn't save the schedule for ${childName}${typeof data.error === "string" ? `: ${data.error}` : "."} ${selectedChildIds.length > 1 ? "Schedules already saved for other children before this failure were not undone." : ""}`.trim()
           );
@@ -411,7 +413,7 @@ export function NewScheduleForm({
                 selectedChildIds.includes(child.id) ? "border-primary bg-primary/10 font-medium" : "border-input"
               }`}
             >
-              {child.full_name}
+              {personDisplayName(child)}
             </button>
           ))}
         </div>
@@ -463,7 +465,7 @@ export function NewScheduleForm({
               <select id="primaryPersonId" className={selectClass} value={primaryPersonId} onChange={(e) => setPrimaryPersonId(e.target.value)}>
                 {responsibleCandidates.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.full_name}
+                    {personDisplayName(p)}
                   </option>
                 ))}
               </select>
@@ -473,7 +475,7 @@ export function NewScheduleForm({
               <select id="secondaryPersonId" className={selectClass} value={secondaryPersonId} onChange={(e) => setSecondaryPersonId(e.target.value)}>
                 {responsibleCandidates.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.full_name}
+                    {personDisplayName(p)}
                   </option>
                 ))}
               </select>

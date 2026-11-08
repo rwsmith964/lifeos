@@ -140,7 +140,24 @@ export function timeOffTitle(item: TimeOffCalendarItem): string {
   return item.reason ? `${item.personName} off work \u2014 ${item.reason}` : `${item.personName} off work`;
 }
 
-function formatTime(hhmm: string): string {
+/**
+ * M-02: combines a calendar day with a work_schedules "HH:MM" time-of-day
+ * into a real Date, so a shift can be positioned on the day/week timeline
+ * grid like any other timed item instead of being forced into the all-day
+ * strip at a misleading midnight. `date` is expected to already be at
+ * local midnight for the day in question (as produced by workShiftsInRange).
+ */
+export function withTimeOfDay(date: Date, hhmm: string): Date {
+  const [hour, minute] = hhmm.split(":").map(Number);
+  const result = new Date(date);
+  result.setHours(hour, minute, 0, 0);
+  return result;
+}
+
+/** M-02: exported so every screen that prints a work_schedules row's raw
+ * "HH:MM:SS" time (person pages, Settings) formats it the same way the
+ * calendar's own event rows do, instead of leaking the raw DB value. */
+export function formatTime(hhmm: string): string {
   const [hourStr, minute] = hhmm.split(":");
   const hour = Number(hourStr);
   const period = hour >= 12 ? "PM" : "AM";

@@ -1,10 +1,10 @@
 import { notFound } from "next/navigation";
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
 import { custodySchedulesRepo } from "@/lib/db/repositories/custody-schedules";
 import { filterEligibleResponsibleAdults } from "@/lib/custody/eligible-parents";
+import { personDisplayName } from "@/lib/people/display-name";
+import { Breadcrumb } from "@/components/nav/breadcrumb";
 import { EditScheduleForm, type EditScheduleFormDefaults } from "./edit-schedule-form";
 
 // D-125: edit page for a whole recurring custody schedule (cycle or
@@ -22,7 +22,8 @@ export default async function EditCustodySchedulePage({ params }: { params: Prom
 
   const people = await listPeopleForHousehold(supabase, household.id);
   const responsibleCandidates = filterEligibleResponsibleAdults(people);
-  const childName = people.find((p) => p.id === schedule.child_person_id)?.full_name ?? "this child";
+  const childPersonForEdit = people.find((p) => p.id === schedule.child_person_id);
+  const childName = childPersonForEdit ? personDisplayName(childPersonForEdit) : "this child";
 
   const defaults: EditScheduleFormDefaults =
     schedule.recurrence_type === "weekly_segments" && schedule.weekly_segments
@@ -47,9 +48,14 @@ export default async function EditCustodySchedulePage({ params }: { params: Prom
 
   return (
     <div className="flex flex-col gap-4 p-4">
-      <Link href={`/calendar/custody/${id}`} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="size-3" /> Back to schedule
-      </Link>
+      <Breadcrumb
+        items={[
+          { label: "Calendar", href: "/calendar" },
+          { label: "Custody", href: "/calendar/custody" },
+          { label: `${childName}'s schedule`, href: `/calendar/custody/${id}` },
+          { label: "Edit" },
+        ]}
+      />
       <h1 className="text-xl font-semibold">Edit {childName}&rsquo;s schedule</h1>
       <p className="text-sm text-muted-foreground">
         This changes the whole recurring pattern going forward. Existing exceptions on individual days are kept.

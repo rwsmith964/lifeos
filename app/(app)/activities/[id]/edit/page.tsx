@@ -9,7 +9,9 @@ import {
   listOutingLogsForActivity,
 } from "@/lib/db/repositories/leisure-planner";
 import { activityTypeKey } from "@/lib/db/schemas";
+import { personDisplayName } from "@/lib/people/display-name";
 import { resolveGearChecklist } from "@/lib/planner/gear-checklist";
+import { Breadcrumb } from "@/components/nav/breadcrumb";
 import { ActivityForm, type ActivityFormDefaults } from "../../activity-form";
 import { ActivityLocationsSection } from "../../activity-locations-section";
 import { AddActivityGearChecklistItemForm, AddOutingLogForm, OutingLogRow, ResolvedGearChecklistList } from "../../leisure-planner-forms";
@@ -36,7 +38,7 @@ export default async function EditActivityPage({ params }: { params: Promise<{ i
       ])
     : [[], [], []];
   const resolvedGearItems = resolveGearChecklist(activityGearItems, typeGearItems);
-  const householdPeopleById = new Map(people.map((p) => [p.id, p.full_name]));
+  const householdPeopleById = new Map(people.map((p) => [p.id, personDisplayName(p)]));
   const gearItemLabelById = new Map(resolvedGearItems.map((item) => [item.id, item.label]));
   const location = locations[0] ?? null;
   const additionalLocations = locations.slice(1);
@@ -65,6 +67,7 @@ export default async function EditActivityPage({ params }: { params: Promise<{ i
 
   return (
     <div className="flex flex-col gap-4 p-4">
+      <Breadcrumb items={[{ label: "Plan", href: "/activities" }, { label: "Edit activity" }]} />
       <h1 className="text-xl font-semibold">Edit activity</h1>
       <ActivityForm
         possibleCompanions={possibleCompanions}

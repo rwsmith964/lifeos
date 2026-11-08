@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import type { ChildcareRequestRow, PersonRow } from "@/lib/db/database.types";
@@ -30,14 +33,31 @@ const STATUS_VARIANTS: Record<string, "secondary" | "outline" | "default"> = {
  * the Activities page (see trip-ideas-section.tsx): the bottom nav is
  * already at 6 items with no room for a 7th top-level page.
  */
+// D-06: this used to always show every request -- cancelled, expired, and
+// weeks in the past included -- with no way to tell "what's actually
+// coming up" from the noise (in the reported case, near-duplicates of the
+// same already-cancelled ask). Defaults to pending/accepted requests dated
+// today or later; everything else sits behind an explicit toggle instead
+// of being hidden outright, so history isn't lost, just not the default
+// view. `today` (household-local, "yyyy-MM-dd") is passed from the server
+// page rather than computed here, since a client component can't know the
+// household's timezone on its own.
 export function ChildcareSection({
   requests,
   people,
+  today,
 }: {
   requests: ChildcareRequestRow[];
   people: PersonRow[];
+  today: string;
 }) {
+  const [showPastAndCancelled, setShowPastAndCancelled] = useState(false);
   const nameById = new Map(people.map((p) => [p.id, p.nickname || p.full_name]));
+
+  const isUpcomingAndActive = (r: ChildcareRequestRow) =>
+    (r.status === "pending" || r.status === "accepted") && r.care_date >= today;
+  const visibleRequests = showPastAndCancelled ? requests : requests.filter(isUpcomingAndActive);
+  const hiddenCount = requests.length - requests.filter(isUpcomingAndActive).length;
 
   return (
     <div className="flex flex-col gap-3">
@@ -50,17 +70,17 @@ export function ChildcareSection({
         </Button>
       </div>
 
-      {requests.length === 0 ? (
+      {visibleRequests.length === 0 ? (
         <Card>
           <CardContent className="text-sm text-muted-foreground">
-            No childcare requests yet. Tag someone as a childcare provider on their People page, then
-            request a specific date and time here — they can accept or decline by email, no LifeOS
-            account needed.
+            {requests.length === 0
+              ? "No childcare requests yet. Tag someone as a childcare provider on their People page, then request a specific date and time here — they can accept or decline by email, no LifeOS account needed."
+              : "No upcoming childcare requests."}
           </CardContent>
         </Card>
       ) : (
         <div className="flex flex-col gap-2">
-          {requests.map((request) => {
+          {visibleRequests.map((request) => {
             const providerName = nameById.get(request.provider_person_id) ?? "Unknown";
             const childNames = request.child_person_ids.map((id) => nameById.get(id)).filter(Boolean);
             const pickupTime =
@@ -99,6 +119,17 @@ export function ChildcareSection({
             );
           })}
         </div>
+      )}
+
+      {!showPastAndCancelled && hiddenCount > 0 && (
+        <Button size="sm" variant="ghost" className="self-start" onClick={() => setShowPastAndCancelled(true)}>
+          Show past &amp; cancelled ({hiddenCount})
+        </Button>
+      )}
+      {showPastAndCancelled && (
+        <Button size="sm" variant="ghost" className="self-start" onClick={() => setShowPastAndCancelled(false)}>
+          Hide past &amp; cancelled
+        </Button>
       )}
     </div>
   );

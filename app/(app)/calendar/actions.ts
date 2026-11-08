@@ -8,6 +8,7 @@ import { propagateDeleteToRemote } from "@/lib/calendar/two-way-sync";
 import { timeOffEntriesRepo } from "@/lib/db/repositories/work-schedule";
 import { createSupabaseServiceRoleClient } from "@/lib/db/client-service-role";
 import { generateWeekendPlan } from "@/lib/planner/generate";
+import { detectOpportunitiesForHousehold } from "@/lib/opportunities/detect";
 import { acceptWeekendPlan } from "@/lib/planner/accept-plan";
 import { getWeekendPlanForDate } from "@/lib/db/repositories/system";
 import { friendlyMutationError } from "@/lib/db/errors";
@@ -116,6 +117,11 @@ export async function deleteTimeOffFromCalendarAction(entryId: string): Promise<
 
 export interface WeekendPlanActionState {
   error: string | null;
+  // M-04: "the action must always end in a visible result, including
+  // 'nothing changed' and why." Previously the button just returned to its
+  // resting label on success with zero feedback, so a real no-op (nothing
+  // new detected) was indistinguishable from a silent failure.
+  message: string | null;
 }
 
 export async function generateWeekendPlanAction(): Promise<WeekendPlanActionState> {
@@ -137,7 +143,7 @@ export async function generateWeekendPlanAction(): Promise<WeekendPlanActionStat
     // past the user's local midnight.
     const result = await generateWeekendPlan(serviceRoleClient, household.id, getZonedNow(timezone));
     if (result.status === "ai_unavailable" || result.status === "budget_exceeded") {
-      return { error: result.reason };
+      return { error: result.reason, message: null };
     }
     if (result.status === "no_candidates") {
       if (result.noCandidatesReason === "seasonally_unavailable") {
@@ -148,6 +154,7 @@ export async function generateWeekendPlanAction(): Promise<WeekendPlanActionStat
         return {
           error:
             "None of your activities are in season (or have enough daylight) this weekend — check back closer to the date, or adjust an activity's season window.",
+          message: null,
         };
       }
       if (result.noCandidatesReason === "viability_unmet") {
@@ -159,6 +166,7 @@ export async function generateWeekendPlanAction(): Promise<WeekendPlanActionStat
         return {
           error:
             "None of your activities have the condition data you said matters for them (like river flow or tide data) set up on their location yet — add it under the activity's location, or adjust which inputs matter for that activity type under Activities.",
+          message: null,
         };
       }
       // Was misdirecting people to "add one under Activities" — the real
@@ -169,18 +177,40 @@ export async function generateWeekendPlanAction(): Promise<WeekendPlanActionStat
       // not from any activity row). Fixed alongside adding that field.
       return {
         error: "Add at least one activity, and set your home address under Settings, to generate a weekend plan.",
+        message: null,
       };
     }
     // D-135: "generated" and "traveling" both fall through here on purpose
     // — both persisted a real weekend_plans row (the calendar page reads
     // it back and renders whichever content_markdown got written), so
     // neither needs its own branch above.
-  } catch (error) {
-    return { error: friendlyMutationError(error, { fallback: "Couldn't generate a weekend plan — please try again." }) };
-  }
 
-  revalidatePath("/calendar");
-  return { error: null };
+    // M-04: "Regenerate weekend plan" used to only touch the single-
+    // recommendation weekend_plans system above, while Plan's actual
+    // day-by-day scored proposals (and Today's/Notifications' quoted
+    // scores) come from the separate opportunity-detection engine
+    // (lib/opportunities/detect.ts) -- a completely different table this
+    // action never touched. Clicking "Regenerate" while looking at the
+    // scored-proposals list could therefore never visibly change anything,
+    // which is exactly the reported "silent no-op." Re-running detection
+    // here too (it's cheap/idempotent -- see that function's own doc
+    // comment) means this button actually refreshes what's on screen, and
+    // the message always says what happened either way.
+    const opportunityResult = await detectOpportunitiesForHousehold(serviceRoleClient, household.id, getZonedNow(timezone));
+    const message =
+      opportunityResult.opportunitiesDetected > 0
+        ? `Found ${opportunityResult.opportunitiesDetected} new idea${opportunityResult.opportunitiesDetected === 1 ? "" : "s"} for this weekend.`
+        : "Checked again — nothing new stood out for this weekend.";
+
+    revalidatePath("/activities");
+    revalidatePath("/calendar");
+    return { error: null, message };
+  } catch (error) {
+    return {
+      error: friendlyMutationError(error, { fallback: "Couldn't generate a weekend plan — please try again." }),
+      message: null,
+    };
+  }
 }
 
 export interface AcceptWeekendPlanActionState {

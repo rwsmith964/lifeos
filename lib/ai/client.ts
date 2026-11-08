@@ -3,9 +3,11 @@
 // bypassed by a feature module that forgets to log its own call.
 import Anthropic from "@anthropic-ai/sdk";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { startOfDay } from "date-fns";
 import { householdsRepo } from "../db/repositories/households";
 import { aiUsageLogRepo, sumAiSpendToday } from "../db/repositories/system";
 import { createSupabaseServiceRoleClient } from "../db/client-service-role";
+import { getZonedNow } from "../timezones";
 import { AI_MODEL, estimateCostCents } from "./pricing";
 import { buildAiTestFixtureResponse, isAiTestFixtureModeEnabled } from "./test-fixtures";
 
@@ -38,6 +40,16 @@ export function isAiConfigured(): boolean {
 
 export interface AiCallParams {
   householdId: string;
+  /**
+   * M-01 follow-up: the household's IANA zone, used only to compute the
+   * daily-spend ceiling's start-of-day boundary in local terms instead of
+   * the server's (UTC on Vercel). Optional and defaulted, like every other
+   * caller-supplied timezone in this codebase (see lib/auth/session.ts) --
+   * every existing caller that omits it keeps working, just with the same
+   * "America/Los_Angeles" fallback the rest of the app already uses when
+   * no real value is in scope.
+   */
+  timezone?: string;
   /** 'gift_suggestion' | 'daily_brief' | 'weekend_plan', see Section 11.3. */
   feature: string;
   systemPrompt: string;
@@ -97,7 +109,8 @@ export async function callAi(dbClient: SupabaseClient, params: AiCallParams): Pr
 
   const household = await householdsRepo.getById(dbClient, params.householdId);
   const ceilingCents = household?.ai_daily_spend_ceiling_cents ?? 50;
-  const spentTodayCents = await sumAiSpendToday(serviceRoleClient, params.householdId);
+  const zonedStartOfDay = startOfDay(getZonedNow(params.timezone ?? "America/Los_Angeles"));
+  const spentTodayCents = await sumAiSpendToday(serviceRoleClient, params.householdId, zonedStartOfDay.toISOString());
   if (spentTodayCents >= ceilingCents) {
     throw new AiBudgetExceededError(
       `Household ${params.householdId} has spent ${spentTodayCents}c today, at/over its ${ceilingCents}c daily ceiling`

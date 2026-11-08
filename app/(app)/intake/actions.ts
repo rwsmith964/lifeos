@@ -18,8 +18,8 @@ function revalidateIntakePaths() {
 }
 
 export async function approveIntakeDraftAction(draftId: string, resolvedPersonId?: string | null) {
-  const { supabase, household, selfPerson, userId } = await requireHouseholdContext();
-  await approveDraft(supabase, household, selfPerson, draftId, resolvedPersonId ?? null, userId);
+  const { supabase, household, selfPerson, userId, timezone } = await requireHouseholdContext();
+  await approveDraft(supabase, household, selfPerson, draftId, resolvedPersonId ?? null, userId, timezone);
   revalidateIntakePaths();
 }
 

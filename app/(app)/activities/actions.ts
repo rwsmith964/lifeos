@@ -27,6 +27,21 @@ export async function deactivateActivityAction(activityId: string): Promise<Simp
   return { error: null };
 }
 
+// I3 (audit pass 2026-09-11): "Undo exists in one place and is needed in
+// several... removing an activity." deactivateActivityAction was already a
+// soft-delete (is_active: false), so undo is just flipping it back --
+// wired into DeactivateActivityButton's onUndo below.
+export async function reactivateActivityAction(activityId: string): Promise<SimpleFormState> {
+  const { supabase } = await requireHouseholdContext();
+  try {
+    await userActivitiesRepo.update(supabase, activityId, { is_active: true });
+  } catch (error) {
+    return { error: friendlyMutationError(error, { fallback: "Couldn't restore that activity — please try again." }) };
+  }
+  revalidatePath("/activities");
+  return { error: null };
+}
+
 // D-083 (P3-1): quick "I did this today" button on the activity card, for
 // when the activity happened outside the Opportunities flow (that flow
 // already sets this via updateOpportunityStatusAction's "acted_on" hook —

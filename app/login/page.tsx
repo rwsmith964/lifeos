@@ -27,13 +27,18 @@ export default function LoginPage() {
   const next = isSafeRedirectPath(rawNext) ? rawNext : null;
 
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center gap-6 p-6">
-      <h1 className="text-2xl font-semibold">{APP_NAME}</h1>
+    // I2: "Style the sign-in screen as part of the app." This used to be
+    // plain shadcn defaults (a bare `text-2xl` heading, the unstyled Card
+    // primitive) -- the one screen in the whole app that didn't look like
+    // LifeOS. `bg-ground`/`font-serif text-headline` match the same
+    // branded look Today's own header uses.
+    <div className="flex min-h-dvh flex-col items-center justify-center gap-6 bg-ground p-6">
+      <h1 className="font-serif text-headline text-ink">{APP_NAME}</h1>
 
-      <Card className="w-full max-w-sm">
+      <Card className="w-full max-w-sm bg-surface">
         <CardHeader>
-          <CardTitle>Sign in</CardTitle>
-          <CardDescription>
+          <CardTitle className="font-serif text-card-headline text-ink">Sign in</CardTitle>
+          <CardDescription className="text-ink-2">
             {mode === "password" ? "Use your email and password." : "We'll email you a sign-in link."}
           </CardDescription>
         </CardHeader>

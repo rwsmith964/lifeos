@@ -167,10 +167,10 @@ export function CapturePanel({ open, onClose }: { open: boolean; onClose: () => 
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-label="Ask, add, or dump a thought"
+        aria-label="Add or dump a thought"
       >
         <div className="flex items-center justify-between border-b border-line px-[18px] py-3">
-          <p className="font-sans text-metadata text-meta">Ask, add, or dump a thought</p>
+          <p className="font-sans text-metadata text-meta">Add or dump a thought</p>
           <div className="flex items-center gap-3">
             {/* D-066: brain dump is a full-page flow (long transcript,
                 multi-item review), so it can't live inside this overlay --
@@ -245,7 +245,7 @@ export function CapturePanel({ open, onClose }: { open: boolean; onClose: () => 
                 void send();
               }
             }}
-            placeholder={listening ? "Listening…" : "Ask, add, or dump a thought…"}
+            placeholder={listening ? "Listening…" : "Add or dump a thought…"}
             disabled={aiAvailable === false}
             className="h-9 flex-1 rounded-input border border-line bg-surface px-3 font-sans text-body text-ink outline-none placeholder:text-meta focus-visible:ring-2 focus-visible:ring-action/50 disabled:opacity-50"
           />

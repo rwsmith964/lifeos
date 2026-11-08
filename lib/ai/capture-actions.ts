@@ -9,6 +9,7 @@
 import { format } from "date-fns";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { requireHouseholdContext } from "@/lib/auth/session";
+import { getZonedNow } from "@/lib/timezones";
 import type { CaptureAction } from "@/lib/ai/prompts/capture";
 import { peopleRepo, personGiftBudgetsRepo, personInterestsRepo } from "@/lib/db/repositories/people";
 import { userActivitiesRepo } from "@/lib/db/repositories/activities";
@@ -36,9 +37,16 @@ export async function executeAction(
   supabase: Awaited<ReturnType<typeof requireHouseholdContext>>["supabase"],
   household: Awaited<ReturnType<typeof requireHouseholdContext>>["household"],
   selfPerson: PersonRow,
-  action: CaptureAction
+  action: CaptureAction,
+  // M-01 follow-up: was a bare `new Date()` -- the server's raw (UTC on
+  // Vercel) instant, not the household's local calendar day, so a logged
+  // interaction/gift near midnight UTC could be dated tomorrow instead of
+  // today. Optional + defaulted like every other caller-supplied timezone
+  // in this codebase, so the existing unit tests (which don't pass one)
+  // keep working unchanged.
+  timezone: string = "America/Los_Angeles"
 ): Promise<ExecuteActionResult> {
-  const today = format(new Date(), "yyyy-MM-dd");
+  const today = format(getZonedNow(timezone), "yyyy-MM-dd");
 
   switch (action.type) {
     case "add_interest": {

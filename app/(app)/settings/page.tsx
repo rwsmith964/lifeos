@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { format } from "date-fns";
 import { requireHouseholdContext } from "@/lib/auth/session";
+import { getZonedNow } from "@/lib/timezones";
 import { listInvitesForHousehold, listMembersOfHousehold, usersRepo } from "@/lib/db/repositories/households";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
 import { listCalendarFeedsForHousehold } from "@/lib/db/repositories/calendar";
@@ -11,6 +12,7 @@ import { HouseholdSwitcher, type HouseholdSwitcherItem } from "./household-switc
 import { CalendarFeeds } from "./calendar-feeds";
 import { MySchedule } from "./my-schedule";
 import { FeatureFlags } from "./feature-flags";
+import { DeleteAccountButton } from "./delete-account-button";
 import { listFeatureFlagStates } from "@/lib/flags";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { PalettePicker } from "@/components/palette-picker";
@@ -18,7 +20,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 
 export default async function SettingsPage() {
-  const { supabase, household, userId, memberships } = await requireHouseholdContext();
+  const { supabase, household, userId, memberships, timezone } = await requireHouseholdContext();
   const user = await usersRepo.getById(supabase, userId);
   const switcherItems: HouseholdSwitcherItem[] = memberships.map((m) => ({
     householdId: m.household.id,
@@ -43,7 +45,7 @@ export default async function SettingsPage() {
         listTimeOffForPerson(supabase, selfPerson.id),
       ])
     : [[], []];
-  const todayStr = format(new Date(), "yyyy-MM-dd");
+  const todayStr = format(getZonedNow(timezone), "yyyy-MM-dd");
   const myUpcomingTimeOff = myTimeOff.filter((entry) => entry.end_date >= todayStr);
   const memberUsers = await Promise.all(members.map((m) => usersRepo.getById(supabase, m.user_id)));
   const memberDisplays: HouseholdMemberDisplay[] = members.map((m, i) => ({
@@ -61,7 +63,7 @@ export default async function SettingsPage() {
       <h1 className="font-serif text-page-title text-ink">Settings</h1>
       <Card>
         <CardContent className="flex flex-col gap-[18px]">
-          <p className="font-sans text-section-label uppercase text-meta">Appearance</p>
+          <h2 className="font-sans text-section-label uppercase text-meta">Appearance</h2>
           <div className="flex flex-col gap-2">
             <Label>Theme</Label>
             <ThemeToggle />
@@ -96,7 +98,7 @@ export default async function SettingsPage() {
       <Card>
         <CardContent className="flex items-center justify-between gap-2">
           <div>
-            <Label>Activity</Label>
+            <h2 className="text-metadata text-ink-2">Activity</h2>
             <p className="font-sans text-metadata text-meta">
               See what the assistant did on its own, and undo an action if needed.
             </p>
@@ -104,6 +106,17 @@ export default async function SettingsPage() {
           <Link href="/settings/activity" className="font-sans text-body font-bold text-action underline-offset-2 hover:underline">
             View activity log
           </Link>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent className="flex items-center justify-between gap-2">
+          <div>
+            <h2 className="text-metadata text-ink-2">Delete account</h2>
+            <p className="font-sans text-metadata text-meta">
+              Permanently delete your login and your household&apos;s data.
+            </p>
+          </div>
+          <DeleteAccountButton />
         </CardContent>
       </Card>
     </div>

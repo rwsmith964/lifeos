@@ -1856,4 +1856,58 @@ describe("RLS end-to-end (PGlite, real migrations + real seed data)", () => {
       ).rejects.toThrow();
     });
   });
+
+  describe("today_item_dismissals (B2, viewer-only -- not household-wide)", () => {
+    it("a household member can dismiss their own Today item", async () => {
+      const inserted = await asUser(db, RICHARD_USER, () =>
+        db.query(
+          `insert into today_item_dismissals (household_id, person_id, item_key, hidden_until) values ('${SEEDED_HOUSEHOLD}', '${RICHARD_PERSON}', 'reach-out:${DAVE_PERSON}', '2026-09-12') returning id;`
+        )
+      );
+      expect(inserted.rows.length).toBe(1);
+    });
+
+    it("another household member (the child fixture) does not see Richard's dismissal -- it's personal, not shared", async () => {
+      await asServiceRole(db, () =>
+        db.exec(
+          `insert into today_item_dismissals (household_id, person_id, item_key, hidden_until) values ('${SEEDED_HOUSEHOLD}', '${RICHARD_PERSON}', 'reach-out:${DAVE_PERSON}', '2026-09-12') on conflict (person_id, item_key) do nothing;`
+        )
+      );
+      const childSees = await asUser(db, CHILD_USER, () =>
+        db.query(`select count(*)::int as n from today_item_dismissals where person_id = '${RICHARD_PERSON}';`)
+      );
+      expect((childSees.rows[0] as { n: number }).n, "dismissals are per-viewer, not household-shared").toBe(0);
+    });
+
+    it("an outsider cannot insert a dismissal for a person outside their own household", async () => {
+      await expect(
+        asUser(db, OUTSIDER_USER, () =>
+          db.exec(
+            `insert into today_item_dismissals (household_id, person_id, item_key, hidden_until) values ('${SEEDED_HOUSEHOLD}', '${RICHARD_PERSON}', 'reach-out:x', '2026-09-12');`
+          )
+        )
+      ).rejects.toThrow();
+    });
+
+    it("the upsert-on-conflict path lets a viewer extend their own snooze without a duplicate row", async () => {
+      await asUser(db, RICHARD_USER, () =>
+        db.exec(
+          `insert into today_item_dismissals (household_id, person_id, item_key, hidden_until) values ('${SEEDED_HOUSEHOLD}', '${RICHARD_PERSON}', 'quick-household:test-item', '2026-09-12') on conflict (person_id, item_key) do update set hidden_until = excluded.hidden_until;`
+        )
+      );
+      await asUser(db, RICHARD_USER, () =>
+        db.exec(
+          `insert into today_item_dismissals (household_id, person_id, item_key, hidden_until) values ('${SEEDED_HOUSEHOLD}', '${RICHARD_PERSON}', 'quick-household:test-item', '2026-09-20') on conflict (person_id, item_key) do update set hidden_until = excluded.hidden_until;`
+        )
+      );
+      const rows = await asUser(db, RICHARD_USER, () =>
+        db.query(
+          `select hidden_until from today_item_dismissals where person_id = '${RICHARD_PERSON}' and item_key = 'quick-household:test-item';`
+        )
+      );
+      expect(rows.rows.length).toBe(1);
+      // pglite returns a `date` column as a JS Date, not a string.
+      expect((rows.rows[0] as { hidden_until: Date }).hidden_until.toISOString()).toContain("2026-09-20");
+    });
+  });
 });

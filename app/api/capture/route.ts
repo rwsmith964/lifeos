@@ -19,6 +19,7 @@
 import { NextResponse } from "next/server";
 import { format } from "date-fns";
 import { requireHouseholdContext } from "@/lib/auth/session";
+import { getZonedNow } from "@/lib/timezones";
 import { AiBudgetExceededError, AiUnavailableError, callAi, isAiConfigured } from "@/lib/ai/client";
 import { buildChildTokenMap } from "@/lib/ai/context";
 import { parseAiJson } from "@/lib/ai/parse-json";
@@ -72,7 +73,7 @@ function clarifyingQuestionFor(type: BrainDumpItem["type"]): string {
 }
 
 export async function POST(request: Request) {
-  const { supabase, household, selfPerson } = await requireHouseholdContext();
+  const { supabase, household, selfPerson, timezone } = await requireHouseholdContext();
 
   if (!isAiConfigured()) {
     return NextResponse.json({
@@ -121,12 +122,22 @@ export async function POST(request: Request) {
     .map((t) => t.text)
     .join(". ");
 
-  const userPrompt = buildBrainDumpUserPrompt(format(new Date(), "EEEE, MMMM d, yyyy"), capturePeople, combinedTranscript);
+  // M-01 follow-up: was a bare `new Date()` -- the server's raw (UTC on
+  // Vercel) instant, not the household's local calendar day. Near midnight
+  // UTC (mid-afternoon Pacific), the model was told the wrong day-of-week,
+  // which skews every relative-date resolution ("today", "tomorrow") the
+  // prompt makes.
+  const userPrompt = buildBrainDumpUserPrompt(
+    format(getZonedNow(timezone), "EEEE, MMMM d, yyyy"),
+    capturePeople,
+    combinedTranscript
+  );
 
   let aiResult;
   try {
     aiResult = await callAi(supabase, {
       householdId: household.id,
+      timezone,
       feature: "quick_capture",
       systemPrompt: BRAIN_DUMP_SYSTEM_PROMPT,
       userPrompt,
@@ -158,9 +169,23 @@ export async function POST(request: Request) {
   const items = validated.data.items;
 
   if (items.length === 0) {
+    // D-01: Quick Capture is a write-only parser -- it has no read/query
+    // path, so a genuine question ("what's on my calendar tomorrow?") was
+    // met with the same generic "nothing to save" refusal as gibberish,
+    // even though the placeholder copy used to say "Ask...". Taking the
+    // audit's offered fallback (a full read path is out of scope for this
+    // pass -- logged as Q6): drop "Ask" from the copy (done across
+    // capture-panel/command-bar/mobile-capture-button) and, here, give a
+    // question-shaped input its own honest refusal instead of pretending
+    // it looked like unrecognized noise.
+    const lastUserTurn = redactedTurns.filter((t) => t.role === "user").at(-1)?.text.trim() ?? "";
+    const looksLikeQuestion =
+      /\?\s*$/.test(lastUserTurn) || /^(what|when|where|who|why|how|is|are|do|does|can|will)\b/i.test(lastUserTurn);
     return NextResponse.json({
       status: "unrecognized",
-      confirmationMessage: "I don't see anything to save there — try mentioning a person, event, or gift.",
+      confirmationMessage: looksLikeQuestion
+        ? "I can't answer questions yet — I can only save things. Try telling me what to add instead."
+        : "I don't see anything to save there — try mentioning a person, event, or gift.",
     });
   }
 
@@ -193,7 +218,7 @@ export async function POST(request: Request) {
 
   let executeResult;
   try {
-    executeResult = await executeAction(supabase, household, selfPerson, action);
+    executeResult = await executeAction(supabase, household, selfPerson, action, timezone);
   } catch (error) {
     return NextResponse.json({
       status: "error",

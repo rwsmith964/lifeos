@@ -10,8 +10,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
 import { useAsyncToastAction } from "@/lib/hooks/use-async-toast-action";
 import { ConfirmDeleteButton } from "@/components/ui/confirm-delete-button";
+import { Breadcrumb } from "@/components/nav/breadcrumb";
 import { TRIP_TYPE_LABELS } from "@/lib/ai/prompts/packing-checklist";
 import type { PackingListItemRow, PackingListRow, PersonRow } from "@/lib/db/database.types";
+import { personDisplayName } from "@/lib/people/display-name";
 import {
   addManualItemAction,
   archivePackingListAction,
@@ -151,13 +153,17 @@ export function PackingListDetail({
 
   const peopleById = new Map(people.map((p) => [p.id, p]));
   const travelerNames = packingList.traveler_person_ids
-    .map((id) => peopleById.get(id)?.full_name)
+    .map((id) => {
+      const person = peopleById.get(id);
+      return person ? personDisplayName(person) : undefined;
+    })
     .filter((name): name is string => !!name);
 
   const checkedCount = items.filter((i) => i.checked).length;
 
   return (
     <div className="flex flex-col gap-4 p-4">
+      <Breadcrumb items={[{ label: "Packing lists", href: "/packing" }, { label: packingList.title }]} />
       <div className="flex items-start justify-between gap-2">
         <div>
           <h1 className="text-xl font-semibold">{packingList.title}</h1>

@@ -10,7 +10,7 @@ async function main() {
   for (const household of households) {
     const result = await scanHouseholdForGiftOccasions(client, household.id);
     console.log(
-      `${household.name}: ${result.suggestionsGenerated} suggestion(s) generated, ${result.notificationsSent} notification(s) sent.`
+      `${household.name}: ${result.suggestionsGenerated} suggestion(s) generated, ${result.notificationsSent} notification(s) sent, ${result.suggestionsMissed} suggestion(s) marked missed.`
     );
   }
 }

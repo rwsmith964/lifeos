@@ -1,10 +1,10 @@
-import Link from "next/link";
 import { formatDistanceToNow, subDays } from "date-fns";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { listMembersOfHousehold } from "@/lib/db/repositories/households";
 import { listActionLogSince } from "@/lib/db/repositories/action-log";
 import { buildWeeklyDigest } from "@/lib/trust/weekly-digest";
 import { Card, CardContent } from "@/components/ui/card";
+import { Breadcrumb } from "@/components/nav/breadcrumb";
 import { UndoActionButton } from "./undo-action-button";
 
 // QUEUE-011 remainder: a real UI for Module 3's trust layer. withActionLog
@@ -47,13 +47,8 @@ export default async function ActivityLogPage() {
 
   return (
     <div className="flex flex-col gap-4 p-4">
-      <div className="flex items-center gap-2">
-        <Link href="/settings" className="text-sm text-muted-foreground hover:underline">
-          Settings
-        </Link>
-        <span className="text-sm text-muted-foreground">/</span>
-        <h1 className="text-xl font-semibold">Activity</h1>
-      </div>
+      <Breadcrumb items={[{ label: "Settings", href: "/settings" }, { label: "Activity" }]} />
+      <h1 className="text-xl font-semibold">Activity</h1>
 
       <Card>
         <CardContent className="flex flex-col gap-3">

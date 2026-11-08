@@ -3,13 +3,14 @@
 // custody_blocks rows. See DECISIONS.md D-033 and lib/custody/schedule.ts.
 import { NextResponse } from "next/server";
 import { requireHouseholdContext } from "@/lib/auth/session";
+import { getZonedNow } from "@/lib/timezones";
 import { custodySchedulesRepo } from "@/lib/db/repositories/custody-schedules";
 import { custodyScheduleInsertSchema } from "@/lib/db/schemas";
 import { materializeCustodySchedule } from "@/lib/custody/materialize";
 import { friendlyMutationError } from "@/lib/db/errors";
 
 export async function POST(request: Request) {
-  const { supabase, household } = await requireHouseholdContext();
+  const { supabase, household, timezone } = await requireHouseholdContext();
   const body = await request.json().catch(() => null);
   if (!body) return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
 
@@ -20,7 +21,7 @@ export async function POST(request: Request) {
 
   try {
     const schedule = await custodySchedulesRepo.create(supabase, parsed.data);
-    const { blocksCreated } = await materializeCustodySchedule(supabase, schedule);
+    const { blocksCreated } = await materializeCustodySchedule(supabase, schedule, getZonedNow(timezone));
     return NextResponse.json({ id: schedule.id, blocksCreated });
   } catch (error) {
     return NextResponse.json(

@@ -10,6 +10,7 @@ import { useToast } from "@/components/ui/toast";
 import { useAsyncToastAction } from "@/lib/hooks/use-async-toast-action";
 import { ConfirmDeleteButton } from "@/components/ui/confirm-delete-button";
 import { addChoreAction, completeChoreAction, removeChoreAction, reopenChoreAction } from "./actions";
+import { personDisplayName } from "@/lib/people/display-name";
 import type { ChoreRow, PersonRow } from "@/lib/db/database.types";
 
 function ChoreItem({ chore, people }: { chore: ChoreRow; people: PersonRow[] }) {
@@ -30,9 +31,9 @@ function ChoreItem({ chore, people }: { chore: ChoreRow; people: PersonRow[] }) 
           </Badge>
         </div>
         <p className="text-xs text-muted-foreground">
-          {assignee ? `Assigned to ${assignee.full_name}` : "Unassigned"}
+          {assignee ? `Assigned to ${personDisplayName(assignee)}` : "Unassigned"}
           {chore.due_date && ` · due ${format(new Date(`${chore.due_date}T00:00:00`), "MMM d")}`}
-          {chore.status === "done" && completedBy && ` · completed by ${completedBy.full_name}`}
+          {chore.status === "done" && completedBy && ` · completed by ${personDisplayName(completedBy)}`}
         </p>
         {chore.description && <p className="text-xs text-muted-foreground">{chore.description}</p>}
       </div>
@@ -132,7 +133,7 @@ export function ChoresCard({ chores, people }: { chores: ChoreRow[]; people: Per
             <option value="">Unassigned</option>
             {people.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.full_name}
+                {personDisplayName(p)}
               </option>
             ))}
           </select>
