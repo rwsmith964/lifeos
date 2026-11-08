@@ -9,6 +9,7 @@ import { AvatarMenu } from "@/components/ui/avatar-menu";
 import { CaptureProvider } from "@/components/capture/capture-provider";
 import { CommandBar } from "@/components/capture/command-bar";
 import { MobileCaptureButton } from "@/components/capture/mobile-capture-button";
+import { SnapButton } from "@/components/capture/snap-button";
 import { AppLockGate } from "@/components/native/app-lock-gate";
 import { HeaderThemeToggle } from "@/components/header-theme-toggle";
 import { SessionKeepAlive } from "@/components/session-keep-alive";
@@ -136,6 +137,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
               <div className="mx-auto max-w-6xl px-4 py-[26px] md:px-[34px]">{children}</div>
             </main>
 
+            <SnapButton />
             <MobileCaptureButton
               leftItems={MOBILE_NAV_LEFT}
               rightItems={MOBILE_NAV_RIGHT}
