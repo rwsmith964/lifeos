@@ -34,6 +34,8 @@ import { isFeatureEnabled } from "@/lib/flags";
 import { detectScheduleConflictsForHousehold, resolveTravelLegsForHousehold } from "@/lib/scheduling/detect-conflicts";
 import { getNwsForecast } from "@/lib/external/nws";
 import { scoreWeatherSuitability, parseWindMph } from "@/lib/planner/weather-score";
+import { listAvailabilitySchedulesForHousehold } from "@/lib/db/repositories/availability";
+import { expandAvailability } from "@/lib/availability/expand";
 import { buildWeekCustodyRibbon, type WeekCustodyBand } from "@/lib/calendar/week-custody-ribbon";
 import type { TravelConflictWarning } from "@/lib/scheduling/travel-conflicts";
 import {
@@ -86,6 +88,8 @@ const OTHER_CHIP_LABELS: Record<string, string> = {
   birthday: "Birthday",
   work_shift: "Work",
   time_off: "Time off",
+  busy: "Busy",
+  school: "School",
 };
 // D-132: background/text classes for the month-grid inline chip, one per
 // DayItem `kind` (custody is excluded -- it gets the frame bar instead, see
@@ -97,6 +101,10 @@ const CHIP_KIND_STYLES: Record<string, string> = {
   birthday: "bg-pink-100 text-pink-800 dark:bg-pink-950 dark:text-pink-300",
   work_shift: "bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-300",
   time_off: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
+  // Recurring "she's busy" blocks (a partner's kids' weeks) get their own
+  // colour so they never read as custody, time off or an appointment.
+  busy: "bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-300",
+  school: "bg-sky-50 text-sky-700 dark:bg-sky-950 dark:text-sky-300",
   // D-133: day timeline positions custody blocks too (unlike the month
   // grid's frame bar, which deliberately pulls custody out of the chip
   // list) -- a same-day handover's exact time is worth seeing on an
@@ -129,6 +137,9 @@ const TIMELINE_WEEK_DAY_MIN_PX = 104;
 // visual weight as a real appointment. This renders full-width, behind
 // everything else (no border, no side-by-side column math -- a recurring
 // shift is background context, not a foreground item you'd click).
+// Timed items that sit behind the grid as faint context rather than appointment blocks.
+const BANDED_KINDS = new Set(["work_shift", "school"]);
+
 function WorkShiftBand({ item }: { item: DayTimelinePositionedItem }) {
   return (
     <div
@@ -236,12 +247,12 @@ function DayTimelineView({ timeline, day }: { timeline: DayTimelineLayout; day: 
               </div>
             ))}
             {timeline.positioned
-              .filter((item) => item.kind === "work_shift")
+              .filter((item) => BANDED_KINDS.has(item.kind))
               .map((item) => (
                 <WorkShiftBand key={item.id} item={item} />
               ))}
             {timeline.positioned
-              .filter((item) => item.kind !== "work_shift")
+              .filter((item) => !BANDED_KINDS.has(item.kind))
               .map((item) => (
                 <TimelineItemBlock key={item.id} item={item} dayStart={dayStart} />
               ))}
@@ -454,12 +465,12 @@ function WeekTimelineView({
                     style={{ minWidth: `${TIMELINE_WEEK_DAY_MIN_PX}px` }}
                   >
                     {d.positioned
-                      .filter((item) => item.kind === "work_shift")
+                      .filter((item) => BANDED_KINDS.has(item.kind))
                       .map((item) => (
                         <WorkShiftBand key={item.id} item={item} />
                       ))}
                     {d.positioned
-                      .filter((item) => item.kind !== "work_shift")
+                      .filter((item) => !BANDED_KINDS.has(item.kind))
                       .map((item) => (
                         <TimelineItemBlock key={item.id} item={item} dayStart={dayStart} compact />
                       ))}
@@ -533,7 +544,7 @@ function parseRangeParam(raw: string | undefined): CalendarRange {
 
 interface DayItem {
   id: string;
-  kind: "event" | "custody" | "birthday" | "work_shift" | "time_off";
+  kind: "event" | "custody" | "birthday" | "work_shift" | "time_off" | "busy" | "school";
   startsAt: Date;
   endsAt: Date;
   title: string;
@@ -628,6 +639,11 @@ export default async function CalendarPage({
       format(gridEnd, DAY_PARAM_FORMAT)
     ),
   ]);
+  // Recurring "she's busy" blocks and school hours. Tolerates the table not
+  // existing yet so a pending migration can't take the whole calendar down.
+  const availabilitySchedules = await listAvailabilitySchedulesForHousehold(supabase, household.id).catch(
+    () => [] as Awaited<ReturnType<typeof listAvailabilitySchedulesForHousehold>>
+  );
   const [attendeesByEvent, attendeeRowsByEvent] = await Promise.all([
     listAttendeeNamesForEvents(
       supabase,
@@ -913,10 +929,33 @@ export default async function CalendarPage({
     dotClassName: "bg-amber-500",
   }));
 
+  // Availability patterns expand per visible day, like work shifts: a
+  // partner's busy days (all-day, their own colour) and a child's school hours
+  // (timed, drawn as a faint band behind the grid).
+  const availabilityItems: DayItem[] = availabilitySchedules.flatMap((schedule) =>
+    expandAvailability(schedule, gridStart, gridEnd).map((o): DayItem => {
+      const personName = peopleById.get(o.personId) ?? "Someone";
+      const midnight = new Date(`${o.date}T00:00:00`);
+      const timed = o.startTime != null && o.endTime != null;
+      return {
+        id: `availability-${o.scheduleId}`,
+        kind: o.kind,
+        startsAt: timed ? withTimeOfDay(midnight, o.startTime!) : midnight,
+        endsAt: timed ? withTimeOfDay(midnight, o.endTime!) : midnight,
+        title: o.kind === "school" ? `${personName}: school` : `${personName}: ${o.label || "busy"}`,
+        subtitle: o.kind,
+        allDay: !timed,
+        attendees: [],
+        location: null,
+        dotClassName: o.kind === "school" ? "bg-sky-400" : "bg-teal-500",
+      };
+    })
+  );
+
   const items =
     view === "custody"
       ? custodyItems
-      : [...eventItems, ...custodyItems, ...birthdayItems, ...workShiftItems, ...timeOffItems].sort(
+      : [...eventItems, ...custodyItems, ...birthdayItems, ...workShiftItems, ...timeOffItems, ...availabilityItems].sort(
           (a, b) => a.startsAt.getTime() - b.startsAt.getTime()
         );
 

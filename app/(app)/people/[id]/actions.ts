@@ -553,6 +553,10 @@ export async function updatePersonAction(
     await peopleRepo.update(supabase, personId, {
       full_name: fullName,
       nickname: String(formData.get("nickname") ?? "").trim() || null,
+      relationship_label:
+        existing.relationship_type === "self" || existing.relationship_type === "child"
+          ? null
+          : String(formData.get("relationshipLabel") ?? "").trim().slice(0, 40) || null,
       relationship_type: existing.relationship_type === "self" ? "self" : (String(formData.get("relationshipType") ?? existing.relationship_type) as typeof existing.relationship_type),
       gender,
       birthdate: birthdate || null,

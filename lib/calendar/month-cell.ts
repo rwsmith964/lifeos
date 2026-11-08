@@ -9,7 +9,7 @@ export interface MonthCellItemLike {
   title: string;
   startsAt: Date;
   allDay: boolean;
-  kind: "event" | "custody" | "birthday" | "work_shift" | "time_off";
+  kind: "event" | "custody" | "birthday" | "work_shift" | "time_off" | "busy" | "school";
 }
 
 export interface MonthCellChip {
@@ -29,10 +29,12 @@ export interface MonthCellChips {
  * chips in a month cell, plus how many more didn't fit. Custody items are
  * deliberately excluded here -- they get their own frame bar
  * (buildMonthCellCustodyBars below) instead of a text chip, so they don't
- * eat into the same slot budget as real events/birthdays/shifts.
+ * eat into the same slot budget as real events/birthdays/shifts. School
+ * hours are left off the month grid too: a chip per child on every weekday
+ * would bury everything else, and they read fine on the week/day timelines.
  */
 export function buildMonthCellChips(items: MonthCellItemLike[], maxVisible: number): MonthCellChips {
-  const chippable = items.filter((i) => i.kind !== "custody");
+  const chippable = items.filter((i) => i.kind !== "custody" && i.kind !== "school");
   const visible = chippable.slice(0, maxVisible).map((item) => ({
     id: item.id,
     kind: item.kind,

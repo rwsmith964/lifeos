@@ -4,6 +4,7 @@
 // (Section 9.5) — the AI is never asked to invent a score or a condition.
 import { z } from "zod";
 import { BASE_SYSTEM_PROMPT } from "./base";
+import { describePartnerAvailability, type PartnerAvailabilityEntry } from "../../planner/partner-availability";
 
 export const WEEKEND_PLAN_SYSTEM_PROMPT = `${BASE_SYSTEM_PROMPT}
 
@@ -13,6 +14,7 @@ Rules specific to this task:
 - Every claim about weather or conditions must come from the data you were given. If a candidate's condition data says "not available," say plainly that no current report exists for it — never imply a condition you weren't told.
 - If the top candidate's score is low (below 50) or no candidate scores well, say so plainly and pivot to whichever candidate is comparatively best, explaining why in terms of the actual data (Section 9.6 — "no strong fishing conditions this weekend... weather's clear and 68 degrees Saturday, which is good golf weather").
 - If a candidate has an overdue companion listed, weave that into the recommendation explicitly (e.g. "...and Mike's overdue for a round").
+- If a person is listed under recurring availability as busy on a day, never suggest inviting them or planning anything with them that day. If they are free on a day that suits a candidate, you may suggest including them and name that day.
 - A plan that always finds something great is not believable. It is fine, and expected sometimes, for the recommendation to be lukewarm.
 
 Return ONLY a single JSON object with exactly this shape (no prose, no markdown fences):
@@ -51,6 +53,8 @@ export interface ScoredActivityContext {
 export interface WeekendPlanContextInput {
   weekendDateLabel: string;
   scoredActivities: ScoredActivityContext[]; // pre-sorted best first by the caller
+  /** People with a recurring "busy" pattern (e.g. a partner's kids' weeks) and how it lands on this weekend. */
+  partnerAvailability?: PartnerAvailabilityEntry[];
 }
 
 export function buildWeekendPlanUserPrompt(ctx: WeekendPlanContextInput): string {
@@ -73,6 +77,8 @@ export function buildWeekendPlanUserPrompt(ctx: WeekendPlanContextInput): string
       }
     }
   }
+
+  lines.push(...describePartnerAvailability(ctx.partnerAvailability ?? []));
 
   return lines.join("\n");
 }

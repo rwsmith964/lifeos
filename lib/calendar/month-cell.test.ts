@@ -2,6 +2,16 @@ import { describe, expect, it } from "vitest";
 import { buildMonthCellChips, buildMonthCellCustodyBars, type MonthCellItemLike, type CustodyBlockLike } from "./month-cell";
 
 describe("buildMonthCellChips", () => {
+  it("keeps recurring school hours off the month grid but shows a partner's busy days", () => {
+    const items: MonthCellItemLike[] = [
+      { id: "s", title: "Cal: school", startsAt: new Date(2026, 10, 2, 8, 0), allDay: false, kind: "school" },
+      { id: "b", title: "Brittney: kids' week", startsAt: new Date(2026, 10, 2), allDay: true, kind: "busy" },
+    ];
+    const result = buildMonthCellChips(items, 3);
+    expect(result.visible).toEqual([{ id: "b", kind: "busy", label: "Brittney: kids' week" }]);
+    expect(result.overflowCount).toBe(0);
+  });
+
   it("renders a timed item's chip with a lowercase time prefix", () => {
     const items: MonthCellItemLike[] = [
       { id: "1", title: "Soccer Practice", startsAt: new Date(2026, 8, 2, 17, 0), allDay: false, kind: "event" },

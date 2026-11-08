@@ -80,6 +80,27 @@ export function EditPersonForm({ person }: { person: PersonRow }) {
             </select>
           </div>
         )}
+        {!isSelf && !isChild && (
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="relationshipLabel">What you call them (optional)</Label>
+            <Input
+              id="relationshipLabel"
+              name="relationshipLabel"
+              list="relationship-label-suggestions"
+              placeholder="e.g. Girlfriend, Boyfriend, Fiancé"
+              defaultValue={person.relationship_label ?? ""}
+              maxLength={40}
+            />
+            <datalist id="relationship-label-suggestions">
+              <option value="Girlfriend" />
+              <option value="Boyfriend" />
+              <option value="Fiancé" />
+              <option value="Fiancée" />
+              <option value="Best friend" />
+            </datalist>
+            <p className="text-xs text-muted-foreground">Shown instead of the relationship type above.</p>
+          </div>
+        )}
         <div className="flex flex-col gap-2">
           <Label htmlFor="gender">Gender (optional)</Label>
           <select

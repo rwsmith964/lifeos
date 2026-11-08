@@ -17,6 +17,8 @@ import {
 } from "../ai/prompts/weekend-plan";
 import type { PersonRow, TimeOffEntryRow } from "../db/database.types";
 import { listActivitiesWithLocations } from "../db/repositories/activities";
+import { listAvailabilitySchedulesForHousehold } from "../db/repositories/availability";
+import { summarizePartnerAvailability } from "./partner-availability";
 import { listCustodyBlocksForHouseholdInRange, listEventsInRange } from "../db/repositories/calendar";
 import { listActiveCadencesForHousehold } from "../db/repositories/contact";
 import { householdsRepo, usersRepo } from "../db/repositories/households";
@@ -306,9 +308,20 @@ export async function generateWeekendPlan(
 
   scored.sort((a, b) => b.totalScore - a.totalScore);
 
+  // Recurring availability (e.g. a girlfriend's kids' weeks). A missing table
+  // or read failure means no partner context, never a failed plan.
+  const availabilitySchedules = await listAvailabilitySchedulesForHousehold(client, householdId).catch(() => []);
+  const partnerAvailability = summarizePartnerAvailability(
+    householdPeopleForTravelCheck,
+    availabilitySchedules,
+    saturday,
+    sunday
+  );
+
   const userPrompt = buildWeekendPlanUserPrompt({
     weekendDateLabel: `${format(saturday, "EEEE, MMM d")} - ${format(sunday, "EEEE, MMM d")}`,
     scoredActivities: scored,
+    partnerAvailability,
   });
 
   let aiResponse: WeekendPlanAiResponse | null = null;
