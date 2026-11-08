@@ -13,7 +13,6 @@ import {
   conversationLogEntriesRepo,
   giftReciprocityEntriesRepo,
   momentsRepo,
-  personProfileDetailsRepo,
   personRelationshipsRepo,
   personWishlistItemsRepo,
   upsertProfileDetailsForPerson,
@@ -346,8 +345,3 @@ export async function removeReciprocityEntryAction(personId: string, entryId: st
   revalidatePath(`/people/${personId}`);
   return { error: null };
 }
-
-// Re-exported so a future settings/admin surface can read raw rows without
-// importing the repository module directly (mirrors how actions.ts re-exports
-// repos indirectly via its own imports elsewhere in the app).
-export { personProfileDetailsRepo };
