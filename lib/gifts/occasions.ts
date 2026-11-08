@@ -102,7 +102,7 @@ export interface OccasionCandidate {
  * doesn't suggest gifts for yourself.
  */
 export function scanUpcomingOccasions(
-  people: Pick<PersonRow, "id" | "relationship_type" | "birthdate" | "anniversary" | "is_archived">[],
+  people: (Pick<PersonRow, "id" | "relationship_type" | "birthdate" | "anniversary" | "is_archived"> & { gifts_enabled?: boolean })[],
   today: Date,
   horizonDays: number
 ): OccasionCandidate[] {
@@ -112,7 +112,8 @@ export function scanUpcomingOccasions(
   const candidates: OccasionCandidate[] = [];
 
   for (const person of people) {
-    if (person.is_archived || person.relationship_type === "self") continue;
+    // gifts_enabled === false: "we don't get gifts for this person".
+    if (person.is_archived || person.relationship_type === "self" || person.gifts_enabled === false) continue;
 
     if (person.birthdate) {
       const next = nextOccurrenceOfMonthDay(extractMonthDay(person.birthdate), today);
@@ -198,10 +199,10 @@ function recentPastOccasionForPerson(
  * (archived or 'self').
  */
 export function nearestUpcomingOccasionForPerson(
-  person: Pick<PersonRow, "id" | "relationship_type" | "birthdate" | "anniversary" | "is_archived">,
+  person: Pick<PersonRow, "id" | "relationship_type" | "birthdate" | "anniversary" | "is_archived"> & { gifts_enabled?: boolean },
   today: Date
 ): OccasionCandidate | null {
-  if (person.is_archived || person.relationship_type === "self") return null;
+  if (person.is_archived || person.relationship_type === "self" || person.gifts_enabled === false) return null;
 
   const todayStart = startOfDay(today);
   const recentPast = recentPastOccasionForPerson(person, todayStart);

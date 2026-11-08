@@ -18,6 +18,7 @@ import {
 import { listWorkSchedulesForPerson, listTimeOffForPerson } from "@/lib/db/repositories/work-schedule";
 import { listChildActivitiesForChild, listAttendanceForActivities } from "@/lib/db/repositories/child-activities";
 import { listGiftsForPerson } from "@/lib/db/repositories/gifts";
+import { GiftOptOutCard } from "./gift-optout-card";
 import { getCadenceForPerson, listInteractionsForPerson } from "@/lib/db/repositories/contact";
 import {
   listCustodyBlocksForChildInRange,
@@ -491,6 +492,7 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
         }
         gifts={
           <>
+            <GiftOptOutCard personId={id} name={person.nickname || person.full_name} giftsEnabled={person.gifts_enabled !== false} />
 
       <Card>
         <CardHeader>

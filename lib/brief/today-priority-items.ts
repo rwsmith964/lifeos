@@ -179,7 +179,7 @@ export function buildTodayPriorityItems({
       headline: person.personLabel,
       detail: person.reason,
       primaryAction,
-      ghostActions: record ? [{ label: "Start gift", href: `/gifts` }] : [],
+      ghostActions: record && record.gifts_enabled !== false ? [{ label: "Start gift", href: `/gifts` }] : [],
       rank: 0,
       personId: record?.id,
       phone: record?.phone ?? null,

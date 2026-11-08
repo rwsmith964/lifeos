@@ -93,6 +93,12 @@ describe("scanUpcomingOccasions", () => {
     expect(results).toEqual([]);
   });
 
+  it("skips people we don't get gifts for, including Christmas", () => {
+    const people = [{ ...person({ id: "dave", birthdate: "1984-08-19" }), gifts_enabled: false }];
+    expect(scanUpcomingOccasions(people, today, 200)).toEqual([]);
+    expect(nearestUpcomingOccasionForPerson(people[0], today)).toBeNull();
+  });
+
   it("includes an anniversary within the horizon", () => {
     const people = [
       person({ id: "jen", relationship_type: "co_parent", anniversary: "2010-09-15" }),

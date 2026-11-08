@@ -1975,4 +1975,69 @@ describe("RLS end-to-end (PGlite, real migrations + real seed data)", () => {
       ).rejects.toThrow();
     });
   });
+
+  describe("todo_lists / todos (shared vs personal)", () => {
+    const SHARED_LIST = "c6000000-0000-0000-0000-000000000001";
+    const PERSONAL_LIST = "c6000000-0000-0000-0000-000000000002";
+
+    async function ensureLists() {
+      await asServiceRole(db, () =>
+        db.exec(
+          `insert into todo_lists (id, household_id, name, visibility, owner_person_id) values
+             ('${SHARED_LIST}', '${SEEDED_HOUSEHOLD}', 'Groceries', 'shared', '${RICHARD_PERSON}'),
+             ('${PERSONAL_LIST}', '${SEEDED_HOUSEHOLD}', 'Richard only', 'personal', '${RICHARD_PERSON}')
+           on conflict (id) do nothing;
+           insert into todos (household_id, list_id, title, created_by_person_id)
+             select '${SEEDED_HOUSEHOLD}', '${SHARED_LIST}', 'Milk', '${RICHARD_PERSON}'
+             where not exists (select 1 from todos where list_id = '${SHARED_LIST}');
+           insert into todos (household_id, list_id, title, created_by_person_id)
+             select '${SEEDED_HOUSEHOLD}', '${PERSONAL_LIST}', 'Surprise gift', '${RICHARD_PERSON}'
+             where not exists (select 1 from todos where list_id = '${PERSONAL_LIST}');`
+        )
+      );
+    }
+
+    it("the owner of a personal list sees it and its items, plus the shared list", async () => {
+      await ensureLists();
+      const lists = await asUser(db, RICHARD_USER, () =>
+        db.query(`select count(*)::int as n from todo_lists where id in ('${SHARED_LIST}', '${PERSONAL_LIST}');`)
+      );
+      expect((lists.rows[0] as { n: number }).n).toBe(2);
+      const items = await asUser(db, RICHARD_USER, () =>
+        db.query(`select count(*)::int as n from todos where list_id in ('${SHARED_LIST}', '${PERSONAL_LIST}');`)
+      );
+      expect((items.rows[0] as { n: number }).n).toBe(2);
+    });
+
+    it("another household member sees the shared list but not someone else's personal list or its items", async () => {
+      await ensureLists();
+      const lists = await asUser(db, CHILD_USER, () => db.query("select id from todo_lists;"));
+      const ids = lists.rows.map((r) => (r as { id: string }).id);
+      expect(ids).toContain(SHARED_LIST);
+      expect(ids).not.toContain(PERSONAL_LIST);
+      const items = await asUser(db, CHILD_USER, () => db.query("select title from todos;"));
+      const titles = items.rows.map((r) => (r as { title: string }).title);
+      expect(titles).toContain("Milk");
+      expect(titles).not.toContain("Surprise gift");
+    });
+
+    it("an outsider sees neither list nor any item", async () => {
+      await ensureLists();
+      const lists = await asUser(db, OUTSIDER_USER, () => db.query("select count(*)::int as n from todo_lists;"));
+      expect((lists.rows[0] as { n: number }).n).toBe(0);
+      const items = await asUser(db, OUTSIDER_USER, () => db.query("select count(*)::int as n from todos;"));
+      expect((items.rows[0] as { n: number }).n).toBe(0);
+    });
+
+    it("an outsider cannot add an item to another household's shared list", async () => {
+      await ensureLists();
+      await expect(
+        asUser(db, OUTSIDER_USER, () =>
+          db.exec(
+            `insert into todos (household_id, list_id, title, created_by_person_id) values ('${OUTSIDER_HOUSEHOLD}', '${SHARED_LIST}', 'sneaky', '${OUTSIDER_PERSON}');`
+          )
+        )
+      ).rejects.toThrow();
+    });
+  });
 });

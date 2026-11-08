@@ -256,6 +256,8 @@ export interface PersonRow {
   // Free-text label shown instead of the generic relationship type
   // ("Girlfriend", "Boyfriend"). Null = use the type's default label.
   relationship_label: string | null;
+  // false = "we don't get gifts for this person": the gift engine skips them.
+  gifts_enabled: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -279,6 +281,7 @@ export type PersonInsert = Insert<
   | "address_lng"
   | "show_work_schedule_on_calendar"
   | "relationship_label"
+  | "gifts_enabled"
   | "created_at"
   | "updated_at"
 >;
@@ -985,6 +988,42 @@ export type AvailabilityScheduleInsert = Insert<
   "id" | "label" | "end_date" | "skip_ranges" | "is_active" | "created_at" | "updated_at"
 >;
 export type AvailabilityScheduleUpdate = Update<AvailabilityScheduleRow>;
+
+// todo_lists / todos --------------------------------------------------------
+
+export type TodoListVisibility = "shared" | "personal";
+
+export interface TodoListRow {
+  id: string;
+  household_id: string;
+  name: string;
+  visibility: TodoListVisibility;
+  owner_person_id: string;
+  created_at: string;
+  updated_at: string;
+}
+export type TodoListInsert = Insert<TodoListRow, "id" | "created_at" | "updated_at">;
+export type TodoListUpdate = Update<TodoListRow>;
+
+export interface TodoRow {
+  id: string;
+  household_id: string;
+  list_id: string;
+  title: string;
+  notes: string;
+  due_date: string | null;
+  assigned_to_person_id: string | null;
+  created_by_person_id: string;
+  completed_at: string | null;
+  completed_by_person_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+export type TodoInsert = Insert<
+  TodoRow,
+  "id" | "notes" | "due_date" | "assigned_to_person_id" | "completed_at" | "completed_by_person_id" | "created_at" | "updated_at"
+>;
+export type TodoUpdate = Update<TodoRow>;
 
 // briefs ------------------------------------------------------------------
 

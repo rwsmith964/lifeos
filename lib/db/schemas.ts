@@ -178,6 +178,7 @@ export const personInsertSchema = z.object({
   address_lng: z.number().min(-180).max(180).nullable().optional(),
   show_work_schedule_on_calendar: z.boolean().optional(),
   relationship_label: z.string().nullable().optional(),
+  gifts_enabled: z.boolean().optional(),
 });
 
 export const personInterestInsertSchema = z.object({

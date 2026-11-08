@@ -13,7 +13,7 @@ export const RECORD_TYPE_LABELS: Record<IntakeRecordType, string> = {
   person: "New person",
   moment: "Family moment",
   person_note: "Note about someone",
-  task: "Task (can't auto-add yet)",
+  task: "To-do",
   recipe: "Recipe",
   flight: "Flight",
   ambiguous: "Not sure what this is",
