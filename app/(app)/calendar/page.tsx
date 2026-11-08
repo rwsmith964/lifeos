@@ -53,6 +53,16 @@ import { birthdaysInRange, birthdayTitle } from "@/lib/calendar/birthdays";
 import { workShiftsInRange, timeOffInRange, workShiftTitle, timeOffTitle, withTimeOfDay } from "@/lib/calendar/work-schedule";
 import { buildChildColorMap, buildParentColorMap } from "@/lib/custody/colors";
 import { reconcileDuplicateEvents, busyDayIsCoveredByEvent } from "@/lib/calendar/reconcile";
+import {
+  CALENDAR_LAYERS,
+  LAYERS_COOKIE,
+  eventLayerFor,
+  parseLayers,
+  serializeLayers,
+  toggleLayer,
+} from "@/lib/calendar/layers";
+import { cookies } from "next/headers";
+import { LayersPersist } from "./layers-persist";
 import { buildMonthCellChips, buildMonthCellCustodyBars, type CustodyBlockLike } from "@/lib/calendar/month-cell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -571,11 +581,15 @@ interface DayItem {
 export default async function CalendarPage({
   searchParams,
 }: {
-  searchParams: Promise<{ month?: string; day?: string; view?: string; range?: string }>;
+  searchParams: Promise<{ month?: string; day?: string; view?: string; range?: string; layers?: string }>;
 }) {
-  const { month: monthParam, day: dayParam, view: viewParam, range: rangeParam } = await searchParams;
+  const { month: monthParam, day: dayParam, view: viewParam, range: rangeParam, layers: layersParam } = await searchParams;
   const { supabase, household, selfPerson, timezone } = await requireHouseholdContext();
   const view = viewParam === "custody" ? "custody" : "all";
+  // Layers: what's shown beyond the viewer's own day. URL param first, then
+  // the remembered choice, then the defaults (lib/calendar/layers.ts).
+  const layerCookie = (await cookies()).get(LAYERS_COOKIE)?.value ?? null;
+  const layers = parseLayers(layersParam, layerCookie);
   const range = parseRangeParam(rangeParam);
   // D-143: single household-local "now" for every "what day is today"
   // decision on this page (month/day param defaults, the weekend-plan
@@ -799,13 +813,22 @@ export default async function CalendarPage({
       const attendeeRows = attendeeRowsByEvent.get(e.id) ?? [];
       const childAttendeePersonIds = attendeeRows.filter((a) => childPersonIds.has(a.personId)).map((a) => a.personId);
       const viewerAttendanceStatus = attendeeRows.find((a) => a.personId === selfPerson.id)?.attendanceStatus ?? null;
-      return isKidLinkedEventVisibleForViewer({
+      const passesKidEventRule = isKidLinkedEventVisibleForViewer({
         viewerPersonId: selfPerson.id,
         childAttendeePersonIds,
         viewerAttendanceStatus,
         eventStartsAt: new Date(e.starts_at),
         custodyBlocks,
       });
+      // Your own day always shows; other people's plans only with that layer on.
+      const layer = eventLayerFor({
+        selfPersonId: selfPerson.id,
+        createdByPersonId: e.created_by_person_id,
+        attendeePersonIds: attendeeRows.map((a) => a.personId),
+        childPersonIds,
+        passesKidEventRule,
+      });
+      return layer === "mine" || layers.has("family");
     })
     .map((e) => ({
       id: e.id,
@@ -825,9 +848,11 @@ export default async function CalendarPage({
   // the full who-has-the-kids-when picture is always available on the
   // dedicated /calendar/custody view regardless of this setting.
   const visibleCustodyBlocks =
-    view !== "custody" && household.calendar_hide_other_parent_custody
-      ? custodyBlocks.filter((c) => c.responsible_person_id === selfPerson.id)
-      : custodyBlocks;
+    view !== "custody" && !layers.has("custody")
+      ? []
+      : view !== "custody" && household.calendar_hide_other_parent_custody
+        ? custodyBlocks.filter((c) => c.responsible_person_id === selfPerson.id)
+        : custodyBlocks;
 
   const custodyItems: DayItem[] = visibleCustodyBlocks.map((c) => {
     const color = childColors.get(c.child_person_id) ?? defaultChildColor;
@@ -877,7 +902,7 @@ export default async function CalendarPage({
   // lib/calendar/birthdays.ts for why. Shown alongside real events, not
   // in the custody-only view (custody view is specifically about
   // who-has-the-kids, not general household occasions).
-  const birthdayItems: DayItem[] = birthdaysInRange(people, gridStart, gridEnd).map((b) => ({
+  const birthdayItems: DayItem[] = (layers.has("birthdays") ? birthdaysInRange(people, gridStart, gridEnd) : []).map((b) => ({
     id: `birthday-${b.personId}-${format(b.date, DAY_PARAM_FORMAT)}`,
     kind: "birthday",
     startsAt: b.date,
@@ -907,7 +932,9 @@ export default async function CalendarPage({
   // M-02: real start/end times (not the bare midnight `s.date`), so the
   // shift lays out at its actual time-of-day on the day/week grid instead
   // of rendering as "12:00 AM" and getting dumped in the all-day strip.
-  const workShiftItems: DayItem[] = workShiftsInRange(workSchedules, timeOffEntries, people, gridStart, gridEnd).map((s) => ({
+  const workShiftItems: DayItem[] = workShiftsInRange(workSchedules, timeOffEntries, people, gridStart, gridEnd)
+    .filter((s) => s.personId === selfPerson.id || layers.has("others_work"))
+    .map((s) => ({
     id: s.scheduleId,
     kind: "work_shift",
     startsAt: withTimeOfDay(s.date, s.startTime),
@@ -920,7 +947,9 @@ export default async function CalendarPage({
     dotClassName: "bg-slate-400",
   }));
 
-  const timeOffItems: DayItem[] = timeOffInRange(timeOffEntries, people, gridStart, gridEnd).map((t) => ({
+  const timeOffItems: DayItem[] = timeOffInRange(timeOffEntries, people, gridStart, gridEnd)
+    .filter((t) => t.personId === selfPerson.id || layers.has("others_work"))
+    .map((t) => ({
     id: t.entryId,
     kind: "time_off",
     startsAt: t.date,
@@ -936,7 +965,9 @@ export default async function CalendarPage({
   // Availability patterns expand per visible day, like work shifts: a
   // partner's busy days (all-day, their own colour) and a child's school hours
   // (timed, drawn as a faint band behind the grid).
-  const availabilityItems: DayItem[] = availabilitySchedules.flatMap((schedule) =>
+  const availabilityItems: DayItem[] = availabilitySchedules
+    .filter((schedule) => (schedule.kind === "school" ? layers.has("school") : layers.has("partners")))
+    .flatMap((schedule) =>
     expandAvailability(schedule, gridStart, gridEnd)
       // A shared calendar may already hold an explicit all-day event for these days.
       .filter(
@@ -1021,7 +1052,10 @@ export default async function CalendarPage({
         )
       : null;
 
-  const viewQuery = view === "custody" ? "&view=custody" : "";
+  // Carry an explicitly chosen layer set through every nav link; otherwise the
+  // remembered cookie applies on the next page anyway.
+  const layersQuery = layersParam ? `&layers=${serializeLayers(layers)}` : "";
+  const viewQuery = (view === "custody" ? "&view=custody" : "") + layersQuery;
   const rangeQuery = range !== "month" ? `&range=${range}` : "";
 
   // D-065: prev/next semantics differ by granularity, mirroring how each
@@ -1185,6 +1219,32 @@ export default async function CalendarPage({
             </Link>
           </div>
         </div>
+
+        {view === "all" && (
+          <nav aria-label="Calendar layers" className="flex flex-wrap items-center gap-1.5">
+            <span className="font-sans text-metadata font-bold text-ink-2">Showing: your day</span>
+            {CALENDAR_LAYERS.map((layer) => {
+              const on = layers.has(layer.id);
+              const next = serializeLayers(toggleLayer(layers, layer.id));
+              return (
+                <Link
+                  key={layer.id}
+                  href={`/calendar?month=${monthLabel}&day=${selectedDayKey}&layers=${next}${rangeQuery}`}
+                  title={layer.hint}
+                  aria-label={`${layer.label}: ${on ? "on" : "off"}. Select to turn ${on ? "off" : "on"}.`}
+                  className={cn(
+                    "rounded-chip border px-2.5 py-1 font-sans text-[12px] font-bold motion-safe-transition",
+                    on ? "border-action bg-surface text-ink" : "border-line text-meta hover:text-ink-2"
+                  )}
+                >
+                  {on ? "✓ " : "+ "}
+                  {layer.label}
+                </Link>
+              );
+            })}
+            {layersParam && <LayersPersist value={serializeLayers(layers)} />}
+          </nav>
+        )}
 
         {view === "custody" && (
           <div className="flex flex-wrap items-center justify-between gap-3">
