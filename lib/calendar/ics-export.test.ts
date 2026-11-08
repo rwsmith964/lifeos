@@ -26,6 +26,8 @@ function event(overrides: Partial<CalendarEventRow> = {}): CalendarEventRow {
     external_caldav_href: null,
     external_caldav_etag: null,
     synced_at: null,
+    itinerary: [],
+    host_person_id: null,
     created_at: "2026-01-01T00:00:00.000Z",
     updated_at: "2026-01-01T00:00:00.000Z",
     ...overrides,

@@ -258,6 +258,8 @@ export interface PersonRow {
   relationship_label: string | null;
   // false = "we don't get gifts for this person": the gift engine skips them.
   gifts_enabled: boolean;
+  // This person IS that LifeOS account (someone with their own household).
+  linked_user_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -282,6 +284,7 @@ export type PersonInsert = Insert<
   | "show_work_schedule_on_calendar"
   | "relationship_label"
   | "gifts_enabled"
+  | "linked_user_id"
   | "created_at"
   | "updated_at"
 >;
@@ -765,6 +768,10 @@ export interface CalendarEventRow {
   external_caldav_etag: string | null;
   /** Last successful push time to a two-way sync account (D-166/QUEUE-017). Distinct from updated_at, which the push's own bookkeeping write also advances -- this column is what lets last-write-wins re-push detect "edited since we last pushed it" instead of re-pushing on every cron cycle. Null until first pushed. */
   synced_at: string | null;
+  /** Optional schedule for the event: [{ time: "HH:mm", title, notes }]. */
+  itinerary: ItineraryItem[];
+  /** Hosted at this person's home: their address fills the location. */
+  host_person_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -787,6 +794,8 @@ export type CalendarEventInsert = Insert<
   | "external_caldav_href"
   | "external_caldav_etag"
   | "synced_at"
+  | "itinerary"
+  | "host_person_id"
   | "created_at"
   | "updated_at"
 >;
@@ -826,8 +835,10 @@ export interface EventAttendeeRow {
   calendar_event_id: string;
   person_id: string;
   attendance_status: AttendanceStatus;
+  // A note written for just this person ("bring the green bean casserole").
+  personal_notes: string;
 }
-export type EventAttendeeInsert = Insert<EventAttendeeRow, "id" | "attendance_status">;
+export type EventAttendeeInsert = Insert<EventAttendeeRow, "id" | "attendance_status" | "personal_notes">;
 export type EventAttendeeUpdate = Update<EventAttendeeRow>;
 
 // custody_blocks --------------------------------------------------------
@@ -988,6 +999,76 @@ export type AvailabilityScheduleInsert = Insert<
   "id" | "label" | "end_date" | "skip_ranges" | "is_active" | "created_at" | "updated_at"
 >;
 export type AvailabilityScheduleUpdate = Update<AvailabilityScheduleRow>;
+
+// linked households, sharing, groups, invitations -----------------------------
+
+export interface ItineraryItem {
+  time: string;
+  title: string;
+  notes: string;
+}
+
+export interface HouseholdLinkInviteRow {
+  id: string;
+  from_household_id: string;
+  from_user_id: string;
+  for_person_id: string | null;
+  invited_email: string;
+  token: string;
+  status: "pending" | "accepted" | "revoked" | "expired";
+  accepted_by_user_id: string | null;
+  created_at: string;
+  expires_at: string;
+}
+export type HouseholdLinkInviteInsert = Insert<
+  HouseholdLinkInviteRow,
+  "id" | "for_person_id" | "token" | "status" | "accepted_by_user_id" | "created_at" | "expires_at"
+>;
+export type HouseholdLinkInviteUpdate = Update<HouseholdLinkInviteRow>;
+
+export type LinkShareCategory = "busy_times" | "custody";
+
+export interface HouseholdLinkShareRow {
+  link_id: string;
+  sharing_household_id: string;
+  category: LinkShareCategory;
+  enabled: boolean;
+  updated_at: string;
+}
+export type HouseholdLinkShareInsert = Omit<HouseholdLinkShareRow, "enabled" | "updated_at"> & { enabled?: boolean };
+
+export interface PersonGroupRow {
+  id: string;
+  household_id: string;
+  name: string;
+  member_person_ids: string[];
+  created_at: string;
+  updated_at: string;
+}
+export type PersonGroupInsert = Insert<PersonGroupRow, "id" | "member_person_ids" | "created_at" | "updated_at">;
+export type PersonGroupUpdate = Update<PersonGroupRow>;
+
+export type EventInvitationStatus = "pending" | "accepted" | "declined" | "maybe";
+
+export interface EventInvitationRow {
+  id: string;
+  event_id: string;
+  household_id: string;
+  person_id: string | null;
+  invitee_user_id: string | null;
+  invitee_email: string | null;
+  token: string;
+  status: EventInvitationStatus;
+  personal_notes: string;
+  responded_at: string | null;
+  invitee_event_id: string | null;
+  created_at: string;
+}
+export type EventInvitationInsert = Insert<
+  EventInvitationRow,
+  "id" | "person_id" | "invitee_user_id" | "invitee_email" | "token" | "status" | "personal_notes" | "responded_at" | "invitee_event_id" | "created_at"
+>;
+export type EventInvitationUpdate = Update<EventInvitationRow>;
 
 // todo_lists / todos --------------------------------------------------------
 

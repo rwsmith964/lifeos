@@ -54,3 +54,45 @@ export async function sendHouseholdInviteEmail(params: {
   }
   return { delivered: true };
 }
+
+async function sendPlainEmail(params: { to: string; subject: string; text: string }): Promise<HouseholdInviteEmailResult> {
+  const resend = getResendClient();
+  if (!resend) {
+    console.log(`[email:stub] to=${params.to} subject="${params.subject}" body="${params.text}"`);
+    return { delivered: false, detail: "RESEND_API_KEY not configured — logged to console instead" };
+  }
+  const result = await resend.emails.send({ from: FROM_EMAIL, to: params.to, subject: params.subject, text: params.text });
+  if (result.error) return { delivered: false, detail: result.error.message };
+  return { delivered: true };
+}
+
+/** "Link our households so we can plan around each other" -- see app/link/[token]. */
+export async function sendLinkInviteEmail(params: {
+  to: string;
+  inviterName: string;
+  householdName: string;
+  acceptUrl: string;
+}): Promise<HouseholdInviteEmailResult> {
+  return sendPlainEmail({
+    to: params.to,
+    subject: `${params.inviterName} wants to connect with you on LifeOS`,
+    text: `${params.inviterName} (${params.householdName}) invited you to connect on LifeOS, so you can find times that work for both of you. You choose what you share, and you can disconnect any time.\n\nAccept: ${params.acceptUrl}\n\nThis link expires in 14 days. If you weren't expecting this, you can safely ignore it.`,
+  });
+}
+
+/** An event invitation: works with or without a LifeOS account (see app/rsvp/[token]). */
+export async function sendEventInvitationEmail(params: {
+  to: string;
+  hostName: string;
+  eventTitle: string;
+  whenText: string;
+  rsvpUrl: string;
+  personalNote?: string;
+}): Promise<HouseholdInviteEmailResult> {
+  const note = params.personalNote ? `\n\nA note for you: ${params.personalNote}` : "";
+  return sendPlainEmail({
+    to: params.to,
+    subject: `${params.hostName} invited you: ${params.eventTitle}`,
+    text: `${params.hostName} invited you to ${params.eventTitle}.\n\nWhen: ${params.whenText}${note}\n\nSee the details and let them know if you can make it: ${params.rsvpUrl}`,
+  });
+}

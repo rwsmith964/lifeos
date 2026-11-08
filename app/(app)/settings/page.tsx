@@ -1,3 +1,5 @@
+import { ConnectedPeople, type ConnectionView, type PendingLinkInviteView } from "./connected-people";
+import { listLinkedAccounts, listPendingLinkInvites, listSharesForLinks } from "@/lib/db/repositories/links";
 import Link from "next/link";
 import { format } from "date-fns";
 import { requireHouseholdContext } from "@/lib/auth/session";
@@ -38,13 +40,44 @@ export default async function SettingsPage() {
   // The account owner's own person record (relationship_type "self") is
   // intentionally excluded from /people (P0-5), so their own work schedule
   // and time off -- otherwise unreachable -- are managed here instead.
-  const selfPerson = people.find((p) => p.relationship_type === "self");
+  // Whoever is signed in: the household's own "self" person, or (for someone
+  // invited in) the existing person they claimed.
+  const selfPerson = people.find((p) => p.user_id === userId);
   const [myWorkSchedules, myTimeOff] = selfPerson
     ? await Promise.all([
         listWorkSchedulesForPerson(supabase, selfPerson.id),
         listTimeOffForPerson(supabase, selfPerson.id),
       ])
     : [[], []];
+  // Connected households (a brother-in-law, a co-parent...). Tolerates the
+  // migration not being applied yet, so the rest of Settings still loads.
+  const [linkedAccounts, pendingLinkInvites] = await Promise.all([
+    listLinkedAccounts(supabase, household.id).catch(() => []),
+    listPendingLinkInvites(supabase, household.id).catch(() => []),
+  ]);
+  const linkShares = await listSharesForLinks(supabase, [...new Set(linkedAccounts.map((a) => a.linkId))]).catch(() => []);
+  const connectionViews: ConnectionView[] = [...new Set(linkedAccounts.map((a) => a.linkId))].map((linkId) => {
+    const accounts = linkedAccounts.filter((a) => a.linkId === linkId);
+    const enabled = (sharing: string, category: "busy_times" | "custody") =>
+      linkShares.some((sh) => sh.link_id === linkId && sh.sharing_household_id === sharing && sh.category === category && sh.enabled);
+    const otherId = accounts[0].otherHouseholdId;
+    return {
+      linkId,
+      householdName: accounts[0].otherHouseholdName,
+      accountNames: accounts.map((a) => a.userDisplayName),
+      iShare: { busy_times: enabled(household.id, "busy_times"), custody: enabled(household.id, "custody") },
+      theyShare: { busy_times: enabled(otherId, "busy_times"), custody: enabled(otherId, "custody") },
+    };
+  });
+  const personNameById = new Map(people.map((pp) => [pp.id, pp.nickname || pp.full_name]));
+  const pendingViews: PendingLinkInviteView[] = pendingLinkInvites.map((inv) => ({
+    id: inv.id,
+    email: inv.invited_email,
+    personName: inv.for_person_id ? (personNameById.get(inv.for_person_id) ?? null) : null,
+  }));
+  const invitablePeople = people
+    .filter((pp) => !pp.is_archived && !pp.user_id && !pp.linked_user_id && pp.relationship_type !== "self" && pp.relationship_type !== "child")
+    .map((pp) => ({ id: pp.id, name: pp.nickname || pp.full_name }));
   const todayStr = format(getZonedNow(timezone), "yyyy-MM-dd");
   const myUpcomingTimeOff = myTimeOff.filter((entry) => entry.end_date >= todayStr);
   const memberUsers = await Promise.all(members.map((m) => usersRepo.getById(supabase, m.user_id)));
@@ -93,6 +126,7 @@ export default async function SettingsPage() {
         canManage={canManage}
         currentUserId={userId}
       />
+      <ConnectedPeople connections={connectionViews} pending={pendingViews} invitablePeople={invitablePeople} canManage={canManage} />
       <CalendarFeeds feeds={calendarFeeds} canManage={canManage} />
       <FeatureFlags states={featureFlagStates} canManage={canManage} />
       <Card>

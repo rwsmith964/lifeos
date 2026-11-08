@@ -2040,4 +2040,73 @@ describe("RLS end-to-end (PGlite, real migrations + real seed data)", () => {
       ).rejects.toThrow();
     });
   });
+
+  describe("linked households (sharing is opt-in, time ranges only)", () => {
+    let LINK = "";
+    const WIDE_START = "2000-01-01T00:00:00Z";
+    const WIDE_END = "2100-01-01T00:00:00Z";
+
+    // Other tests may already have linked these two households; reuse that link.
+    async function ensureLink() {
+      const res = await asServiceRole(db, () =>
+        db.query(
+          `insert into household_links (household_a_id, household_b_id, status) values ('${SEEDED_HOUSEHOLD}', '${OUTSIDER_HOUSEHOLD}', 'active')
+           on conflict (least(household_a_id, household_b_id), greatest(household_a_id, household_b_id)) do update set status = 'active'
+           returning id;`
+        )
+      );
+      LINK = (res.rows[0] as { id: string }).id;
+      await asServiceRole(db, () =>
+        db.exec(
+          `insert into household_link_shares (link_id, sharing_household_id, category, enabled) values ('${LINK}', '${SEEDED_HOUSEHOLD}', 'busy_times', false)
+           on conflict (link_id, sharing_household_id, category) do update set enabled = false;`
+        )
+      );
+    }
+
+    async function busyCountAs(user: string) {
+      const rows = await asUser(db, user, () =>
+        db.query(`select count(*)::int as n from linked_busy_blocks('${SEEDED_HOUSEHOLD}', '${WIDE_START}', '${WIDE_END}');`)
+      );
+      return (rows.rows[0] as { n: number }).n;
+    }
+
+    it("a linked household sees nothing until the other side switches busy times on", async () => {
+      await ensureLink();
+      expect(await busyCountAs(OUTSIDER_USER)).toBe(0);
+    });
+
+    it("after the owner shares busy times, the linked household sees time ranges", async () => {
+      await ensureLink();
+      await asServiceRole(db, () =>
+        db.exec(`update household_link_shares set enabled = true where link_id = '${LINK}' and category = 'busy_times';`)
+      );
+      expect(await busyCountAs(OUTSIDER_USER)).toBeGreaterThan(0);
+    });
+
+    it("sharing is one-directional: the sharing household does not gain access to the other side", async () => {
+      await ensureLink();
+      const rows = await asUser(db, RICHARD_USER, () =>
+        db.query(`select count(*)::int as n from linked_busy_blocks('${OUTSIDER_HOUSEHOLD}', '${WIDE_START}', '${WIDE_END}');`)
+      );
+      expect((rows.rows[0] as { n: number }).n).toBe(0);
+    });
+
+    it("someone not in either linked household sees nothing even when sharing is on", async () => {
+      await ensureLink();
+      await asServiceRole(db, () =>
+        db.exec(`update household_link_shares set enabled = true where link_id = '${LINK}' and category = 'busy_times';`)
+      );
+      expect(await busyCountAs(FRESH_USER)).toBe(0);
+    });
+
+    it("a revoked link stops sharing immediately", async () => {
+      await ensureLink();
+      await asServiceRole(db, () =>
+        db.exec(`update household_link_shares set enabled = true where link_id = '${LINK}' and category = 'busy_times'; update household_links set status = 'revoked' where id = '${LINK}';`)
+      );
+      expect(await busyCountAs(OUTSIDER_USER)).toBe(0);
+      await asServiceRole(db, () => db.exec(`update household_links set status = 'active' where id = '${LINK}';`));
+    });
+  });
 });
