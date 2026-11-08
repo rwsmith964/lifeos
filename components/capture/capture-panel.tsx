@@ -15,6 +15,9 @@ import { cn } from "@/lib/utils";
 // dictation, the /api/capture call, error/clarification handling -- is
 // unchanged from the original component; only presentation and how it's
 // triggered moved.
+/** sessionStorage key carrying text from Quick Capture to Brain Dump. */
+export const BRAIN_DUMP_HANDOFF_KEY = "lifeos:brain-dump-handoff";
+
 interface SpeechRecognitionLike extends EventTarget {
   continuous: boolean;
   interimResults: boolean;
@@ -34,7 +37,7 @@ interface CaptureTurn {
 }
 
 interface CaptureApiResponse {
-  status: "ready" | "needs_clarification" | "unrecognized" | "unavailable" | "error" | "navigate";
+  status: "ready" | "needs_clarification" | "unrecognized" | "unavailable" | "error" | "navigate" | "handoff";
   href?: string;
   question?: string | null;
   confirmationMessage?: string | null;
@@ -121,6 +124,16 @@ export function CapturePanel({ open, onClose }: { open: boolean; onClose: () => 
 
       if (data.status === "needs_clarification" && data.question) {
         setTurns((prev) => [...prev, { role: "assistant", text: data.question!, tone: "question" }]);
+      } else if (data.status === "handoff") {
+        // More than one thing: Brain Dump processes it all and shows a review list.
+        try {
+          sessionStorage.setItem(BRAIN_DUMP_HANDOFF_KEY, nextTurns.filter((t) => t.role === "user").map((t) => t.text).join(". "));
+        } catch {
+          // Storage blocked: Brain Dump opens empty and the text can be pasted in.
+        }
+        closeAndReset();
+        router.push("/brain-dump");
+        return;
       } else if (data.status === "navigate" && data.href) {
         // A request answered by its own page (e.g. "find a time for ...").
         closeAndReset();
