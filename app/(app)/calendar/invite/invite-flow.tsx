@@ -4,7 +4,7 @@
 // -> the person reviews every detail, confirms who the names on it are, and
 // answers follow-up questions (gift reminder, RSVP reminder) -> only then is
 // anything added. See lib/invites/* for the pure logic this renders.
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Camera, ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,8 @@ import {
   occasionNoun,
 } from "@/lib/invites/follow-ups";
 import type { InviteExtraction } from "@/lib/invites/extraction";
+import { downscaleToJpeg } from "@/lib/client/image";
+import { SNAP_INVITE_STORAGE_KEY } from "@/components/capture/snap-button";
 import { createEventFromInviteAction, type InviteEventResult } from "./actions";
 
 type Stage = "pick" | "reading" | "review" | "done";
@@ -38,30 +40,6 @@ const EVENT_TYPES = [
 const FAMILY_CATEGORIES = new Set(["wedding", "anniversary", "baby_shower", "bridal_shower", "graduation", "birthday", "holiday"]);
 
 const NOT_A_PERSON = "__none__";
-
-// Phone photos are 3-10MB; the server only needs enough pixels to read print.
-async function downscaleToJpeg(file: File, maxSide = 1800): Promise<string> {
-  const url = URL.createObjectURL(file);
-  try {
-    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const el = new Image();
-      el.onload = () => resolve(el);
-      el.onerror = () => reject(new Error("decode"));
-      el.src = url;
-    });
-    const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.round(img.naturalWidth * scale);
-    canvas.height = Math.round(img.naturalHeight * scale);
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("canvas");
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
-    return dataUrl.replace(/^data:image\/jpeg;base64,/, "");
-  } finally {
-    URL.revokeObjectURL(url);
-  }
-}
 
 export function InviteFlow({ people }: { people: InvitePerson[] }) {
   const cameraRef = useRef<HTMLInputElement>(null);
@@ -162,6 +140,19 @@ export function InviteFlow({ people }: { people: InvitePerson[] }) {
     setWantRsvp(null);
     setStage("review");
   }
+
+  // The always-visible camera button already read the photo: pick up its result.
+  useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem(SNAP_INVITE_STORAGE_KEY);
+      if (!stored) return;
+      sessionStorage.removeItem(SNAP_INVITE_STORAGE_KEY);
+      begin(JSON.parse(stored) as InviteExtraction);
+    } catch {
+      // Unreadable or blocked storage: fall back to the normal photo picker.
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function confirm() {
     if (!invite) return;
