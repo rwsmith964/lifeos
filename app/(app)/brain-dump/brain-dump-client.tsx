@@ -1,5 +1,6 @@
 "use client";
 
+import { BRAIN_DUMP_HANDOFF_KEY } from "@/components/capture/capture-panel";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { format, formatDistanceToNow } from "date-fns";
@@ -519,6 +520,27 @@ export function BrainDumpClient({
     setItems(null);
     void processTranscript(batch.transcript, batch.id);
   }
+
+  // Text handed over from Quick Capture (it was more than one thing): fill the
+  // box and start processing straight away.
+  useEffect(() => {
+    let handed: string | null = null;
+    try {
+      handed = sessionStorage.getItem(BRAIN_DUMP_HANDOFF_KEY);
+      if (handed) sessionStorage.removeItem(BRAIN_DUMP_HANDOFF_KEY);
+    } catch {
+      // Storage unavailable: nothing was handed over.
+    }
+    if (!handed) return;
+    const text = handed;
+    // Deferred a tick so state is set from a callback, not synchronously in the effect.
+    void Promise.resolve().then(() => {
+      setTranscript(text);
+      void processTranscript(text, null);
+    });
+    // Runs once on arrival; processTranscript reads current state at call time.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function updateItem(clientId: string, patch: Partial<EditableItem>) {
     setItems((prev) => (prev ? prev.map((it) => (it.clientId === clientId ? { ...it, ...patch } : it)) : prev));

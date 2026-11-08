@@ -218,12 +218,13 @@ export async function POST(request: Request) {
   }
 
   if (items.length > 1) {
-    // Quick Capture executes one action per turn (unlike Brain Dump's
-    // multi-item review list) — say specifically why this didn't go
-    // through instead of a flat rejection, per the bug report.
+    // Quick Capture executes one action per turn, but Brain Dump takes a whole
+    // pile of things and lets you review them all. Rather than refusing, hand
+    // the text over to it (the panel carries the text across and Brain Dump
+    // starts processing it right away).
     return NextResponse.json({
-      status: "error",
-      message: "That sounds like more than one thing — try sending them one at a time.",
+      status: "handoff",
+      confirmationMessage: `That's ${items.length} things, so I'm sending it to Brain Dump to sort out.`,
     });
   }
 

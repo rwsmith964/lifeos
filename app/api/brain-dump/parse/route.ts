@@ -117,7 +117,7 @@ export async function POST(request: Request) {
       feature: "brain_dump",
       systemPrompt: BRAIN_DUMP_SYSTEM_PROMPT,
       userPrompt,
-      maxTokens: 4096,
+      maxTokens: 8192, // a big dump can yield dozens of items; 4096 truncated the JSON
     });
   } catch (error) {
     if (error instanceof AiUnavailableError) {
