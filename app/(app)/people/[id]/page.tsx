@@ -34,6 +34,7 @@ import {
   listWishlistItemsForPerson,
 } from "@/lib/db/repositories/relationship-gift-engine";
 import type {
+  AvailabilityScheduleRow,
   ConversationLogEntryRow,
   GiftReciprocityEntryRow,
   MomentRow as MomentRowType,
@@ -68,6 +69,8 @@ import {
   RecordGiftForm,
 } from "./person-forms";
 import { LogContactControl } from "@/components/people/log-contact-control";
+import { listAvailabilitySchedulesForPerson } from "@/lib/db/repositories/availability";
+import { AvailabilityForm, AvailabilityList } from "./availability-editor";
 import {
   AddConversationLogEntryForm,
   AddMomentForm,
@@ -118,6 +121,7 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
     timeOffEntries,
     childActivities,
     householdAdults,
+    availabilitySchedules,
   ] = await Promise.all([
     listInterestsForPerson(supabase, id),
     listBudgetsForPerson(supabase, id),
@@ -142,6 +146,8 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
           people.filter((p) => p.relationship_type !== "child")
         )
       : Promise.resolve([]),
+    // Tolerate the table not existing yet (migration not applied) rather than taking the whole profile down.
+    listAvailabilitySchedulesForPerson(supabase, id).catch(() => [] as AvailabilityScheduleRow[]),
   ]);
 
   const attendanceByActivity = isChild
@@ -206,7 +212,7 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
           <h1 className="text-xl font-semibold">{personDisplayName(person)}</h1>
           <p className="text-sm text-muted-foreground">
             {person.nickname && `${person.full_name} · `}
-            {person.relationship_type.replace("_", " ")}
+            {person.relationship_label || person.relationship_type.replace("_", " ")}
             {age != null && ` · ${age} years old`}
             {person.birthdate && ` · born ${format(new Date(person.birthdate), "MMMM d")}`}
           </p>
@@ -388,6 +394,28 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
             <AddAffordance label="Add activity">
               <AddChildActivityForm childPersonId={id} />
             </AddAffordance>
+          </CardContent>
+        </Card>
+      )}
+
+      {person.relationship_type !== "self" && (
+        <Card>
+          <CardHeader>
+            <CardTitle as="h2">{isChild ? "School schedule" : `When ${personDisplayName(person)} is busy`}</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <p className="text-muted-foreground text-xs">
+              {isChild
+                ? "School days and hours. Shows on the calendar so you can see when they're at school."
+                : "Recurring times they're unavailable -- like their kids' weeks. No details about the kids needed. It shows on your calendar in its own colour, and weekend planning avoids those days."}
+            </p>
+            <AvailabilityList personId={id} schedules={availabilitySchedules.filter((a) => a.kind === (isChild ? "school" : "busy"))} />
+            <AvailabilityForm
+              personId={id}
+              personName={personDisplayName(person)}
+              kind={isChild ? "school" : "busy"}
+              today={todayStr}
+            />
           </CardContent>
         </Card>
       )}

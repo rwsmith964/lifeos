@@ -6,7 +6,10 @@ import { format } from "date-fns";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { getZonedNow } from "@/lib/timezones";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
-import { listExceptionsForSchedule, custodySchedulesRepo } from "@/lib/db/repositories/custody-schedules";
+import { listExceptionsForSchedule, listRulesForSchedule, custodySchedulesRepo } from "@/lib/db/repositories/custody-schedules";
+import { describeMonthlyRule, expandMonthlyRules } from "@/lib/custody/monthly-rules";
+import { RuleForm } from "./rule-form";
+import { DeleteRuleButton } from "./delete-rule-button";
 import { filterEligibleResponsibleAdults } from "@/lib/custody/eligible-parents";
 import { MATERIALIZE_WINDOW_DAYS } from "@/lib/custody/materialize";
 import {
@@ -37,9 +40,10 @@ export default async function CustodyScheduleDetailPage({
   const schedule = await custodySchedulesRepo.getById(supabase, id);
   if (!schedule || schedule.household_id !== household.id) notFound();
 
-  const [people, exceptions] = await Promise.all([
+  const [people, exceptions, rules] = await Promise.all([
     listPeopleForHousehold(supabase, household.id),
     listExceptionsForSchedule(supabase, id),
+    listRulesForSchedule(supabase, id),
   ]);
   const peopleById = new Map(people.map((p) => [p.id, p.nickname || p.full_name]));
   const responsibleCandidates = filterEligibleResponsibleAdults(people);
@@ -53,7 +57,8 @@ export default async function CustodyScheduleDetailPage({
   windowStart.setHours(0, 0, 0, 0);
   const windowEnd = new Date(windowStart);
   windowEnd.setDate(windowEnd.getDate() + MATERIALIZE_WINDOW_DAYS);
-  const exceptionsByDate = new Map(exceptions.map((e) => [e.exception_date, e.responsible_person_id]));
+  const exceptionsByDate = new Map(expandMonthlyRules(rules, windowStart, windowEnd));
+  for (const e of exceptions) exceptionsByDate.set(e.exception_date, e.responsible_person_id);
   // Skipped entirely for weekly_segments: personAtWeekMinutes always
   // resolves to a responsible person for every day/time in the week (it
   // carries the last breakpoint forward, wrapping circularly), so a
@@ -146,6 +151,41 @@ export default async function CustodyScheduleDetailPage({
           </CardContent>
         </Card>
       )}
+
+      <div className="flex flex-col gap-2">
+        <h2 className="text-sm font-medium text-muted-foreground">Repeating variations</h2>
+        <p className="text-xs text-muted-foreground">
+          Changes to the normal pattern that come back on a schedule — e.g. the other parent always has the kids the
+          first Saturday of the month. For a one-time change, use Exceptions below.
+        </p>
+        {rules.length === 0 ? (
+          <Card>
+            <CardContent className="text-sm text-muted-foreground">No repeating variations yet.</CardContent>
+          </Card>
+        ) : (
+          rules.map((rule) => (
+            <Card key={rule.id}>
+              <CardContent className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-sm font-medium capitalize">{describeMonthlyRule(rule)}</p>
+                  <p className="text-xs text-muted-foreground">
+                    With {peopleById.get(rule.responsible_person_id) ?? "Unknown"}
+                    {rule.reason && ` · ${rule.reason}`}
+                  </p>
+                </div>
+                <DeleteRuleButton scheduleId={schedule.id} ruleId={rule.id} />
+              </CardContent>
+            </Card>
+          ))
+        )}
+        {responsibleCandidates.length > 0 && (
+          <Card>
+            <CardContent>
+              <RuleForm scheduleId={schedule.id} responsibleCandidates={responsibleCandidates} />
+            </CardContent>
+          </Card>
+        )}
+      </div>
 
       <div className="flex flex-col gap-2">
         <h2 className="text-sm font-medium text-muted-foreground">Exceptions</h2>

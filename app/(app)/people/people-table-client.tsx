@@ -26,6 +26,8 @@ export interface PersonTableRow {
   name: string;
   fullName: string;
   relationshipType: RelationshipType;
+  /** Free-text label ("Girlfriend") shown instead of the type's default, or null. */
+  relationshipLabel: string | null;
   isChildcareProvider: boolean;
   rhythmLabel: string;
   rhythmTier: RhythmTier;
@@ -165,7 +167,7 @@ export function PeopleTableClient({ rows, archivedRows }: { rows: PersonTableRow
                       <Avatar name={row.name} size={36} />
                       <div className="min-w-0">
                         <p className="truncate font-sans text-row-label text-ink">{row.name}</p>
-                        <p className="truncate font-sans text-metadata text-meta">{RELATIONSHIP_LABELS[row.relationshipType]}</p>
+                        <p className="truncate font-sans text-metadata text-meta">{row.relationshipLabel || RELATIONSHIP_LABELS[row.relationshipType]}</p>
                       </div>
                     </div>
                   }
@@ -210,7 +212,7 @@ function PersonDetailPaneContent({ person }: { person: PersonTableRow }) {
         <Avatar name={person.name} size={44} />
         <div className="min-w-0">
           <p className="truncate font-sans text-card-headline text-ink">{person.name}</p>
-          <p className="truncate font-sans text-metadata text-meta">{RELATIONSHIP_LABELS[person.relationshipType]}</p>
+          <p className="truncate font-sans text-metadata text-meta">{person.relationshipLabel || RELATIONSHIP_LABELS[person.relationshipType]}</p>
         </div>
       </div>
 

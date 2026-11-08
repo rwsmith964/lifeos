@@ -35,6 +35,7 @@ export default async function EditCalendarEventPage({ params }: { params: Promis
     startTime: toTimeStr(startsAt),
     endTime: toTimeStr(endsAt),
     location: event.location ?? "",
+    prepMinutes: event.prep_time_before_minutes ? String(event.prep_time_before_minutes) : "",
     eventType: event.event_type ?? "personal",
     visibility: event.visibility ?? "private",
     attendeePersonIds: attendees.map((a) => a.person_id),

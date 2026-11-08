@@ -253,6 +253,9 @@ export interface PersonRow {
   // "self" via migration backfill. The /calendar/custody co-parent-schedule
   // section deliberately ignores this flag.
   show_work_schedule_on_calendar: boolean;
+  // Free-text label shown instead of the generic relationship type
+  // ("Girlfriend", "Boyfriend"). Null = use the type's default label.
+  relationship_label: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -275,6 +278,7 @@ export type PersonInsert = Insert<
   | "address_lat"
   | "address_lng"
   | "show_work_schedule_on_calendar"
+  | "relationship_label"
   | "created_at"
   | "updated_at"
 >;
@@ -927,6 +931,60 @@ export type CustodyScheduleExceptionInsert = Insert<
   "id" | "reason" | "created_at"
 >;
 export type CustodyScheduleExceptionUpdate = Update<CustodyScheduleExceptionRow>;
+
+// custody_schedule_rules -------------------------------------------------
+
+export interface CustodyScheduleRuleRow {
+  id: string;
+  custody_schedule_id: string;
+  /** 1-4 = first..fourth occurrence of the weekday in the month, -1 = last. */
+  ordinal: number;
+  /** 0 = Sunday .. 6 = Saturday. */
+  day_of_week: number;
+  responsible_person_id: string;
+  reason: string;
+  created_at: string;
+}
+export type CustodyScheduleRuleInsert = Insert<CustodyScheduleRuleRow, "id" | "reason" | "created_at">;
+export type CustodyScheduleRuleUpdate = Update<CustodyScheduleRuleRow>;
+
+// availability_schedules ---------------------------------------------------
+
+export type AvailabilityKind = "busy" | "school";
+
+export interface AvailabilityPatternDay {
+  dayIndex: number;
+  startTime: string | null;
+  endTime: string | null;
+}
+
+export interface AvailabilitySkipRange {
+  start: string;
+  end: string;
+  label?: string;
+}
+
+export interface AvailabilityScheduleRow {
+  id: string;
+  household_id: string;
+  person_id: string;
+  kind: AvailabilityKind;
+  label: string;
+  cycle_length_days: 7 | 14;
+  pattern: AvailabilityPatternDay[];
+  anchor_date: string;
+  start_date: string;
+  end_date: string | null;
+  skip_ranges: AvailabilitySkipRange[];
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+export type AvailabilityScheduleInsert = Insert<
+  AvailabilityScheduleRow,
+  "id" | "label" | "end_date" | "skip_ranges" | "is_active" | "created_at" | "updated_at"
+>;
+export type AvailabilityScheduleUpdate = Update<AvailabilityScheduleRow>;
 
 // briefs ------------------------------------------------------------------
 

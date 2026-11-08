@@ -1910,4 +1910,69 @@ describe("RLS end-to-end (PGlite, real migrations + real seed data)", () => {
       expect((rows.rows[0] as { hidden_until: Date }).hidden_until.toISOString()).toContain("2026-09-20");
     });
   });
+
+  describe("custody_schedule_rules (repeating variations, household-scoped)", () => {
+    const RULE_SCHEDULE = "c5000000-0000-0000-0000-000000000001";
+    const EMMA_PERSON = "30000000-0000-0000-0000-000000000003";
+
+    async function ensureSchedule() {
+      await asServiceRole(db, () =>
+        db.exec(
+          `insert into custody_schedules (id, household_id, child_person_id, cycle_length_days, cycle_assignments, anchor_date, start_date) values ('${RULE_SCHEDULE}', '${SEEDED_HOUSEHOLD}', '${EMMA_PERSON}', 7, '[{"dayIndex":0,"responsiblePersonId":"${RICHARD_PERSON}"}]', '2026-11-01', '2026-11-01') on conflict (id) do nothing;`
+        )
+      );
+    }
+
+    it("an owner can add a 'first Saturday' rule to their household's schedule", async () => {
+      await ensureSchedule();
+      const inserted = await asUser(db, RICHARD_USER, () =>
+        db.query(
+          `insert into custody_schedule_rules (custody_schedule_id, ordinal, day_of_week, responsible_person_id) values ('${RULE_SCHEDULE}', 1, 6, '${DAVE_PERSON}') returning id;`
+        )
+      );
+      expect(inserted.rows.length).toBe(1);
+    });
+
+    it("an outsider can neither see nor add rules on another household's schedule", async () => {
+      await ensureSchedule();
+      const sees = await asUser(db, OUTSIDER_USER, () =>
+        db.query(`select count(*)::int as n from custody_schedule_rules where custody_schedule_id = '${RULE_SCHEDULE}';`)
+      );
+      expect((sees.rows[0] as { n: number }).n).toBe(0);
+      await expect(
+        asUser(db, OUTSIDER_USER, () =>
+          db.exec(
+            `insert into custody_schedule_rules (custody_schedule_id, ordinal, day_of_week, responsible_person_id) values ('${RULE_SCHEDULE}', 2, 6, '${OUTSIDER_PERSON}');`
+          )
+        )
+      ).rejects.toThrow();
+    });
+
+    it("rejects an ordinal that isn't first..fourth or last", async () => {
+      await ensureSchedule();
+      await expect(
+        asServiceRole(db, () =>
+          db.exec(
+            `insert into custody_schedule_rules (custody_schedule_id, ordinal, day_of_week, responsible_person_id) values ('${RULE_SCHEDULE}', 5, 1, '${DAVE_PERSON}');`
+          )
+        )
+      ).rejects.toThrow();
+    });
+
+    it("rejects a second rule for the same ordinal + weekday", async () => {
+      await ensureSchedule();
+      await asServiceRole(db, () =>
+        db.exec(
+          `insert into custody_schedule_rules (custody_schedule_id, ordinal, day_of_week, responsible_person_id) values ('${RULE_SCHEDULE}', 3, 2, '${DAVE_PERSON}') on conflict do nothing;`
+        )
+      );
+      await expect(
+        asServiceRole(db, () =>
+          db.exec(
+            `insert into custody_schedule_rules (custody_schedule_id, ordinal, day_of_week, responsible_person_id) values ('${RULE_SCHEDULE}', 3, 2, '${RICHARD_PERSON}');`
+          )
+        )
+      ).rejects.toThrow();
+    });
+  });
 });

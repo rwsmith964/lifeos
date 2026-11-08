@@ -53,6 +53,7 @@ function baseSelfPerson(overrides: Partial<PersonRow> = {}): PersonRow {
     address_lat: null,
     address_lng: null,
     show_work_schedule_on_calendar: false,
+    relationship_label: null,
     created_at: "2026-01-01T00:00:00.000Z",
     updated_at: "2026-01-01T00:00:00.000Z",
     ...overrides,

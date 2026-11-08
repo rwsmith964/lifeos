@@ -8,7 +8,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { addDays, format } from "date-fns";
 import type { CustodyCycleAssignment, CustodyScheduleRow, CustodyWeeklySegment } from "../db/database.types";
 import { custodyBlocksRepo } from "../db/repositories/calendar";
-import { listExceptionsForSchedule } from "../db/repositories/custody-schedules";
+import { listExceptionsForSchedule, listRulesForSchedule } from "../db/repositories/custody-schedules";
+import { expandMonthlyRules } from "./monthly-rules";
 import {
   cycleDayIndexForDate,
   handoverTimeForDayIndex,
@@ -18,6 +19,23 @@ import {
 } from "./schedule";
 
 export const MATERIALIZE_WINDOW_DAYS = 90;
+
+/**
+ * Every other timestamp in this app (events, work shifts, time off) is stored
+ * as the household's WALL-CLOCK time written into a timestamptz as if it were
+ * UTC -- "8:30 AM" is stored as 08:30Z -- and the calendar reads it back the
+ * same way. Custody blocks must follow that convention or they render hours
+ * off against everything else. They used to be built with
+ * `new Date("2026-11-23T08:30").toISOString()`, which interprets the string
+ * in the PROCESS's timezone: correct-looking on the UTC server, but the
+ * rematerialize script, run from a Pacific-time laptop, wrote true UTC
+ * instants (08:30 PST -> 16:30Z), so the calendar showed the kids with the
+ * wrong parent until 4:30 PM instead of the 8:30 AM handover. This pins the
+ * output to "wall clock as Z" regardless of where the code runs.
+ */
+export function floatingIso(naiveLocalDateTime: string): string {
+  return new Date(`${naiveLocalDateTime.replace(/Z$/, "")}Z`).toISOString();
+}
 
 interface MergedRun {
   startDate: string;
@@ -135,8 +153,8 @@ function materializeCycleRows(
       household_id: schedule.household_id,
       child_person_id: schedule.child_person_id,
       responsible_person_id: run.responsiblePersonId,
-      starts_at: new Date(`${run.startDate}T${resolvedTime}`).toISOString(),
-      ends_at: new Date(`${run.endDate}T${resolvedTime}`).toISOString(),
+      starts_at: floatingIso(`${run.startDate}T${resolvedTime}`),
+      ends_at: floatingIso(`${run.endDate}T${resolvedTime}`),
       block_type: run.hasException ? ("holiday" as const) : ("regular" as const),
       location: schedule.handover_location,
       notes: "",
@@ -172,8 +190,8 @@ function materializeWeeklySegmentsRows(
     household_id: schedule.household_id,
     child_person_id: schedule.child_person_id,
     responsible_person_id: interval.responsiblePersonId,
-    starts_at: new Date(interval.startsAt).toISOString(),
-    ends_at: new Date(interval.endsAt).toISOString(),
+    starts_at: floatingIso(interval.startsAt),
+    ends_at: floatingIso(interval.endsAt),
     block_type: interval.isException ? ("holiday" as const) : ("regular" as const),
     location: schedule.handover_location,
     notes: "",
@@ -206,12 +224,20 @@ export async function materializeCustodySchedule(
   now: Date,
   windowDays: number = MATERIALIZE_WINDOW_DAYS
 ): Promise<{ blocksCreated: number }> {
-  const exceptions = await listExceptionsForSchedule(client, schedule.id);
-  const exceptionsByDate = new Map(exceptions.map((e) => [e.exception_date, e.responsible_person_id]));
+  const [exceptions, rules] = await Promise.all([
+    listExceptionsForSchedule(client, schedule.id),
+    listRulesForSchedule(client, schedule.id),
+  ]);
 
   const windowStart = new Date(now);
   windowStart.setHours(0, 0, 0, 0);
   const windowEnd = addDays(windowStart, windowDays);
+
+  // Repeating variations ("first Saturday of the month") expand into the same
+  // per-date overrides single-date exceptions use. An explicit exception on
+  // the same date is the more specific statement, so it is applied last and wins.
+  const exceptionsByDate = new Map(expandMonthlyRules(rules, windowStart, windowEnd));
+  for (const e of exceptions) exceptionsByDate.set(e.exception_date, e.responsible_person_id);
 
   // Clear this schedule's own future-window blocks before re-inserting —
   // never touches another schedule's blocks or manually created ones.
@@ -219,7 +245,7 @@ export async function materializeCustodySchedule(
     .from("custody_blocks")
     .delete()
     .eq("custody_schedule_id", schedule.id)
-    .gte("starts_at", windowStart.toISOString());
+    .gte("starts_at", floatingIso(format(windowStart, "yyyy-MM-dd'T'HH:mm:ss")));
   if (deleteError) throw deleteError;
 
   const rows =

@@ -177,6 +177,7 @@ export const personInsertSchema = z.object({
   address_lat: z.number().min(-90).max(90).nullable().optional(),
   address_lng: z.number().min(-180).max(180).nullable().optional(),
   show_work_schedule_on_calendar: z.boolean().optional(),
+  relationship_label: z.string().nullable().optional(),
 });
 
 export const personInterestInsertSchema = z.object({
@@ -616,6 +617,40 @@ export const custodyScheduleExceptionInsertSchema = z.object({
   responsible_person_id: uuid,
   reason: z.string().optional(),
 });
+
+export const custodyScheduleRuleInsertSchema = z.object({
+  custody_schedule_id: uuid,
+  ordinal: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(-1)]),
+  day_of_week: z.number().int().min(0).max(6),
+  responsible_person_id: uuid,
+  reason: z.string().optional(),
+});
+
+const availabilityTimeOfDay = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use a time like 08:30.");
+
+export const availabilityScheduleInputSchema = z
+  .object({
+    kind: z.enum(["busy", "school"]),
+    label: z.string().max(80).default(""),
+    cycle_length_days: z.union([z.literal(7), z.literal(14)]),
+    pattern: z
+      .array(
+        z.object({
+          dayIndex: z.number().int().min(0).max(13),
+          startTime: availabilityTimeOfDay.nullable(),
+          endTime: availabilityTimeOfDay.nullable(),
+        })
+      )
+      .min(1, "Pick at least one day."),
+    anchor_date: isoDate,
+    start_date: isoDate,
+    end_date: isoDate.nullable().optional(),
+    skip_ranges: z.array(z.object({ start: isoDate, end: isoDate, label: z.string().max(80).optional() })).default([]),
+  })
+  .refine((v) => v.pattern.every((d) => d.dayIndex < v.cycle_length_days), { message: "A day is outside the pattern's length." })
+  .refine((v) => v.pattern.every((d) => (d.startTime === null) === (d.endTime === null)), { message: "Give both a start and end time, or neither." })
+  .refine((v) => v.pattern.every((d) => d.startTime === null || d.endTime === null || d.startTime < d.endTime), { message: "End time must be after start time." })
+  .refine((v) => !v.end_date || v.end_date >= v.start_date, { message: "End date can't be before the start date." });
 
 export const briefInsertSchema = z.object({
   household_id: uuid,
