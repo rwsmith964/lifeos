@@ -1,11 +1,13 @@
 "use client";
 
+import { useToast } from "@/components/ui/toast";
+import { EventPeopleFields, HostField, ItineraryField } from "./event-extras";
+import type { ItineraryItem, PersonGroupRow } from "@/lib/db/database.types";
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useFormPost } from "@/lib/hooks/use-form-post";
 import { useFormValidity } from "@/lib/hooks/use-form-validity";
 import type { PersonRow } from "@/lib/db/database.types";
-import { personDisplayName } from "@/lib/people/display-name";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -35,10 +37,14 @@ export interface EventFormDefaults {
   eventType: string;
   visibility: string;
   attendeePersonIds: string[];
+  attendeeNotes: Record<string, string>;
+  hostPersonId: string;
+  itinerary: ItineraryItem[];
 }
 
 interface EventFormProps {
   people: PersonRow[];
+  groups?: PersonGroupRow[];
   endpoint: string;
   method?: "POST" | "PATCH";
   submitLabel: string;
@@ -59,21 +65,36 @@ function buildRedirectTarget(savedDate: string): string {
   return savedDate ? `/calendar?month=${savedDate.slice(0, 7)}&day=${savedDate}#selected-day` : "/calendar";
 }
 
-export function EventForm({ people, endpoint, method, submitLabel, pendingLabel, defaults }: EventFormProps) {
+export function EventForm({ people, groups = [], endpoint, method, submitLabel, pendingLabel, defaults }: EventFormProps) {
   const router = useRouter();
   const { submit, pending, error } = useFormPost(endpoint);
   const [allDay, setAllDay] = useState(defaults?.allDay ?? false);
   const [errorDismissed, setErrorDismissed] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const { invalid, checkValid, clearInvalid } = useFormValidity(formRef);
-  const attendeeSet = new Set(defaults?.attendeePersonIds ?? []);
+  const { showToast } = useToast();
 
   function handleSave() {
     if (!checkValid()) return;
     setErrorDismissed(false);
     const formData = new FormData(formRef.current!);
     const savedDate = String(formData.get("date") ?? "");
-    submit(formData, { method, redirectTo: () => buildRedirectTarget(savedDate) });
+    submit(formData, {
+      method,
+      onSuccess: (data) => {
+        const invited = Array.isArray(data.invited) ? (data.invited as string[]) : [];
+        const missing = Array.isArray(data.missingContact) ? (data.missingContact as string[]) : [];
+        if (invited.length > 0 || missing.length > 0) {
+          showToast({
+            title: invited.length > 0 ? `Invitations sent to ${invited.join(", ")}.` : "No invitations sent.",
+            description: missing.length > 0 ? `${missing.join(", ")} can't be invited yet: add an email in People.` : undefined,
+            variant: missing.length > 0 && invited.length === 0 ? "destructive" : "success",
+            durationMs: 9000,
+          });
+        }
+      },
+      redirectTo: () => buildRedirectTarget(savedDate),
+    });
   }
 
   const timeRangeError = error && isTimeRangeError(error) && !errorDismissed ? error : null;
@@ -124,6 +145,7 @@ export function EventForm({ people, endpoint, method, submitLabel, pendingLabel,
         <Input id="location" name="location" defaultValue={defaults?.location} />
         <p className="text-xs text-muted-foreground">With an address, you&apos;ll get a suggested leave-by time.</p>
       </div>
+      <HostField people={people} defaultHostId={defaults?.hostPersonId ?? ""} />
       <div className="flex flex-col gap-2">
         <Label htmlFor="prepMinutes">Prep time before (optional, minutes)</Label>
         <Input
@@ -169,24 +191,14 @@ export function EventForm({ people, endpoint, method, submitLabel, pendingLabel,
         </select>
       </div>
 
-      {people.length > 0 && (
-        <div className="flex flex-col gap-2">
-          <Label>Who&apos;s involved</Label>
-          <div className="flex flex-col gap-1">
-            {people.map((person) => (
-              <label key={person.id} className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  name="attendeePersonIds"
-                  value={person.id}
-                  defaultChecked={attendeeSet.has(person.id)}
-                />
-                {personDisplayName(person)}
-              </label>
-            ))}
-          </div>
-        </div>
-      )}
+      <ItineraryField defaultItems={defaults?.itinerary ?? []} />
+
+      <EventPeopleFields
+        people={people}
+        groups={groups}
+        defaultSelected={defaults?.attendeePersonIds ?? []}
+        defaultNotes={defaults?.attendeeNotes ?? {}}
+      />
 
       {invalid && <p className="text-sm text-destructive">Please fill in the required fields above.</p>}
       {otherError && <p className="text-sm text-destructive">{otherError}</p>}

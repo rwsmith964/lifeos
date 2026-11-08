@@ -13,8 +13,9 @@ import { suggestionExternalId, suggestionKey, SUGGESTION_SOURCE } from "@/lib/ca
 import { SUGGESTION_DISMISSED_UNTIL } from "@/lib/calendar/suggestions-server";
 
 const inputSchema = z.object({
-  kind: z.enum(["travel", "prep"]),
+  kind: z.enum(["travel", "prep", "errand"]),
   eventId: z.string().uuid(),
+  suffix: z.string().max(40).optional(),
   title: z.string().trim().min(1).max(200),
   detail: z.string().max(500),
   startsAtISO: z.string().datetime(),
@@ -47,9 +48,9 @@ export async function acceptSuggestionAction(raw: AcceptSuggestionInput): Promis
       starts_at: input.startsAtISO,
       ends_at: input.endsAtISO,
       all_day: false,
-      event_type: input.kind === "travel" ? "travel" : "prep",
+      event_type: input.kind === "travel" ? "travel" : input.kind === "errand" ? "personal" : "prep",
       external_source: SUGGESTION_SOURCE,
-      external_id: suggestionExternalId(input.kind, input.eventId),
+      external_id: suggestionExternalId(input.kind, input.suffix ? `${input.eventId}:${input.suffix}` : input.eventId),
     });
   } catch (error) {
     return { error: friendlyMutationError(error, { fallback: "Couldn't add that — please try again." }) };
@@ -58,8 +59,12 @@ export async function acceptSuggestionAction(raw: AcceptSuggestionInput): Promis
   return { error: null };
 }
 
-export async function dismissSuggestionAction(kind: "travel" | "prep", eventId: string): Promise<SuggestionActionResult> {
-  if ((kind !== "travel" && kind !== "prep") || !z.string().uuid().safeParse(eventId).success) {
+export async function dismissSuggestionAction(
+  kind: "travel" | "prep" | "errand",
+  eventId: string,
+  suffix?: string
+): Promise<SuggestionActionResult> {
+  if ((kind !== "travel" && kind !== "prep" && kind !== "errand") || !z.string().uuid().safeParse(eventId).success) {
     return { error: "That suggestion looks out of date — refresh and try again." };
   }
   const { supabase, household, selfPerson } = await requireHouseholdContext();
@@ -67,7 +72,7 @@ export async function dismissSuggestionAction(kind: "travel" | "prep", eventId: 
     await setItemDismissal(supabase, {
       householdId: household.id,
       personId: selfPerson.id,
-      itemKey: suggestionKey(kind, eventId),
+      itemKey: suggestionKey(kind, suffix ? `${eventId}:${suffix}` : eventId),
       hiddenUntil: SUGGESTION_DISMISSED_UNTIL,
     });
   } catch (error) {

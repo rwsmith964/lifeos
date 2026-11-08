@@ -3,6 +3,7 @@ import { requireHouseholdContext } from "@/lib/auth/session";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
 import { Breadcrumb } from "@/components/nav/breadcrumb";
 import { EventForm } from "../event-form";
+import { listGroupsForHousehold } from "@/lib/db/repositories/groups";
 
 export default async function NewCalendarEventPage({
   searchParams,
@@ -14,6 +15,7 @@ export default async function NewCalendarEventPage({
   // implicitly on your own calendar, so you're not a selectable attendee
   // of your own event.
   const people = await listPeopleForHousehold(supabase, household.id, { excludeSelf: true });
+  const groups = await listGroupsForHousehold(supabase, household.id).catch(() => []);
   const { date } = await searchParams;
 
   // The calendar day view links here as `/calendar/new?date=YYYY-MM-DD`
@@ -36,6 +38,7 @@ export default async function NewCalendarEventPage({
       </p>
       <EventForm
         people={people}
+        groups={groups}
         endpoint="/api/calendar/events"
         defaults={isValidDate ? { date } : undefined}
         submitLabel="Save event"

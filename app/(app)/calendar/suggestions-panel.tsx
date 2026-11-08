@@ -4,15 +4,16 @@
 // Dismiss. Times arrive pre-formatted from the server: calendar times are
 // stored as floating wall-clock values, so formatting them in the browser's
 // own timezone here would shift them.
-import { Car, ClipboardList, TriangleAlert } from "lucide-react";
+import { Car, ClipboardList, ShoppingBasket, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAsyncToastAction } from "@/lib/hooks/use-async-toast-action";
 import { acceptSuggestionAction, dismissSuggestionAction } from "./suggestion-actions";
 
 export interface SuggestionView {
   key: string;
-  kind: "travel" | "prep";
+  kind: "travel" | "prep" | "errand";
   eventId: string;
+  suffix?: string;
   title: string;
   detail: string;
   startsAtISO: string;
@@ -29,6 +30,7 @@ function SuggestionRow({ s, showDay }: { s: SuggestionView; showDay: boolean }) 
       const res = await acceptSuggestionAction({
         kind: s.kind,
         eventId: s.eventId,
+        suffix: s.suffix,
         title: s.title,
         detail: s.detail,
         startsAtISO: s.startsAtISO,
@@ -40,13 +42,13 @@ function SuggestionRow({ s, showDay }: { s: SuggestionView; showDay: boolean }) 
   );
   const dismiss = useAsyncToastAction(
     async () => {
-      const res = await dismissSuggestionAction(s.kind, s.eventId);
+      const res = await dismissSuggestionAction(s.kind, s.eventId, s.suffix);
       if (res.error) throw new Error(res.error);
     },
     { successMessage: "Dismissed.", errorMessage: "Couldn't dismiss that" }
   );
   const busy = accept.pending || dismiss.pending;
-  const Icon = s.tight ? TriangleAlert : s.kind === "travel" ? Car : ClipboardList;
+  const Icon = s.tight ? TriangleAlert : s.kind === "travel" ? Car : s.kind === "errand" ? ShoppingBasket : ClipboardList;
 
   return (
     <li className="flex flex-wrap items-start justify-between gap-2 rounded-control border border-dashed border-line bg-surface px-3 py-2">

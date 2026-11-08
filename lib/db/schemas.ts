@@ -380,6 +380,8 @@ export const calendarEventInsertSchema = z
     external_source: z.string().nullable().optional(),
     external_id: z.string().nullable().optional(),
     related_activity_id: uuid.nullable().optional(),
+    itinerary: z.array(z.object({ time: z.string(), title: z.string().min(1), notes: z.string() })).optional(),
+    host_person_id: uuid.nullable().optional(),
   })
   .refine((v) => new Date(v.ends_at) >= new Date(v.starts_at), {
     message: "End time must be after the start time.",
@@ -423,6 +425,8 @@ export const calendarEventUpdateSchema = z
     external_source: z.string().nullable().optional(),
     external_id: z.string().nullable().optional(),
     related_activity_id: uuid.nullable().optional(),
+    itinerary: z.array(z.object({ time: z.string(), title: z.string().min(1), notes: z.string() })).optional(),
+    host_person_id: uuid.nullable().optional(),
   })
   .refine((v) => new Date(v.ends_at) >= new Date(v.starts_at), {
     message: "End time must be after the start time.",

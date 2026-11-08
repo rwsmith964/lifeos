@@ -42,7 +42,7 @@ export async function loadCalendarSuggestions(
   for (const e of allEvents) {
     if (e.external_source !== SUGGESTION_SOURCE || !e.external_id) continue;
     const [kind, ...rest] = e.external_id.split(":");
-    if (kind === "travel" || kind === "prep") acceptedKeys.add(suggestionKey(kind as SuggestionKind, rest.join(":")));
+    if (kind === "travel" || kind === "prep" || kind === "errand") acceptedKeys.add(suggestionKey(kind as SuggestionKind, rest.join(":")));
   }
 
   // The table may not exist yet or the read may fail: no dismissals is better than no calendar.
@@ -77,6 +77,7 @@ export async function loadCalendarSuggestions(
       eventType: e.event_type,
       prepMinutes: e.prep_time_before_minutes,
       externalSource: e.external_source,
+      description: e.description,
     })),
     travelMinutesByEventId: new Map(resolved),
     skipKeys,

@@ -3,9 +3,10 @@
 // times and supplies what's already been accepted or dismissed. A suggestion
 // is never stored until the person accepts it (then it becomes a normal
 // calendar event), so nothing here can clutter or alter the real calendar.
-import { format, subMinutes } from "date-fns";
+import { addDays, addHours, addMinutes, format, startOfDay, subMinutes } from "date-fns";
+import { errandIdeasFromNote, personalNoteFromDescription } from "../events/errands";
 
-export type SuggestionKind = "travel" | "prep";
+export type SuggestionKind = "travel" | "prep" | "errand";
 
 /** Tag on the calendar_events rows created from an accepted suggestion. */
 export const SUGGESTION_SOURCE = "lifeos_suggestion";
@@ -37,6 +38,8 @@ export interface SuggestionEvent {
   prepMinutes: number | null;
   /** Items created from a past suggestion never get suggestions of their own. */
   externalSource: string | null;
+  /** The event's description; a "Your note:" line in it can imply shopping or cooking. */
+  description?: string | null;
 }
 
 export interface CalendarSuggestion {
@@ -44,6 +47,8 @@ export interface CalendarSuggestion {
   kind: SuggestionKind;
   eventId: string;
   eventTitle: string;
+  /** Distinguishes several suggestions of one kind for one event (errands). */
+  suffix?: string;
   title: string;
   startsAt: Date;
   endsAt: Date;
@@ -145,6 +150,46 @@ export function buildSuggestions(input: BuildSuggestionsInput): CalendarSuggesti
         tight: false,
       });
     }
+  }
+
+  // Shopping and cooking implied by the invitee's own note ("bring a pecan pie").
+  for (const event of candidates) {
+    const note = personalNoteFromDescription(event.description);
+    errandIdeasFromNote(note).forEach((idea, index) => {
+      const dayBefore = addDays(startOfDay(event.startsAt), -1);
+      const shopStart = addHours(dayBefore, 17);
+      const cookStart = addHours(dayBefore, 18);
+      const blocks: Array<{ type: "shop" | "cook"; start: Date; minutes: number; title: string }> = [
+        { type: "shop", start: shopStart, minutes: 45, title: `Shop for ${idea.what}` },
+      ];
+      if (idea.cook) blocks.push({ type: "cook", start: cookStart, minutes: 90, title: `Make ${idea.what}` });
+
+      for (const block of blocks) {
+        let start = block.start;
+        // Too late to do it the evening before? Fit it in before the event instead, if there's room.
+        if (start <= input.now) {
+          start = addHours(startOfDay(input.now), input.now.getHours() + 1);
+        }
+        const end = addMinutes(start, block.minutes);
+        if (end > subMinutes(event.startsAt, 30)) continue;
+        const suffix = `${index}:${block.type}`;
+        const key = suggestionKey("errand", `${event.id}:${suffix}`);
+        if (input.skipKeys.has(key)) continue;
+        out.push({
+          key,
+          kind: "errand",
+          eventId: event.id,
+          eventTitle: event.title,
+          suffix,
+          title: block.title,
+          startsAt: start,
+          endsAt: end,
+          detail: `For “${event.title}”: your note says “${note}”.`,
+          minutes: block.minutes,
+          tight: false,
+        });
+      }
+    });
   }
 
   return out.sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());

@@ -4,6 +4,7 @@ import { listPeopleForHousehold } from "@/lib/db/repositories/people";
 import { calendarEventsRepo, listAttendeesForEvent } from "@/lib/db/repositories/calendar";
 import { Breadcrumb } from "@/components/nav/breadcrumb";
 import { EventForm, type EventFormDefaults } from "../../event-form";
+import { listGroupsForHousehold } from "@/lib/db/repositories/groups";
 
 export default async function EditCalendarEventPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -12,6 +13,7 @@ export default async function EditCalendarEventPage({ params }: { params: Promis
   const event = await calendarEventsRepo.getById(supabase, id);
   if (!event || event.household_id !== household.id) notFound();
 
+  const groups = await listGroupsForHousehold(supabase, household.id).catch(() => []);
   const [people, attendees] = await Promise.all([
     // excludeSelf: true matches the People tab and Add Event (P0-5).
     listPeopleForHousehold(supabase, household.id, { excludeSelf: true }),
@@ -39,6 +41,9 @@ export default async function EditCalendarEventPage({ params }: { params: Promis
     eventType: event.event_type ?? "personal",
     visibility: event.visibility ?? "private",
     attendeePersonIds: attendees.map((a) => a.person_id),
+    attendeeNotes: Object.fromEntries(attendees.filter((a) => a.personal_notes).map((a) => [a.person_id, a.personal_notes])),
+    hostPersonId: event.host_person_id ?? "",
+    itinerary: event.itinerary ?? [],
   };
 
   return (
@@ -47,6 +52,7 @@ export default async function EditCalendarEventPage({ params }: { params: Promis
       <h1 className="text-xl font-semibold">Edit event</h1>
       <EventForm
         people={people}
+        groups={groups}
         endpoint={`/api/calendar/events/${id}`}
         method="PATCH"
         defaults={defaults}
