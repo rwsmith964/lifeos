@@ -49,6 +49,10 @@ export async function acceptSuggestionAction(raw: AcceptSuggestionInput): Promis
       ends_at: input.endsAtISO,
       all_day: false,
       event_type: input.kind === "travel" ? "travel" : input.kind === "errand" ? "personal" : "prep",
+      // A drive keeps its destination, so a departure reminder can open navigation.
+      ...(input.kind === "travel"
+        ? { location: source.location, location_lat: source.location_lat, location_lng: source.location_lng }
+        : {}),
       external_source: SUGGESTION_SOURCE,
       external_id: suggestionExternalId(input.kind, input.suffix ? `${input.eventId}:${input.suffix}` : input.eventId),
     });

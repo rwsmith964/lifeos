@@ -1,3 +1,4 @@
+import { DepartureRemindersCard } from "./departure-reminders-card";
 import { ConnectedPeople, type ConnectionView, type PendingLinkInviteView } from "./connected-people";
 import { listLinkedAccounts, listPendingLinkInvites, listSharesForLinks } from "@/lib/db/repositories/links";
 import Link from "next/link";
@@ -127,6 +128,7 @@ export default async function SettingsPage() {
         currentUserId={userId}
       />
       <ConnectedPeople connections={connectionViews} pending={pendingViews} invitablePeople={invitablePeople} canManage={canManage} />
+      <DepartureRemindersCard />
       <CalendarFeeds feeds={calendarFeeds} canManage={canManage} />
       <FeatureFlags states={featureFlagStates} canManage={canManage} />
       <Card>

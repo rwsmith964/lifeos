@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { PLAN_DAY_HANDOFF_KEY } from "@/lib/planning/detect";
 import type { DayPlanProposal } from "@/lib/planning/day-plan-server";
 import { createDayPlanAction } from "./actions";
+import { syncDepartureReminders } from "@/components/native/departure-reminders";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -121,6 +122,8 @@ export function PlanDayClient() {
     if (res.error) return setError(res.error);
     setCreated(res.created ?? 0);
     setProposal(null);
+    // In the phone app, schedule the leave-soon reminders for these drives now.
+    void syncDepartureReminders().catch(() => undefined);
   }
 
   return (

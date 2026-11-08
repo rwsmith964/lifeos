@@ -8,6 +8,7 @@ import { Car, ClipboardList, ShoppingBasket, TriangleAlert } from "lucide-react"
 import { Button } from "@/components/ui/button";
 import { useAsyncToastAction } from "@/lib/hooks/use-async-toast-action";
 import { acceptSuggestionAction, dismissSuggestionAction } from "./suggestion-actions";
+import { syncDepartureReminders } from "@/components/native/departure-reminders";
 
 export interface SuggestionView {
   key: string;
@@ -37,6 +38,8 @@ function SuggestionRow({ s, showDay }: { s: SuggestionView; showDay: boolean }) 
         endsAtISO: s.endsAtISO,
       });
       if (res.error) throw new Error(res.error);
+      // In the phone app, a new drive gets its leave-soon reminders right away.
+      void syncDepartureReminders().catch(() => undefined);
     },
     { successMessage: "Added to your calendar.", errorMessage: "Couldn't add that" }
   );
