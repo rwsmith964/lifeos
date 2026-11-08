@@ -149,6 +149,8 @@ export async function executeAction(
         ends_at: endsAtISO,
         all_day: allDay,
         event_type: action.eventType ?? "personal",
+        // Notes typed on the confirmation card before saving (Quick Capture).
+        description: (action as { eventNotes?: string | null }).eventNotes?.trim() || null,
       });
       if (action.personId) {
         await eventAttendeesRepo.create(supabase, {
