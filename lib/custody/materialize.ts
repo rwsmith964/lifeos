@@ -8,7 +8,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { addDays, format } from "date-fns";
 import type { CustodyCycleAssignment, CustodyScheduleRow, CustodyWeeklySegment } from "../db/database.types";
 import { custodyBlocksRepo } from "../db/repositories/calendar";
-import { listExceptionsForSchedule } from "../db/repositories/custody-schedules";
+import { listExceptionsForSchedule, listRulesForSchedule } from "../db/repositories/custody-schedules";
+import { expandMonthlyRules } from "./monthly-rules";
 import {
   cycleDayIndexForDate,
   handoverTimeForDayIndex,
@@ -223,12 +224,20 @@ export async function materializeCustodySchedule(
   now: Date,
   windowDays: number = MATERIALIZE_WINDOW_DAYS
 ): Promise<{ blocksCreated: number }> {
-  const exceptions = await listExceptionsForSchedule(client, schedule.id);
-  const exceptionsByDate = new Map(exceptions.map((e) => [e.exception_date, e.responsible_person_id]));
+  const [exceptions, rules] = await Promise.all([
+    listExceptionsForSchedule(client, schedule.id),
+    listRulesForSchedule(client, schedule.id),
+  ]);
 
   const windowStart = new Date(now);
   windowStart.setHours(0, 0, 0, 0);
   const windowEnd = addDays(windowStart, windowDays);
+
+  // Repeating variations ("first Saturday of the month") expand into the same
+  // per-date overrides single-date exceptions use. An explicit exception on
+  // the same date is the more specific statement, so it is applied last and wins.
+  const exceptionsByDate = new Map(expandMonthlyRules(rules, windowStart, windowEnd));
+  for (const e of exceptions) exceptionsByDate.set(e.exception_date, e.responsible_person_id);
 
   // Clear this schedule's own future-window blocks before re-inserting —
   // never touches another schedule's blocks or manually created ones.

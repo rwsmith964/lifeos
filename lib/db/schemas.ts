@@ -617,6 +617,14 @@ export const custodyScheduleExceptionInsertSchema = z.object({
   reason: z.string().optional(),
 });
 
+export const custodyScheduleRuleInsertSchema = z.object({
+  custody_schedule_id: uuid,
+  ordinal: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(-1)]),
+  day_of_week: z.number().int().min(0).max(6),
+  responsible_person_id: uuid,
+  reason: z.string().optional(),
+});
+
 export const briefInsertSchema = z.object({
   household_id: uuid,
   for_person_id: uuid,

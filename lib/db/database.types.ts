@@ -928,6 +928,22 @@ export type CustodyScheduleExceptionInsert = Insert<
 >;
 export type CustodyScheduleExceptionUpdate = Update<CustodyScheduleExceptionRow>;
 
+// custody_schedule_rules -------------------------------------------------
+
+export interface CustodyScheduleRuleRow {
+  id: string;
+  custody_schedule_id: string;
+  /** 1-4 = first..fourth occurrence of the weekday in the month, -1 = last. */
+  ordinal: number;
+  /** 0 = Sunday .. 6 = Saturday. */
+  day_of_week: number;
+  responsible_person_id: string;
+  reason: string;
+  created_at: string;
+}
+export type CustodyScheduleRuleInsert = Insert<CustodyScheduleRuleRow, "id" | "reason" | "created_at">;
+export type CustodyScheduleRuleUpdate = Update<CustodyScheduleRuleRow>;
+
 // briefs ------------------------------------------------------------------
 
 export interface BriefRow {
