@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Camera, ChevronLeft, ChevronRight, MapPin, Plus, TriangleAlert } from "lucide-react";
+import { Camera, ChevronLeft, ChevronRight, MapPin, Plus, TriangleAlert, Users } from "lucide-react";
 import {
   addDays,
   addMonths,
@@ -1222,6 +1222,11 @@ export default async function CalendarPage({
             <Button asChild size="icon" variant="outline" aria-label="Add from a photo of an invitation" title="Add from a photo">
               <Link href="/calendar/invite">
                 <Camera className="size-4" />
+              </Link>
+            </Button>
+            <Button asChild size="icon" variant="outline" aria-label="Find a time with someone" title="Find a time with someone">
+              <Link href="/calendar/find-time">
+                <Users className="size-4" />
               </Link>
             </Button>
           </div>

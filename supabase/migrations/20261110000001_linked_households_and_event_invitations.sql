@@ -497,3 +497,11 @@ as $$
 $$;
 
 grant execute on function public.list_linked_accounts(uuid) to authenticated;
+
+-- ---------------------------------------------------------------- roles
+
+-- A teen with their own login: sees the household but never gift plans (the
+-- 'child' role has always been spoiler-safe in RLS). Invites could only offer
+-- adult or viewer before.
+alter table household_invites drop constraint if exists household_invites_role_check;
+alter table household_invites add constraint household_invites_role_check check (role in ('adult', 'viewer', 'child'));

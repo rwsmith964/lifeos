@@ -34,7 +34,8 @@ interface CaptureTurn {
 }
 
 interface CaptureApiResponse {
-  status: "ready" | "needs_clarification" | "unrecognized" | "unavailable" | "error";
+  status: "ready" | "needs_clarification" | "unrecognized" | "unavailable" | "error" | "navigate";
+  href?: string;
   question?: string | null;
   confirmationMessage?: string | null;
   message?: string;
@@ -120,6 +121,11 @@ export function CapturePanel({ open, onClose }: { open: boolean; onClose: () => 
 
       if (data.status === "needs_clarification" && data.question) {
         setTurns((prev) => [...prev, { role: "assistant", text: data.question!, tone: "question" }]);
+      } else if (data.status === "navigate" && data.href) {
+        // A request answered by its own page (e.g. "find a time for ...").
+        closeAndReset();
+        router.push(data.href);
+        return;
       } else if (data.status === "ready") {
         setTurns((prev) => [
           ...prev,

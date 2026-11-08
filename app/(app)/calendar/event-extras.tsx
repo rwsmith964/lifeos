@@ -5,6 +5,7 @@
 // optional itinerary. Everything submits as plain form fields so the existing
 // form-post plumbing is unchanged.
 import { useState } from "react";
+import Link from "next/link";
 import { Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,7 +46,12 @@ export function EventPeopleFields({
 
   return (
     <div className="flex flex-col gap-3">
-      <Label>Who&apos;s invited</Label>
+      <div className="flex items-center justify-between gap-2">
+        <Label>Who&apos;s invited</Label>
+        <Link href="/people/groups" className="font-sans text-metadata text-meta underline underline-offset-2">
+          Manage groups
+        </Link>
+      </div>
       {groups.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-sans text-metadata text-meta">Add a group:</span>

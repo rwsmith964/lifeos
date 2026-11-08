@@ -36,7 +36,7 @@ export interface HouseholdMemberDisplay {
 const roleLabel: Record<HouseholdRole, string> = {
   owner: "Owner",
   adult: "Adult",
-  child: "Child",
+  child: "Teen",
   viewer: "Viewer",
 };
 
@@ -67,6 +67,7 @@ function InviteForm() {
         >
           <option value="adult">Adult — full access</option>
           <option value="viewer">Viewer — read only</option>
+          <option value="child">Teen — read only, no gift plans shown</option>
         </select>
       </div>
       <Button type="submit" disabled={pending}>

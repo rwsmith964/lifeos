@@ -34,6 +34,8 @@ import { executeAction, isKnownPersonId, verifyExecuted } from "@/lib/ai/capture
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
 import { friendlyMutationError } from "@/lib/db/errors";
 import { isFeatureEnabled } from "@/lib/flags";
+import { parseFindTimeIntent } from "@/lib/scheduling/find-time";
+import { personDisplayName } from "@/lib/people/display-name";
 
 interface CaptureRequestBody {
   turns: CaptureTurn[];
@@ -93,6 +95,32 @@ export async function POST(request: Request) {
   }
 
   const people = await listPeopleForHousehold(supabase, household.id);
+
+  // "Find a time for Rusty and I to go fishing": answered by the Find a time
+  // page (everyone's free time, kids, saved places), not by the note parser.
+  const lastUserText = [...body.turns].reverse().find((t) => t.role === "user")?.text ?? "";
+  const findTime = parseFindTimeIntent(lastUserText);
+  if (findTime) {
+    const wanted = findTime.withName.toLowerCase();
+    const match = people.find(
+      (p) =>
+        !p.is_archived &&
+        p.id !== selfPerson.id &&
+        [p.nickname, p.full_name, p.full_name.split(" ")[0]].some((n) => n && n.toLowerCase() === wanted)
+    );
+    if (!match) {
+      return NextResponse.json({
+        status: "needs_clarification",
+        question: `I don't see anyone named "${findTime.withName}" in your People. Add them first, or tell me who you meant.`,
+      });
+    }
+    return NextResponse.json({
+      status: "navigate",
+      confirmationMessage: `Looking for times when you and ${personDisplayName(match)} are both free to ${findTime.activity}…`,
+      href: `/calendar/find-time?${new URLSearchParams({ with: match.id, activity: findTime.activity }).toString()}`,
+    });
+  }
+
   const tokenMap = buildChildTokenMap(people);
   // labelFor already prefers nickname over full_name for non-children and
   // returns the CHILD_N token for children (P0-2), matching Brain Dump so
