@@ -34,12 +34,34 @@ import { executeAction, isKnownPersonId, verifyExecuted } from "@/lib/ai/capture
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
 import { friendlyMutationError } from "@/lib/db/errors";
 import { isFeatureEnabled } from "@/lib/flags";
+import { z } from "zod";
+import { brainDumpItemSchema } from "@/lib/ai/prompts/brain-dump";
+
+const confirmedEventSchema = z.object({
+  eventTitle: z.string().trim().min(1).max(200),
+  eventStartsAtISO: z.string().min(10).max(40),
+  eventEndsAtISO: z.string().max(40).nullable(),
+  eventAllDay: z.boolean(),
+  eventNotes: z.string().max(1000).nullable(),
+});
 import { parseFindTimeIntent } from "@/lib/scheduling/find-time";
 import { looksLikeDayPlan } from "@/lib/planning/detect";
 import { personDisplayName } from "@/lib/people/display-name";
 
 interface CaptureRequestBody {
   turns: CaptureTurn[];
+  /**
+   * The person looked at the "Add this to your calendar?" card, maybe edited it,
+   * and pressed Add. `item` is the full item the first pass returned.
+   */
+  confirmEvent?: {
+    item: unknown;
+    eventTitle: string;
+    eventStartsAtISO: string;
+    eventEndsAtISO: string | null;
+    eventAllDay: boolean;
+    eventNotes: string | null;
+  };
 }
 
 // Mirrors the "personId is required for every action type except
@@ -78,6 +100,48 @@ function clarifyingQuestionFor(type: BrainDumpItem["type"]): string {
 export async function POST(request: Request) {
   const { supabase, household, selfPerson, timezone } = await requireHouseholdContext();
 
+  let body: CaptureRequestBody;
+  try {
+    body = (await request.json()) as CaptureRequestBody;
+  } catch {
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
+
+  // Second step of adding a calendar event: the person confirmed (and maybe
+  // edited) the card, so write it now. No AI involved.
+  if (body.confirmEvent) {
+    const base = brainDumpItemSchema.safeParse(body.confirmEvent.item);
+    const edits = confirmedEventSchema.safeParse(body.confirmEvent);
+    if (!base.success || !edits.success || base.data.type !== "create_calendar_event") {
+      return NextResponse.json({ status: "error", message: "That event looked out of date — try adding it again." });
+    }
+    const confirmPeople = await listPeopleForHousehold(supabase, household.id);
+    const confirmedPersonId = base.data.personId && isKnownPersonId(confirmPeople, base.data.personId) ? base.data.personId : null;
+    try {
+      await executeAction(
+        supabase,
+        household,
+        selfPerson,
+        {
+          ...base.data,
+          personId: confirmedPersonId,
+          eventTitle: edits.data.eventTitle,
+          eventStartsAtISO: edits.data.eventStartsAtISO,
+          eventEndsAtISO: edits.data.eventEndsAtISO,
+          eventAllDay: edits.data.eventAllDay,
+          eventNotes: edits.data.eventNotes,
+        } as typeof base.data,
+        timezone
+      );
+    } catch (error) {
+      return NextResponse.json({
+        status: "error",
+        message: friendlyMutationError(error, { fallback: "Couldn't save that — please try again." }),
+      });
+    }
+    return NextResponse.json({ status: "ready", confirmationMessage: `Added “${edits.data.eventTitle}” to your calendar.` });
+  }
+
   if (!isAiConfigured()) {
     return NextResponse.json({
       status: "unavailable",
@@ -85,12 +149,6 @@ export async function POST(request: Request) {
     });
   }
 
-  let body: CaptureRequestBody;
-  try {
-    body = (await request.json()) as CaptureRequestBody;
-  } catch {
-    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
-  }
   if (!Array.isArray(body.turns) || body.turns.length === 0) {
     return NextResponse.json({ error: "No message provided" }, { status: 400 });
   }
@@ -255,6 +313,23 @@ export async function POST(request: Request) {
   }
 
   const action = { ...item, personId };
+
+  // A calendar event is worth a look before it's written: show it for the
+  // person to adjust or add notes to, then save on their say-so.
+  if (action.type === "create_calendar_event" && action.eventTitle && action.eventStartsAtISO) {
+    const personLabel = personId ? people.find((p) => p.id === personId) : null;
+    return NextResponse.json({
+      status: "confirm",
+      item: { ...action, eventTitle: restore(action.eventTitle), summary: restore(action.summary) ?? action.summary },
+      preview: {
+        title: restore(action.eventTitle),
+        startsAtISO: action.eventStartsAtISO,
+        endsAtISO: action.eventEndsAtISO,
+        allDay: action.eventAllDay ?? false,
+        withName: personLabel ? personLabel.nickname || personLabel.full_name : null,
+      },
+    });
+  }
 
   let executeResult;
   try {
