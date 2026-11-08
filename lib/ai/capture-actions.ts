@@ -16,7 +16,8 @@ import { userActivitiesRepo } from "@/lib/db/repositories/activities";
 import { giftsRepo } from "@/lib/db/repositories/gifts";
 import { interactionsRepo, recordContactForCadence } from "@/lib/db/repositories/contact";
 import { calendarEventsRepo, eventAttendeesRepo } from "@/lib/db/repositories/calendar";
-import { timeOffEntriesRepo } from "@/lib/db/repositories/work-schedule";
+import { listWorkSchedulesForPerson, timeOffEntriesRepo, workSchedulesRepo } from "@/lib/db/repositories/work-schedule";
+import { planWorkScheduleUpdate } from "@/lib/work/schedule-update";
 import type { PersonRow } from "@/lib/db/database.types";
 
 /**
@@ -160,6 +161,38 @@ export async function executeAction(
       }
       return { table: "calendar_events", id: event.id };
     }
+    case "update_work_schedule": {
+      // The repeating weekly shifts (Settings > Your work schedule). An unnamed
+      // person is the account holder, same as time off.
+      const personId = action.personId ?? selfPerson.id;
+      const existing = await listWorkSchedulesForPerson(supabase, personId);
+      const plan = planWorkScheduleUpdate(existing, {
+        startTime: action.workStartTime,
+        endTime: action.workEndTime,
+        days: action.workDays,
+      });
+      if (!plan.ok) throw new Error(plan.error);
+      let firstId: string | null = null;
+      for (const change of plan.changes) {
+        if (change.kind === "update") {
+          await workSchedulesRepo.update(supabase, change.id, { start_time: change.startTime, end_time: change.endTime });
+          firstId = firstId ?? change.id;
+        } else if (change.kind === "create") {
+          const row = await workSchedulesRepo.create(supabase, {
+            person_id: personId,
+            day_of_week: change.dayOfWeek,
+            start_time: change.startTime,
+            end_time: change.endTime,
+            label: "Work",
+          });
+          firstId = firstId ?? row.id;
+        } else {
+          await workSchedulesRepo.remove(supabase, change.id);
+        }
+      }
+      if (!firstId) throw new Error("There was no work schedule to change.");
+      return { table: "work_schedules", id: firstId };
+    }
     case "create_person": {
       if (!action.personName) throw new Error("Missing person name");
       const row = await peopleRepo.create(supabase, {
@@ -268,6 +301,8 @@ export async function verifyExecuted(supabase: SupabaseClient, result: ExecuteAc
       return (await calendarEventsRepo.getById(supabase, result.id)) !== null;
     case "time_off_entries":
       return (await timeOffEntriesRepo.getById(supabase, result.id)) !== null;
+    case "work_schedules":
+      return (await workSchedulesRepo.getById(supabase, result.id)) !== null;
     default:
       return false;
   }

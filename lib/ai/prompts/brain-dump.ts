@@ -30,12 +30,14 @@ Rules:
 11. Use create_person when a specific NEW person is named who clearly isn't in the "Household people" list below and the transcript implies they're worth remembering going forward, not just a passing mention with no lasting detail (e.g. "my new neighbor Sarah, she's really into gardening" or "met a guy named Dave at the gym, he's a physical therapist" → create_person; "the cashier at the grocery store was nice" → not actionable, omit per rule 5). Set personName to their stated name, personRelationshipTypeGuess to your best guess from the allowed enum (default "friend" when nothing else fits — never guess "self", "spouse", "partner", "co_parent", or "child" without clear textual evidence), and personNotes to whatever detail was mentioned about them (null if genuinely nothing beyond the name). Never use create_person for someone who might already be in the household list under a nickname you don't recognize — only use it when the name plainly doesn't match anyone listed.
 12. Use create_activity for a NEW ongoing hobby/interest/activity to track going forward — distinct from create_calendar_event, which is for something with an actual date/time. Rule of thumb: a specific date or "next Tuesday"/"this weekend" style reference → create_calendar_event; an ongoing thing with no specific date ("I want to start doing pottery", "Cal's starting swim lessons", "thinking about getting into fly tying") → create_activity. Set personId to the household person the activity is for if named (resolved exactly like rule 2 — null if unnamed or ambiguous, in which case the app attributes it to the device's own user), activityType to a short name for the activity (e.g. "Pottery classes", "Swim lessons", "Fly tying"), and activityNotes to any other detail mentioned (null if none).
 13. For create_calendar_event: only set eventType to "work"/"family"/"kid_activity"/"travel" when the transcript actually signals it (an explicit word like "work"/"office"/"meeting", a named family member's activity, travel/destination language, etc.) — leave it null when nothing in the text points to a category (e.g. a bare title with no other context). Never guess "work" as a default just because the text sounds terse or task-like (P-08: a test string like "QA Bug Test" was previously misclassified as a work event on no real evidence) — the app already treats a null eventType as "personal", which is the correct default absent real signal.
+14. Use update_work_schedule when the person says their regular work hours changed or should be different ("I actually work 7am to 5pm", "change my shift to start at 6", "I'm off Fridays now" is NOT this: that is a schedule change you can't express here, so leave it out). This changes the repeating weekly schedule, NOT a one-off day: a single day's different hours is a create_calendar_event. Set workStartTime and workEndTime as 24-hour "HH:mm" (both, even if only one was mentioned: use the unchanged one from what they said, and if you genuinely can't tell one of them, leave the item out rather than guess). Set workDays to a comma-separated list of weekday numbers (0 = Sunday ... 6 = Saturday) ONLY if the transcript names specific days ("Monday through Thursday" = "1,2,3,4"); otherwise null, which means every day they already work. personId is null for the person's own schedule.
+15. Never approximate a request you have no item type for with a different item that merely sounds similar (for example, do not turn "change my schedule" or "cancel my standing appointment" into a person note or a new calendar event, because the summary would then claim a change that did not happen). If something cannot be expressed with the item types above, leave it out entirely; the app tells the person nothing was saved for it.
 
 Return ONLY a single JSON object with exactly this shape (no prose, no markdown fences):
 {
   "items": [
     {
-      "type": "add_interest" | "log_interaction" | "record_gift" | "create_calendar_event" | "append_person_note" | "add_gift_budget" | "add_time_off" | "create_person" | "create_activity",
+      "type": "add_interest" | "log_interaction" | "record_gift" | "create_calendar_event" | "append_person_note" | "add_gift_budget" | "add_time_off" | "create_person" | "create_activity" | "update_work_schedule",
       "summary": string,
       "personId": string | null,
       "personName": string | null,
@@ -64,7 +66,10 @@ Return ONLY a single JSON object with exactly this shape (no prose, no markdown 
       "timeOffStartDate": string | null,
       "timeOffEndDate": string | null,
       "timeOffReason": string | null,
-      "timeOffDestination": string | null
+      "timeOffDestination": string | null,
+      "workStartTime": string | null,
+      "workEndTime": string | null,
+      "workDays": string | null
     }
   ]
 }
@@ -85,6 +90,7 @@ export const brainDumpItemSchema = z.object({
     "add_time_off",
     "create_person",
     "create_activity",
+    "update_work_schedule",
   ]),
   summary: z.string(),
   personId: z.string().nullable(),
@@ -120,6 +126,11 @@ export const brainDumpItemSchema = z.object({
   timeOffEndDate: z.string().nullable(),
   timeOffReason: z.string().nullable(),
   timeOffDestination: z.string().nullable(),
+  // update_work_schedule: new shift hours as 24-hour "HH:mm" and the days they apply to
+  // (comma-separated 0-6, 0 = Sunday; null = every day the person already works).
+  workStartTime: z.string().nullable().optional(),
+  workEndTime: z.string().nullable().optional(),
+  workDays: z.string().nullable().optional(),
 });
 
 export const brainDumpResponseSchema = z.object({

@@ -41,6 +41,7 @@ const ACTION_TYPES = [
   "add_time_off",
   "create_person",
   "create_activity",
+  "update_work_schedule",
 ] as const;
 type ActionType = (typeof ACTION_TYPES)[number];
 
@@ -54,12 +55,15 @@ const TYPE_LABELS: Record<ActionType, string> = {
   add_time_off: "Time off",
   create_person: "New person",
   create_activity: "New activity",
+  update_work_schedule: "Work schedule change",
 };
 
 // D-140: the two types above are the "newly-created profile" types R-4
 // asks to walk through one-at-a-time (see the stepper in
 // BrainDumpClient's render below) rather than mixed flat into the
 // regular card list with everything else.
+const WORK_DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+
 const PROFILE_ITEM_TYPES = new Set<ActionType>(["create_person", "create_activity"]);
 
 // Excludes "self" -- brain dump can't create a second self person for the
@@ -148,6 +152,9 @@ interface EditableItem {
   personNotes: string;
   activityType: string;
   activityNotes: string;
+  workStartTime: string;
+  workEndTime: string;
+  workDays: string;
   status: "pending" | "saving" | "saved" | "error";
   errorMessage: string | null;
 }
@@ -183,6 +190,9 @@ interface ParsedApiItem {
   personNotes: string | null;
   activityType: string | null;
   activityNotes: string | null;
+  workStartTime: string | null;
+  workEndTime: string | null;
+  workDays: string | null;
 }
 
 let clientIdCounter = 0;
@@ -252,6 +262,9 @@ function fromApiItem(item: ParsedApiItem): EditableItem {
     personNotes: item.personNotes ?? "",
     activityType: item.activityType ?? "",
     activityNotes: item.activityNotes ?? "",
+    workStartTime: item.workStartTime ?? "",
+    workEndTime: item.workEndTime ?? "",
+    workDays: item.workDays ?? "",
     status: "pending",
     errorMessage: null,
   };
@@ -284,6 +297,8 @@ function isItemValid(item: EditableItem): boolean {
       return item.personName.trim().length > 0;
     case "create_activity":
       return item.activityType.trim().length > 0;
+    case "update_work_schedule":
+      return /^\d{2}:\d{2}$/.test(item.workStartTime) && /^\d{2}:\d{2}$/.test(item.workEndTime) && item.workEndTime > item.workStartTime;
   }
 }
 
@@ -325,6 +340,9 @@ function toExecutePayload(item: EditableItem): Record<string, unknown> {
     personNotes: null as string | null,
     activityType: null as string | null,
     activityNotes: null as string | null,
+    workStartTime: null as string | null,
+    workEndTime: null as string | null,
+    workDays: null as string | null,
   };
 
   switch (item.type) {
@@ -389,6 +407,13 @@ function toExecutePayload(item: EditableItem): Record<string, unknown> {
         ...base,
         activityType: item.activityType.trim(),
         activityNotes: item.activityNotes.trim() || null,
+      };
+    case "update_work_schedule":
+      return {
+        ...base,
+        workStartTime: item.workStartTime,
+        workEndTime: item.workEndTime,
+        workDays: item.workDays.trim() || null,
       };
   }
 }
@@ -864,7 +889,7 @@ function BrainDumpItemCard({
               aria-label="Person"
             >
               <option value="">
-                {item.type === "add_time_off" || item.type === "create_activity" ? "Me (default)" : "— Select —"}
+                {item.type === "add_time_off" || item.type === "create_activity" || item.type === "update_work_schedule" ? "Me (default)" : "— Select —"}
               </option>
               {people.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -872,7 +897,7 @@ function BrainDumpItemCard({
                 </option>
               ))}
             </select>
-            {item.personId == null && item.type !== "add_time_off" && item.type !== "create_activity" && (
+            {item.personId == null && item.type !== "add_time_off" && item.type !== "create_activity" && item.type !== "update_work_schedule" && (
               <p className="text-xs text-muted-foreground">
                 I couldn&apos;t tell for sure who this is about — pick someone to save it.
               </p>
@@ -1147,6 +1172,48 @@ function BrainDumpItemCard({
                 <option value="kid_activity">Kid activity</option>
                 <option value="travel">Travel</option>
               </select>
+            </div>
+          </>
+        )}
+
+        {item.type === "update_work_schedule" && (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1">
+                <Label>Starts</Label>
+                <Input type="time" value={item.workStartTime} disabled={disabled} onChange={(e) => onChange({ workStartTime: e.target.value })} />
+              </div>
+              <div className="flex flex-col gap-1">
+                <Label>Ends</Label>
+                <Input type="time" value={item.workEndTime} disabled={disabled} onChange={(e) => onChange({ workEndTime: e.target.value })} />
+              </div>
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label>Days</Label>
+              <div className="flex flex-wrap gap-2">
+                {WORK_DAY_LABELS.map((label, day) => {
+                  const chosen = item.workDays.split(",").filter(Boolean).includes(String(day));
+                  return (
+                    <label key={label} className="flex items-center gap-1 text-sm">
+                      <input
+                        type="checkbox"
+                        disabled={disabled}
+                        checked={chosen}
+                        onChange={(e) => {
+                          const set = new Set(item.workDays.split(",").filter(Boolean));
+                          if (e.target.checked) set.add(String(day));
+                          else set.delete(String(day));
+                          onChange({ workDays: [...set].sort().join(",") });
+                        }}
+                      />
+                      {label}
+                    </label>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {item.workDays ? "Only the checked days change." : "No days checked: every day you already work changes."} This updates your repeating weekly schedule.
+              </p>
             </div>
           </>
         )}
