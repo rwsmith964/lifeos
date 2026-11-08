@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, Brain, CalendarDays, Compass, Gift, House, Sun, Users } from "lucide-react";
+import { Bell, Brain, CalendarDays, Compass, Gift, House, ListChecks, Sun, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 // A1/A2 (audit pass 2026-09-11): the server layout used to build each nav
@@ -16,7 +16,7 @@ import type { LucideIcon } from "lucide-react";
 // Classes or other objects with methods are not supported" on every nav
 // render. Fix: send a plain string name across the boundary instead (100%
 // serializable) and do the icon lookup/render here, inside the client tree.
-export type NavIconName = "today" | "calendar" | "people" | "plan" | "household" | "gifts" | "brain-dump" | "notifications";
+export type NavIconName = "today" | "calendar" | "people" | "plan" | "household" | "gifts" | "tasks" | "brain-dump" | "notifications";
 
 const ICONS: Record<NavIconName, LucideIcon> = {
   today: Sun,
@@ -25,6 +25,7 @@ const ICONS: Record<NavIconName, LucideIcon> = {
   plan: Compass,
   household: House,
   gifts: Gift,
+  tasks: ListChecks,
   "brain-dump": Brain,
   notifications: Bell,
 };

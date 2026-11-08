@@ -136,3 +136,48 @@ describe("buildSuggestionLegs", () => {
     expect(legs.map((l) => l.eventId)).toEqual(["b"]);
   });
 });
+
+describe("buildSuggestions: errands from the invitee's note", () => {
+  const dinner = (over: Partial<SuggestionEvent> = {}) =>
+    ev({
+      id: "d",
+      title: "Thanksgiving at Rusty's",
+      startsAt: new Date(2026, 10, 26, 15, 0),
+      endsAt: new Date(2026, 10, 26, 19, 0),
+      description: "Hosted by Rusty\nYour note: Bake a pecan pie and bring ice",
+      ...over,
+    });
+
+  it("suggests shopping and cooking the evening before", () => {
+    const out = buildSuggestions({ events: [dinner()], travelMinutesByEventId: new Map(), skipKeys: none, now: NOW });
+    const titles = out.map((s) => s.title);
+    expect(titles).toContain("Shop for pecan pie");
+    expect(titles).toContain("Make pecan pie");
+    expect(titles).toContain("Shop for ice");
+    expect(titles).not.toContain("Make ice");
+    const shop = out.find((s) => s.title === "Shop for pecan pie")!;
+    expect(shop.kind).toBe("errand");
+    expect(shop.startsAt).toEqual(new Date(2026, 10, 25, 17, 0));
+    expect(out.find((s) => s.title === "Make pecan pie")!.startsAt).toEqual(new Date(2026, 10, 25, 18, 0));
+  });
+
+  it("skips dismissed errands individually", () => {
+    const key = suggestionKey("errand", "d:0:cook");
+    const out = buildSuggestions({ events: [dinner()], travelMinutesByEventId: new Map(), skipKeys: new Set([key]), now: NOW });
+    expect(out.map((s) => s.title)).not.toContain("Make pecan pie");
+    expect(out.map((s) => s.title)).toContain("Shop for pecan pie");
+  });
+
+  it("makes no errands when there is no note", () => {
+    const out = buildSuggestions({ events: [dinner({ description: "Hosted by Rusty" })], travelMinutesByEventId: new Map(), skipKeys: none, now: NOW });
+    expect(out).toEqual([]);
+  });
+
+  it("fits errands in before the event when the evening before has already passed", () => {
+    const soon = dinner({ startsAt: new Date(2026, 10, 9, 19, 0), endsAt: new Date(2026, 10, 9, 21, 0) });
+    const out = buildSuggestions({ events: [soon], travelMinutesByEventId: new Map(), skipKeys: none, now: NOW });
+    const shop = out.find((s) => s.title === "Shop for pecan pie")!;
+    expect(shop.startsAt > NOW).toBe(true);
+    expect(shop.endsAt <= new Date(2026, 10, 9, 18, 30)).toBe(true);
+  });
+});

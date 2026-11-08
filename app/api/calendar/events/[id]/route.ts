@@ -6,12 +6,16 @@
 import { NextResponse } from "next/server";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { calendarEventsRepo, eventAttendeesRepo, listAttendeesForEvent } from "@/lib/db/repositories/calendar";
+import { listPeopleForHousehold } from "@/lib/db/repositories/people";
+import { collectAttendeeNotes, parseItinerary } from "@/lib/events/invite-plan";
+import { createInvitationsForEvent } from "@/lib/events/invitations";
+import { getSiteOrigin } from "@/lib/http/site-origin";
 import { calendarEventUpdateSchema } from "@/lib/db/schemas";
 import { coordinatesForLocation } from "@/lib/calendar/geocode-event";
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { supabase, household } = await requireHouseholdContext();
+  const { supabase, household, selfPerson } = await requireHouseholdContext();
 
   const existing = await calendarEventsRepo.getById(supabase, id);
   if (!existing || existing.household_id !== household.id) {
@@ -19,6 +23,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
 
   const formData = await request.formData();
+  const householdPeople = await listPeopleForHousehold(supabase, household.id);
+  const hostRaw = String(formData.get("hostPersonId") ?? "");
+  const hostPersonId = householdPeople.some((p) => p.id === hostRaw) ? hostRaw : null;
   const date = String(formData.get("date") ?? "");
   const startTime = String(formData.get("startTime") ?? "09:00");
   const endTime = String(formData.get("endTime") ?? "10:00");
@@ -38,6 +45,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     ends_at: new Date(endsAt).toISOString(),
     all_day: allDay,
     location,
+    itinerary: parseItinerary(String(formData.get("itinerary") ?? "")),
+    host_person_id: hostPersonId,
     ...(locationChanged ? { location_lat: coords?.lat ?? null, location_lng: coords?.lng ?? null } : {}),
     prep_time_before_minutes: Number.isFinite(prepRaw) && prepRaw > 0 ? prepRaw : null,
     event_type: String(formData.get("eventType") ?? "personal"),
@@ -56,14 +65,39 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const currentAttendees = await listAttendeesForEvent(supabase, id);
     await Promise.all(currentAttendees.map((a) => supabase.from("event_attendees").delete().eq("id", a.id)));
 
-    const attendeeIds = formData.getAll("attendeePersonIds").map(String).filter(Boolean);
+    const attendeeIds = formData
+      .getAll("attendeePersonIds")
+      .map(String)
+      .filter((pid) => householdPeople.some((p) => p.id === pid));
+    const notes = collectAttendeeNotes(formData.entries());
     await Promise.all(
       attendeeIds.map((personId) =>
-        eventAttendeesRepo.create(supabase, { calendar_event_id: event.id, person_id: personId })
+        eventAttendeesRepo.create(supabase, {
+          calendar_event_id: event.id,
+          person_id: personId,
+          personal_notes: notes.get(personId) ?? "",
+        })
       )
     );
 
-    return NextResponse.json({ id: event.id });
+    let invited: string[] = [];
+    let missingContact: string[] = [];
+    if (formData.get("sendInvites") === "on" && attendeeIds.length > 0) {
+      const outcome = await createInvitationsForEvent(supabase, {
+        householdId: household.id,
+        hostName: selfPerson.nickname || selfPerson.full_name,
+        event,
+        attendees: attendeeIds.map((pid) => ({
+          person: householdPeople.find((p) => p.id === pid)!,
+          note: notes.get(pid) ?? "",
+        })),
+        origin: await getSiteOrigin(),
+      });
+      invited = outcome.invited;
+      missingContact = outcome.missingContact;
+    }
+
+    return NextResponse.json({ id: event.id, invited, missingContact });
   } catch (error) {
     console.error(`PATCH /api/calendar/events/${id} failed:`, error);
     return NextResponse.json({ error: "Couldn't save changes — please try again." }, { status: 500 });

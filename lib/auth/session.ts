@@ -81,8 +81,16 @@ export const requireHouseholdContext = cache(async (): Promise<HouseholdContext>
   const timezone = (userRow?.timezone as string | null | undefined) ?? "America/Los_Angeles";
 
   const people = await listPeopleForHousehold(supabase, household.id, { includeArchived: true });
-  const selfPerson = people.find((p) => p.user_id === user.id && p.relationship_type === "self");
-  if (!selfPerson) redirect("/onboarding");
+  // The household owner's own record is type "self". Someone invited into an
+  // existing household claims one of the existing people instead (a spouse,
+  // say), so they're recognised by their account rather than by that type.
+  const selfPerson =
+    people.find((p) => p.user_id === user.id && p.relationship_type === "self") ??
+    people.find((p) => p.user_id === user.id);
+  // A member with no person record yet has just accepted an invite: ask who
+  // they are, rather than sending them through onboarding (which would create
+  // a second household).
+  if (!selfPerson) redirect("/join");
 
   return { supabase, userId: user.id, household, selfPerson, memberships, timezone };
 });

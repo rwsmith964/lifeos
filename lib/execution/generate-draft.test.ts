@@ -39,6 +39,8 @@ function friendPerson(overrides: Partial<PersonRow> = {}): PersonRow {
     address_lng: null,
     show_work_schedule_on_calendar: false,
     relationship_label: null,
+    gifts_enabled: true,
+    linked_user_id: null,
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
     ...overrides,

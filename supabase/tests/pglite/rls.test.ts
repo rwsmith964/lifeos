@@ -1975,4 +1975,138 @@ describe("RLS end-to-end (PGlite, real migrations + real seed data)", () => {
       ).rejects.toThrow();
     });
   });
+
+  describe("todo_lists / todos (shared vs personal)", () => {
+    const SHARED_LIST = "c6000000-0000-0000-0000-000000000001";
+    const PERSONAL_LIST = "c6000000-0000-0000-0000-000000000002";
+
+    async function ensureLists() {
+      await asServiceRole(db, () =>
+        db.exec(
+          `insert into todo_lists (id, household_id, name, visibility, owner_person_id) values
+             ('${SHARED_LIST}', '${SEEDED_HOUSEHOLD}', 'Groceries', 'shared', '${RICHARD_PERSON}'),
+             ('${PERSONAL_LIST}', '${SEEDED_HOUSEHOLD}', 'Richard only', 'personal', '${RICHARD_PERSON}')
+           on conflict (id) do nothing;
+           insert into todos (household_id, list_id, title, created_by_person_id)
+             select '${SEEDED_HOUSEHOLD}', '${SHARED_LIST}', 'Milk', '${RICHARD_PERSON}'
+             where not exists (select 1 from todos where list_id = '${SHARED_LIST}');
+           insert into todos (household_id, list_id, title, created_by_person_id)
+             select '${SEEDED_HOUSEHOLD}', '${PERSONAL_LIST}', 'Surprise gift', '${RICHARD_PERSON}'
+             where not exists (select 1 from todos where list_id = '${PERSONAL_LIST}');`
+        )
+      );
+    }
+
+    it("the owner of a personal list sees it and its items, plus the shared list", async () => {
+      await ensureLists();
+      const lists = await asUser(db, RICHARD_USER, () =>
+        db.query(`select count(*)::int as n from todo_lists where id in ('${SHARED_LIST}', '${PERSONAL_LIST}');`)
+      );
+      expect((lists.rows[0] as { n: number }).n).toBe(2);
+      const items = await asUser(db, RICHARD_USER, () =>
+        db.query(`select count(*)::int as n from todos where list_id in ('${SHARED_LIST}', '${PERSONAL_LIST}');`)
+      );
+      expect((items.rows[0] as { n: number }).n).toBe(2);
+    });
+
+    it("another household member sees the shared list but not someone else's personal list or its items", async () => {
+      await ensureLists();
+      const lists = await asUser(db, CHILD_USER, () => db.query("select id from todo_lists;"));
+      const ids = lists.rows.map((r) => (r as { id: string }).id);
+      expect(ids).toContain(SHARED_LIST);
+      expect(ids).not.toContain(PERSONAL_LIST);
+      const items = await asUser(db, CHILD_USER, () => db.query("select title from todos;"));
+      const titles = items.rows.map((r) => (r as { title: string }).title);
+      expect(titles).toContain("Milk");
+      expect(titles).not.toContain("Surprise gift");
+    });
+
+    it("an outsider sees neither list nor any item", async () => {
+      await ensureLists();
+      const lists = await asUser(db, OUTSIDER_USER, () => db.query("select count(*)::int as n from todo_lists;"));
+      expect((lists.rows[0] as { n: number }).n).toBe(0);
+      const items = await asUser(db, OUTSIDER_USER, () => db.query("select count(*)::int as n from todos;"));
+      expect((items.rows[0] as { n: number }).n).toBe(0);
+    });
+
+    it("an outsider cannot add an item to another household's shared list", async () => {
+      await ensureLists();
+      await expect(
+        asUser(db, OUTSIDER_USER, () =>
+          db.exec(
+            `insert into todos (household_id, list_id, title, created_by_person_id) values ('${OUTSIDER_HOUSEHOLD}', '${SHARED_LIST}', 'sneaky', '${OUTSIDER_PERSON}');`
+          )
+        )
+      ).rejects.toThrow();
+    });
+  });
+
+  describe("linked households (sharing is opt-in, time ranges only)", () => {
+    let LINK = "";
+    const WIDE_START = "2000-01-01T00:00:00Z";
+    const WIDE_END = "2100-01-01T00:00:00Z";
+
+    // Other tests may already have linked these two households; reuse that link.
+    async function ensureLink() {
+      const res = await asServiceRole(db, () =>
+        db.query(
+          `insert into household_links (household_a_id, household_b_id, status) values ('${SEEDED_HOUSEHOLD}', '${OUTSIDER_HOUSEHOLD}', 'active')
+           on conflict (least(household_a_id, household_b_id), greatest(household_a_id, household_b_id)) do update set status = 'active'
+           returning id;`
+        )
+      );
+      LINK = (res.rows[0] as { id: string }).id;
+      await asServiceRole(db, () =>
+        db.exec(
+          `insert into household_link_shares (link_id, sharing_household_id, category, enabled) values ('${LINK}', '${SEEDED_HOUSEHOLD}', 'busy_times', false)
+           on conflict (link_id, sharing_household_id, category) do update set enabled = false;`
+        )
+      );
+    }
+
+    async function busyCountAs(user: string) {
+      const rows = await asUser(db, user, () =>
+        db.query(`select count(*)::int as n from linked_busy_blocks('${SEEDED_HOUSEHOLD}', '${WIDE_START}', '${WIDE_END}');`)
+      );
+      return (rows.rows[0] as { n: number }).n;
+    }
+
+    it("a linked household sees nothing until the other side switches busy times on", async () => {
+      await ensureLink();
+      expect(await busyCountAs(OUTSIDER_USER)).toBe(0);
+    });
+
+    it("after the owner shares busy times, the linked household sees time ranges", async () => {
+      await ensureLink();
+      await asServiceRole(db, () =>
+        db.exec(`update household_link_shares set enabled = true where link_id = '${LINK}' and category = 'busy_times';`)
+      );
+      expect(await busyCountAs(OUTSIDER_USER)).toBeGreaterThan(0);
+    });
+
+    it("sharing is one-directional: the sharing household does not gain access to the other side", async () => {
+      await ensureLink();
+      const rows = await asUser(db, RICHARD_USER, () =>
+        db.query(`select count(*)::int as n from linked_busy_blocks('${OUTSIDER_HOUSEHOLD}', '${WIDE_START}', '${WIDE_END}');`)
+      );
+      expect((rows.rows[0] as { n: number }).n).toBe(0);
+    });
+
+    it("someone not in either linked household sees nothing even when sharing is on", async () => {
+      await ensureLink();
+      await asServiceRole(db, () =>
+        db.exec(`update household_link_shares set enabled = true where link_id = '${LINK}' and category = 'busy_times';`)
+      );
+      expect(await busyCountAs(FRESH_USER)).toBe(0);
+    });
+
+    it("a revoked link stops sharing immediately", async () => {
+      await ensureLink();
+      await asServiceRole(db, () =>
+        db.exec(`update household_link_shares set enabled = true where link_id = '${LINK}' and category = 'busy_times'; update household_links set status = 'revoked' where id = '${LINK}';`)
+      );
+      expect(await busyCountAs(OUTSIDER_USER)).toBe(0);
+      await asServiceRole(db, () => db.exec(`update household_links set status = 'active' where id = '${LINK}';`));
+    });
+  });
 });

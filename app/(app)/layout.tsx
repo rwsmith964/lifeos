@@ -32,6 +32,7 @@ const NAV_ITEMS = [
   { href: "/people", label: "People", icon: "people" },
   { href: "/activities", label: "Plan", icon: "plan" },
   { href: "/household", label: "Household", icon: "household" },
+  { href: "/todos", label: "To-dos", icon: "tasks" },
   { href: "/gifts", label: "Gifts", icon: "gifts" },
   { href: "/brain-dump", label: "Brain dump", icon: "brain-dump" },
   { href: "/notifications", label: "Notifications", icon: "notifications" },

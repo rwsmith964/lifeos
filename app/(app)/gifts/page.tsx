@@ -13,7 +13,7 @@ import { GiftSuggestionGroups } from "./gift-suggestion-groups";
 import { GiftsTimeline } from "./gifts-timeline";
 
 export default async function GiftsPage() {
-  const { supabase, household, timezone } = await requireHouseholdContext();
+  const { supabase, household, selfPerson, timezone } = await requireHouseholdContext();
   const today = getZonedNow(timezone);
 
   const [rawSuggestions, people, givenGiftsThisYear] = await Promise.all([
@@ -34,7 +34,7 @@ export default async function GiftsPage() {
   // already used by the suggestion engine and Today's "Coming up" rail) --
   // not a new detection system, just a new place it's rendered.
   const HORIZON_DAYS = 90;
-  const upcomingOccasions = scanUpcomingOccasions(people, today, HORIZON_DAYS);
+  const upcomingOccasions = scanUpcomingOccasions(people, today, HORIZON_DAYS, new Set([selfPerson.id]));
   const peopleById = new Map(people.map((p) => [p.id, p]));
 
   // Budgets per person actually appearing in the pending groups -- fetched

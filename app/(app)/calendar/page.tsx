@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Camera, ChevronLeft, ChevronRight, MapPin, Plus, TriangleAlert } from "lucide-react";
+import { Camera, ChevronLeft, ChevronRight, MapPin, Plus, TriangleAlert, Users } from "lucide-react";
 import {
   addDays,
   addMonths,
@@ -64,6 +64,8 @@ import {
 import { cookies } from "next/headers";
 import { loadCalendarSuggestions } from "@/lib/calendar/suggestions-server";
 import { SuggestionsPanel, type SuggestionView } from "./suggestions-panel";
+import { InvitationsCard, type InvitationView } from "./invitations-card";
+import { getInvitationDetails, listPendingInvitationsForUser } from "@/lib/db/repositories/event-invitations";
 import { LayersPersist } from "./layers-persist";
 import { buildMonthCellChips, buildMonthCellCustodyBars, type CustodyBlockLike } from "@/lib/calendar/month-cell";
 import { Card, CardContent } from "@/components/ui/card";
@@ -586,7 +588,7 @@ export default async function CalendarPage({
   searchParams: Promise<{ month?: string; day?: string; view?: string; range?: string; layers?: string }>;
 }) {
   const { month: monthParam, day: dayParam, view: viewParam, range: rangeParam, layers: layersParam } = await searchParams;
-  const { supabase, household, selfPerson, timezone } = await requireHouseholdContext();
+  const { supabase, household, selfPerson, userId, timezone } = await requireHouseholdContext();
   const view = viewParam === "custody" ? "custody" : "all";
   // Layers: what's shown beyond the viewer's own day. URL param first, then
   // the remembered choice, then the defaults (lib/calendar/layers.ts).
@@ -1001,6 +1003,28 @@ export default async function CalendarPage({
     })
   );
 
+  // Invitations from connected people, waiting for an answer. Tolerates the
+  // migration not being applied yet.
+  const invitationViews: InvitationView[] = [];
+  try {
+    const pendingInvites = await listPendingInvitationsForUser(supabase, userId);
+    for (const inv of pendingInvites.slice(0, 5)) {
+      const details = await getInvitationDetails(supabase, inv.token);
+      if (!details) continue;
+      const start = new Date(details.startsAt);
+      invitationViews.push({
+        token: inv.token,
+        title: details.eventTitle,
+        hostName: details.hostName ?? details.hostHousehold,
+        whenLabel: details.allDay ? format(start, "EEE, MMM d") : `${format(start, "EEE, MMM d")} at ${format(start, "h:mm a")}`,
+        location: details.location,
+        personalNote: details.personalNotes || null,
+      });
+    }
+  } catch (error) {
+    console.error("Calendar page: invitations failed (non-fatal):", error);
+  }
+
   // Suggested drive-time and prep blocks for the viewer's own upcoming events
   // (week/agenda: the whole week; day/month: just the selected day). A failure
   // here only means no suggestions, never a broken calendar.
@@ -1027,6 +1051,7 @@ export default async function CalendarPage({
         key: sg.key,
         kind: sg.kind,
         eventId: sg.eventId,
+        suffix: sg.suffix,
         title: sg.title,
         detail: sg.detail,
         startsAtISO: sg.startsAt.toISOString(),
@@ -1197,6 +1222,11 @@ export default async function CalendarPage({
             <Button asChild size="icon" variant="outline" aria-label="Add from a photo of an invitation" title="Add from a photo">
               <Link href="/calendar/invite">
                 <Camera className="size-4" />
+              </Link>
+            </Button>
+            <Button asChild size="icon" variant="outline" aria-label="Find a time with someone" title="Find a time with someone">
+              <Link href="/calendar/find-time">
+                <Users className="size-4" />
               </Link>
             </Button>
           </div>
@@ -1495,6 +1525,7 @@ export default async function CalendarPage({
       </Card>
       )}
 
+      {view === "all" && <InvitationsCard invitations={invitationViews} />}
       {view === "all" && <SuggestionsPanel suggestions={suggestionViews} showDay={range === "week" || range === "agenda"} />}
 
       <div id="selected-day" className="flex flex-col gap-2 scroll-mt-4">

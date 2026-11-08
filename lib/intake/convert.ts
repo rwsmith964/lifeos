@@ -23,6 +23,8 @@ import { momentsRepo } from "../db/repositories/relationship-gift-engine";
 import { recipesRepo } from "../db/repositories/household";
 import { usersRepo } from "../db/repositories/households";
 import { intakeDraftsRepo } from "../db/repositories/intake";
+import { todosRepo } from "../db/repositories/todos";
+import { ensureDefaultTodoList } from "../todos/default-list";
 import type { HouseholdRow, IntakeDraftRow, PersonRow } from "../db/database.types";
 import { withActionLog } from "../trust/action-log";
 import { verifyRecordPersisted, buildVerifiedConfirmationMessage } from "../trust/verified-completion";
@@ -60,7 +62,7 @@ export interface ConvertContext {
   timezone?: string | null;
 }
 
-export const NON_CONVERTIBLE_TYPES = ["task", "ambiguous"] as const;
+export const NON_CONVERTIBLE_TYPES = ["ambiguous"] as const;
 
 function fieldValue(fields: Record<string, ExtractedField>, key: string): unknown {
   return fields[key]?.value ?? null;
@@ -416,7 +418,38 @@ export async function convertDraftToRecord(ctx: ConvertContext, draft: IntakeDra
       };
     }
 
-    case "task":
+    case "task": {
+      const description = requireString(fields, "description");
+      const dueRaw = fieldValue(fields, "dueDate");
+      // Only a clean YYYY-MM-DD becomes a due date; anything vaguer stays in the text.
+      const dueDate = typeof dueRaw === "string" && /^d{4}-d{2}-d{2}/.test(dueRaw) ? dueRaw.slice(0, 10) : null;
+      const list = await ensureDefaultTodoList(supabase, household.id, selfPerson.id);
+
+      const todo = await withActionLog(supabase, {
+        householdId: household.id,
+        feature: "intake_convert",
+        describe: (row: Awaited<ReturnType<typeof todosRepo.create>>) => `Added the to-do "${row.title}" from an intake draft`,
+        tableName: "todos",
+        recordIdOf: (row) => row.id,
+        undoable: true,
+      }, () =>
+        todosRepo.create(supabase, {
+          household_id: household.id,
+          list_id: list.id,
+          title: description,
+          due_date: dueDate,
+          created_by_person_id: selfPerson.id,
+        })
+      );
+
+      const verification = await verifyRecordPersisted(supabase, todosRepo.getById, todo.id, { title: description });
+      return {
+        table: "todos",
+        recordId: todo.id,
+        confirmationMessage: buildVerifiedConfirmationMessage(verification, (row) => `added "${row.title}" to your to-dos`),
+      };
+    }
+
     case "ambiguous":
     default:
       throw new Error(`Drafts detected as "${draft.detected_record_type ?? "unknown"}" can't be auto-converted -- resolve manually in the review queue`);

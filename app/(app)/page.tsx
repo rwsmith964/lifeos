@@ -132,7 +132,7 @@ export default async function BriefPage() {
     listActiveSuggestionsForHousehold(supabase, household.id),
     listActiveCadencesForHousehold(supabase, household.id),
   ]);
-  const upcomingOccasions = scanUpcomingOccasions(householdPeople, today, occasionHorizonDays).slice(0, 4);
+  const upcomingOccasions = scanUpcomingOccasions(householdPeople, today, occasionHorizonDays, new Set([selfPerson.id])).slice(0, 4);
   const suggestionCountByPerson = new Map<string, number>();
   for (const s of activeSuggestions) {
     suggestionCountByPerson.set(s.person_id, (suggestionCountByPerson.get(s.person_id) ?? 0) + 1);

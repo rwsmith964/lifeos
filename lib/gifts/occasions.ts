@@ -102,9 +102,12 @@ export interface OccasionCandidate {
  * doesn't suggest gifts for yourself.
  */
 export function scanUpcomingOccasions(
-  people: Pick<PersonRow, "id" | "relationship_type" | "birthdate" | "anniversary" | "is_archived">[],
+  people: (Pick<PersonRow, "id" | "relationship_type" | "birthdate" | "anniversary" | "is_archived"> & { gifts_enabled?: boolean })[],
   today: Date,
-  horizonDays: number
+  horizonDays: number,
+  // People who never get gift reminders for this viewer (themselves, when
+  // they're a household member whose own record isn't type "self").
+  excludePersonIds: ReadonlySet<string> = new Set()
 ): OccasionCandidate[] {
   const horizonEnd = addDays(startOfDay(today), horizonDays);
   const withinHorizon = (date: Date) => !isAfter(date, horizonEnd);
@@ -112,7 +115,9 @@ export function scanUpcomingOccasions(
   const candidates: OccasionCandidate[] = [];
 
   for (const person of people) {
-    if (person.is_archived || person.relationship_type === "self") continue;
+    // gifts_enabled === false: "we don't get gifts for this person".
+    if (person.is_archived || person.relationship_type === "self" || person.gifts_enabled === false) continue;
+    if (excludePersonIds.has(person.id)) continue;
 
     if (person.birthdate) {
       const next = nextOccurrenceOfMonthDay(extractMonthDay(person.birthdate), today);
@@ -198,10 +203,10 @@ function recentPastOccasionForPerson(
  * (archived or 'self').
  */
 export function nearestUpcomingOccasionForPerson(
-  person: Pick<PersonRow, "id" | "relationship_type" | "birthdate" | "anniversary" | "is_archived">,
+  person: Pick<PersonRow, "id" | "relationship_type" | "birthdate" | "anniversary" | "is_archived"> & { gifts_enabled?: boolean },
   today: Date
 ): OccasionCandidate | null {
-  if (person.is_archived || person.relationship_type === "self") return null;
+  if (person.is_archived || person.relationship_type === "self" || person.gifts_enabled === false) return null;
 
   const todayStart = startOfDay(today);
   const recentPast = recentPastOccasionForPerson(person, todayStart);

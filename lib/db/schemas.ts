@@ -150,7 +150,7 @@ export const householdLinkInsertSchema = z.object({
 
 // 'owner' and 'child' deliberately excluded — see the check constraint's
 // comment in 20260827000001_household_invites.sql for why.
-export const householdInviteRoleSchema = z.enum(["adult", "viewer"]);
+export const householdInviteRoleSchema = z.enum(["adult", "viewer", "child"]);
 
 export const householdInviteInsertSchema = z.object({
   invited_email: z.string().trim().toLowerCase().email({ message: "Enter a valid email address." }),
@@ -178,6 +178,7 @@ export const personInsertSchema = z.object({
   address_lng: z.number().min(-180).max(180).nullable().optional(),
   show_work_schedule_on_calendar: z.boolean().optional(),
   relationship_label: z.string().nullable().optional(),
+  gifts_enabled: z.boolean().optional(),
 });
 
 export const personInterestInsertSchema = z.object({
@@ -379,6 +380,8 @@ export const calendarEventInsertSchema = z
     external_source: z.string().nullable().optional(),
     external_id: z.string().nullable().optional(),
     related_activity_id: uuid.nullable().optional(),
+    itinerary: z.array(z.object({ time: z.string(), title: z.string().min(1), notes: z.string() })).optional(),
+    host_person_id: uuid.nullable().optional(),
   })
   .refine((v) => new Date(v.ends_at) >= new Date(v.starts_at), {
     message: "End time must be after the start time.",
@@ -422,6 +425,8 @@ export const calendarEventUpdateSchema = z
     external_source: z.string().nullable().optional(),
     external_id: z.string().nullable().optional(),
     related_activity_id: uuid.nullable().optional(),
+    itinerary: z.array(z.object({ time: z.string(), title: z.string().min(1), notes: z.string() })).optional(),
+    host_person_id: uuid.nullable().optional(),
   })
   .refine((v) => new Date(v.ends_at) >= new Date(v.starts_at), {
     message: "End time must be after the start time.",

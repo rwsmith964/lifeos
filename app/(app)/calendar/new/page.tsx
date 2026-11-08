@@ -3,18 +3,20 @@ import { requireHouseholdContext } from "@/lib/auth/session";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
 import { Breadcrumb } from "@/components/nav/breadcrumb";
 import { EventForm } from "../event-form";
+import { listGroupsForHousehold } from "@/lib/db/repositories/groups";
 
 export default async function NewCalendarEventPage({
   searchParams,
 }: {
-  searchParams: Promise<{ date?: string }>;
+  searchParams: Promise<{ date?: string; start?: string; end?: string; title?: string; with?: string }>;
 }) {
   const { supabase, household } = await requireHouseholdContext();
   // excludeSelf: true matches the People tab (P0-5) -- you're always
   // implicitly on your own calendar, so you're not a selectable attendee
   // of your own event.
   const people = await listPeopleForHousehold(supabase, household.id, { excludeSelf: true });
-  const { date } = await searchParams;
+  const groups = await listGroupsForHousehold(supabase, household.id).catch(() => []);
+  const { date, start, end, title, with: withId } = await searchParams;
 
   // The calendar day view links here as `/calendar/new?date=YYYY-MM-DD`
   // for whichever day is selected — previously ignored entirely, so
@@ -36,8 +38,20 @@ export default async function NewCalendarEventPage({
       </p>
       <EventForm
         people={people}
+        groups={groups}
         endpoint="/api/calendar/events"
-        defaults={isValidDate ? { date } : undefined}
+        defaults={
+          isValidDate
+            ? {
+                date,
+                // Prefilled by "Find a time": the suggested slot, a title, and who to invite.
+                ...(start && /^d{2}:d{2}$/.test(start) ? { startTime: start } : {}),
+                ...(end && /^d{2}:d{2}$/.test(end) ? { endTime: end } : {}),
+                ...(title ? { title: title.slice(0, 200) } : {}),
+                ...(withId && people.some((p) => p.id === withId) ? { attendeePersonIds: [withId] } : {}),
+              }
+            : undefined
+        }
         submitLabel="Save event"
         pendingLabel="Saving…"
       />
