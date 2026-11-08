@@ -297,6 +297,16 @@ export async function POST(request: Request) {
     });
   }
 
+  // Changing the repeating work schedule rewrites every week: look at it first
+  // (Brain Dump's review list shows the new hours and days before it saves).
+  if (items[0].type === "update_work_schedule") {
+    return NextResponse.json({
+      status: "handoff",
+      target: "brain-dump",
+      confirmationMessage: "That changes your repeating work schedule, so I'm opening it in Brain Dump for you to check first.",
+    });
+  }
+
   const item = items[0];
   const restore = (text: string | null) => (text ? tokenMap.restoreRealNames(text) : text);
 

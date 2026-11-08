@@ -79,6 +79,7 @@ export const captureActionSchema = z.object({
         "add_time_off",
         "create_person",
         "create_activity",
+        "update_work_schedule",
       ]),
       personId: z.string().nullable(),
       // D-140: kept structurally in sync with brainDumpItemSchema (the
@@ -117,6 +118,9 @@ export const captureActionSchema = z.object({
       timeOffEndDate: z.string().nullable(),
       timeOffReason: z.string().nullable(),
       timeOffDestination: z.string().nullable(),
+      workStartTime: z.string().nullable().optional(),
+      workEndTime: z.string().nullable().optional(),
+      workDays: z.string().nullable().optional(),
     })
     .nullable(),
   confirmationMessage: z.string().nullable(),
