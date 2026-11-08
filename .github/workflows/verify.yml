@@ -149,6 +149,13 @@ jobs:
       - name: Run Playwright E2E suite
         run: pnpm exec playwright test
 
+      # The app's own server log (where a thrown Server Action's real error
+      # message lives) was previously discarded, so an e2e failure showing
+      # only "Something went wrong" in the browser had no way to say why.
+      - name: Show app server log
+        if: failure()
+        run: tail -n 300 /tmp/next-start.log || true
+
       - name: Stop app
         if: always()
         run: kill "$(cat /tmp/next-start.pid)" 2>/dev/null || true
