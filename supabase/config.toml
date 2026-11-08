@@ -26,6 +26,6 @@ enable_signup = true
 enable_signup = true
 enable_confirmations = false
 
-[inbucket]
+[local_smtp]
 enabled = true
 port = 54324

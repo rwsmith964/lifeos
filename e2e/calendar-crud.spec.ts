@@ -16,7 +16,7 @@ import { signIn, SMITH_CREDENTIALS } from "./helpers/auth";
 // here would never match, so this file scopes by an exact text match
 // inside the Card instead.
 function dayCardWithTitle(page: Page, titleText: string): Locator {
-  return page.locator('[data-slot="card"]').filter({ has: page.getByText(titleText, { exact: true }) });
+  return page.locator('[data-slot="card"]').filter({ has: page.getByText(titleText, { exact: true }) }).last();
 }
 
 test.describe("Calendar event create/edit/delete", () => {

@@ -10,7 +10,7 @@ import { FIXTURE_EVENT_DATE, FIXTURE_TIME_OFF_START, FIXTURE_TIME_OFF_END } from
 // e2e/calendar-crud.spec.ts's dayCardWithTitle for the same fix) -- so the
 // final round-trip check below must not reuse `cardWithTitle` for it.
 function dayCardWithTitle(page: import("@playwright/test").Page, titleText: string) {
-  return page.locator('[data-slot="card"]').filter({ has: page.getByText(titleText, { exact: true }) });
+  return page.locator('[data-slot="card"]').filter({ has: page.getByText(titleText, { exact: true }) }).last();
 }
 
 // D-148, spec 2: Brain Dump round trip against the AI_TEST_MODE fixture

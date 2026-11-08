@@ -130,7 +130,7 @@ export function GiftSuggestionGroups({
 
 function GiftIdeaCard({ suggestion }: { suggestion: SuggestionWithStatus }) {
   return (
-    <div className="flex flex-col gap-3 rounded-card border border-line bg-surface p-4">
+    <div data-testid="gift-idea-card" className="flex flex-col gap-3 rounded-card border border-line bg-surface p-4">
       <div className="flex items-start justify-between gap-2">
         <p className="font-sans text-card-headline text-ink">{suggestion.title}</p>
         {/* D4: "HIGH/MID/LOW" named no axis -- this is price_tier, so say

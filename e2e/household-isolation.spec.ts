@@ -30,6 +30,10 @@ test.describe("Two-household data isolation", () => {
     await expect(page.getByText(CANARY)).toHaveCount(0);
     await expect(page.getByText("Jamie Jones")).toHaveCount(0);
     await expect(page.getByText("Jordan Jones")).toHaveCount(0);
+    // The app shows a person's nickname in place of their full name, so a
+    // leak of Jordan would now surface as "Jordy" -- assert that is absent
+    // too, or this check would pass straight through a real leak.
+    await expect(page.getByText("Jordy")).toHaveCount(0);
 
     const eventDate = new Date();
     eventDate.setDate(eventDate.getDate() + 3);
@@ -45,6 +49,7 @@ test.describe("Two-household data isolation", () => {
     await page.goto(`/people/${JORDAN_JONES_ID}`);
     await expect(page.getByText(CANARY)).toHaveCount(0);
     await expect(page.locator("body")).not.toContainText("Jordan Jones");
+    await expect(page.locator("body")).not.toContainText("Jordy");
 
     await page.goto(`/calendar/${JONES_EVENT_ID}/edit`);
     await expect(page.getByText(CANARY)).toHaveCount(0);
@@ -61,7 +66,9 @@ test.describe("Two-household data isolation", () => {
     // Jamie's own data is verified directly below via their person detail
     // page and the calendar, neither of which is subject to that exclusion.
     await page.goto("/people");
-    await expect(page.getByText("Jordan Jones").first()).toBeVisible();
+    // Jordan Jones's seeded nickname is "Jordy", which is what the People
+    // list shows instead of the full name.
+    await expect(page.getByText("Jordy").first()).toBeVisible();
 
     await page.goto(`/people/${JAMIE_JONES_ID}`);
     await expect(page.getByText(CANARY).first()).toBeVisible();

@@ -21,8 +21,10 @@ test.describe("Nickname resolution via Quick Capture", () => {
     await signIn(page, SMITH_CREDENTIALS);
     await page.goto("/");
 
-    await page.getByRole("button", { name: "Quick capture" }).click();
-    const input = page.getByPlaceholder("Type or dictate a note…");
+    // Desktop: the header command bar is the capture entry point (its
+    // accessible name includes the "⌘K" hint, hence the prefix match).
+    await page.getByRole("button", { name: /^Add or dump a thought/ }).click();
+    const input = page.getByPlaceholder("Add or dump a thought…");
     await expect(input).toBeVisible();
     await input.fill("Cal really wants to try rock climbing");
     await input.press("Enter");

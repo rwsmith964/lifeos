@@ -16,10 +16,14 @@ function personSection(page: Page, personName: string): Locator {
   return page.locator("section").filter({ has: page.getByRole("heading", { level: 2, name: personName, exact: true }) });
 }
 
+// The gifts redesign (GiftIdeaCard in app/(app)/gifts/gift-suggestion-groups.tsx)
+// replaced the shared Card/CardTitle primitives with a plain card carrying
+// data-testid="gift-idea-card" -- the title is a bare <p>, so match on exact
+// text inside that hook instead of a card-title slot that no longer exists.
 function cardWithTitleFor(page: Page, personName: string, titleText: string): Locator {
-  return personSection(page, personName).locator('[data-slot="card"]').filter({
-    has: page.locator('[data-slot="card-title"]', { hasText: titleText }),
-  });
+  return personSection(page, personName)
+    .getByTestId("gift-idea-card")
+    .filter({ has: page.getByText(titleText, { exact: true }) });
 }
 
 // D-148, specs 3 & 5: gift suggestion generation, save/dismiss/undo, and
@@ -50,6 +54,10 @@ const CALLAN_PERSON_ID = "3000000d-0000-0000-0000-000000000001";
 
 async function generateFixtureSuggestions(page: import("@playwright/test").Page, personId: string) {
   await page.goto(`/people/${personId}`);
+  // The person page is split into Overview/Schedule/Gifts/History tabs, and
+  // tabs other than the active one are hidden -- open Gifts first or the
+  // form below isn't reachable.
+  await page.getByRole("radio", { name: "Gifts", exact: true }).click();
   // The person page renders two separate forms with an "Occasion date"
   // field -- GenerateSuggestionsForm ("Get gift ideas") and RecordGiftForm
   // ("Record gift", for logging a past gift) -- so a bare page-level
@@ -58,7 +66,21 @@ async function generateFixtureSuggestions(page: import("@playwright/test").Page,
   const generateForm = page.locator("form").filter({ has: page.getByRole("button", { name: "Get gift ideas", exact: true }) });
   await generateForm.getByLabel("Occasion date").fill(occasionDatePlus15());
   await generateForm.getByRole("button", { name: "Get gift ideas", exact: true }).click();
-  await page.waitForURL(/\/gifts$/, { timeout: 20_000 });
+  try {
+    await page.waitForURL(/\/gifts$/, { timeout: 20_000 });
+  } catch (error) {
+    // Generation reports failure (or "no new ideas") inline on this form and
+    // stays on the page -- surface that text so a CI failure says WHY instead
+    // of just "timed out waiting for /gifts".
+    const formText = (await generateForm.innerText({ timeout: 2_000 }).catch(() => "(form not readable)")).replace(/\s+/g, " ").trim();
+    const bodyText = (await page.locator("body").innerText({ timeout: 2_000 }).catch(() => "(body not readable)"))
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 500);
+    throw new Error(
+      `Get gift ideas never navigated to /gifts. URL now: ${page.url()}. Form says: "${formText}". Page says: "${bodyText}". Original: ${String(error)}`
+    );
+  }
 }
 
 test.describe("Gift suggestions", () => {
@@ -117,21 +139,20 @@ test.describe("Gift suggestions", () => {
     await signIn(page, SMITH_CREDENTIALS);
     await generateFixtureSuggestions(page, CALLAN_PERSON_ID);
 
-    const orderByText = (card: import("@playwright/test").Locator) =>
-      card.locator("p").filter({ hasText: /left to order|Needed now/ });
+    // Urgency is now stated ONCE per occasion, as a badge on the occasion
+    // header (D4 in the audit pass), not repeated on every card. The fixture
+    // generates three suggestions for one occasion (furniture past due,
+    // standard and digital still in the future); the header reports the most
+    // urgent of them.
+    const section = personSection(page, "Callan Smith");
+    await expect(cardWithTitleFor(page, "Callan Smith", "Fixture Gift Alpha")).toBeVisible({ timeout: 10_000 });
 
-    const alpha = cardWithTitleFor(page, "Callan Smith", "Fixture Gift Alpha"); // furniture, past due
-    const beta = cardWithTitleFor(page, "Callan Smith", "Fixture Gift Beta"); // standard, future
-    const gamma = cardWithTitleFor(page, "Callan Smith", "Fixture Gift Gamma"); // digital, future
+    const urgency = section.locator('[data-slot="badge"]').filter({ hasText: /left to order|Needed now/ });
+    await expect(urgency).toHaveCount(1);
+    await expect(urgency).toHaveText("Needed now");
+    await expect(urgency).toHaveClass(/slipping/);
 
-    await expect(alpha).toBeVisible({ timeout: 10_000 });
-    await expect(orderByText(alpha)).toHaveText("Needed now");
-    await expect(orderByText(alpha)).toHaveClass(/text-destructive/);
-
-    await expect(orderByText(beta)).toHaveText(/^\d+ days? left to order$/);
-    await expect(orderByText(beta)).not.toHaveClass(/text-destructive/);
-
-    await expect(orderByText(gamma)).toHaveText(/^\d+ days? left to order$/);
-    await expect(orderByText(gamma)).not.toHaveClass(/text-destructive/);
+    // Never a past-tense or negative phrasing for the past-due item.
+    await expect(section).not.toContainText(/days? ago|overdue|-\d+ days?/i);
   });
 });
