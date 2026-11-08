@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
 import { Breadcrumb } from "@/components/nav/breadcrumb";
@@ -26,6 +27,13 @@ export default async function NewCalendarEventPage({
     <div className="flex flex-col gap-4 p-4">
       <Breadcrumb items={[{ label: "Calendar", href: "/calendar" }, { label: "Add event" }]} />
       <h1 className="text-xl font-semibold">Add event</h1>
+      <p className="text-sm text-muted-foreground">
+        Have an invitation?{" "}
+        <Link href="/calendar/invite" className="underline underline-offset-2">
+          Add it from a photo
+        </Link>{" "}
+        instead.
+      </p>
       <EventForm
         people={people}
         endpoint="/api/calendar/events"

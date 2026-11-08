@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, MapPin, Plus, TriangleAlert } from "lucide-react";
+import { Camera, ChevronLeft, ChevronRight, MapPin, Plus, TriangleAlert } from "lucide-react";
 import {
   addDays,
   addMonths,
@@ -52,6 +52,7 @@ import { getWeekendPlanForDate } from "@/lib/db/repositories/system";
 import { birthdaysInRange, birthdayTitle } from "@/lib/calendar/birthdays";
 import { workShiftsInRange, timeOffInRange, workShiftTitle, timeOffTitle, withTimeOfDay } from "@/lib/calendar/work-schedule";
 import { buildChildColorMap, buildParentColorMap } from "@/lib/custody/colors";
+import { reconcileDuplicateEvents, busyDayIsCoveredByEvent } from "@/lib/calendar/reconcile";
 import { buildMonthCellChips, buildMonthCellCustodyBars, type CustodyBlockLike } from "@/lib/calendar/month-cell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -789,7 +790,10 @@ export default async function CalendarPage({
   // untouched. Only applies to the shared "all" view; /calendar/custody
   // stays fully visible per D-068's precedent.
   const childPersonIds = new Set(people.filter((p) => p.relationship_type === "child").map((p) => p.id));
-  const eventItems: DayItem[] = events
+  // The same thing often arrives twice (typed in by hand and via an imported
+  // feed); show it once, keeping the best details from each copy.
+  const { events: reconciledEvents } = reconcileDuplicateEvents(events);
+  const eventItems: DayItem[] = reconciledEvents
     .filter((e) => {
       if (view === "custody") return true;
       const attendeeRows = attendeeRowsByEvent.get(e.id) ?? [];
@@ -933,7 +937,17 @@ export default async function CalendarPage({
   // partner's busy days (all-day, their own colour) and a child's school hours
   // (timed, drawn as a faint band behind the grid).
   const availabilityItems: DayItem[] = availabilitySchedules.flatMap((schedule) =>
-    expandAvailability(schedule, gridStart, gridEnd).map((o): DayItem => {
+    expandAvailability(schedule, gridStart, gridEnd)
+      // A shared calendar may already hold an explicit all-day event for these days.
+      .filter(
+        (o) =>
+          o.kind !== "busy" ||
+          !busyDayIsCoveredByEvent(
+            { personName: peopleById.get(o.personId) ?? "", label: o.label, date: o.date },
+            reconciledEvents
+          )
+      )
+      .map((o): DayItem => {
       const personName = peopleById.get(o.personId) ?? "Someone";
       const midnight = new Date(`${o.date}T00:00:00`);
       const timed = o.startTime != null && o.endTime != null;
@@ -1101,6 +1115,11 @@ export default async function CalendarPage({
                   day the user had just clicked. */}
               <Link href={`/calendar/new?date=${selectedDayKey}`}>
                 <Plus className="size-4" /> New
+              </Link>
+            </Button>
+            <Button asChild size="icon" variant="outline" aria-label="Add from a photo of an invitation" title="Add from a photo">
+              <Link href="/calendar/invite">
+                <Camera className="size-4" />
               </Link>
             </Button>
           </div>
