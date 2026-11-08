@@ -35,6 +35,7 @@ import { listPeopleForHousehold } from "@/lib/db/repositories/people";
 import { friendlyMutationError } from "@/lib/db/errors";
 import { isFeatureEnabled } from "@/lib/flags";
 import { parseFindTimeIntent } from "@/lib/scheduling/find-time";
+import { looksLikeDayPlan } from "@/lib/planning/detect";
 import { personDisplayName } from "@/lib/people/display-name";
 
 interface CaptureRequestBody {
@@ -222,8 +223,18 @@ export async function POST(request: Request) {
     // pile of things and lets you review them all. Rather than refusing, hand
     // the text over to it (the panel carries the text across and Brain Dump
     // starts processing it right away).
+    // A string of places to go is a day to plan (order, timing, food, drive
+    // time), which is a conversation; anything else goes to Brain Dump.
+    if (looksLikeDayPlan(items.map((i) => i.type))) {
+      return NextResponse.json({
+        status: "handoff",
+        target: "plan-day",
+        confirmationMessage: "That sounds like a day out. Let's plan it together.",
+      });
+    }
     return NextResponse.json({
       status: "handoff",
+      target: "brain-dump",
       confirmationMessage: `That's ${items.length} things, so I'm sending it to Brain Dump to sort out.`,
     });
   }

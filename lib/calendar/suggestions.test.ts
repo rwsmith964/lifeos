@@ -181,3 +181,11 @@ describe("buildSuggestions: errands from the invitee's note", () => {
     expect(shop.endsAt <= new Date(2026, 10, 9, 18, 30)).toBe(true);
   });
 });
+
+describe("buildSuggestions: drive blocks already on the calendar", () => {
+  it("doesn't suggest leaving when a drive block already ends at the event's start", () => {
+    const drive = ev({ id: "drive", title: "Drive to Cal's game", eventType: "travel", startsAt: new Date(2026, 10, 9, 16, 30), endsAt: new Date(2026, 10, 9, 17, 0) });
+    const out = buildSuggestions({ events: [drive, ev({ id: "a" })], travelMinutesByEventId: new Map([["a", 25]]), skipKeys: none, now: NOW });
+    expect(out).toEqual([]);
+  });
+});

@@ -16,6 +16,8 @@ import { cn } from "@/lib/utils";
 // unchanged from the original component; only presentation and how it's
 // triggered moved.
 /** sessionStorage key carrying text from Quick Capture to Brain Dump. */
+import { PLAN_DAY_HANDOFF_KEY } from "@/lib/planning/detect";
+
 export const BRAIN_DUMP_HANDOFF_KEY = "lifeos:brain-dump-handoff";
 
 interface SpeechRecognitionLike extends EventTarget {
@@ -39,6 +41,7 @@ interface CaptureTurn {
 interface CaptureApiResponse {
   status: "ready" | "needs_clarification" | "unrecognized" | "unavailable" | "error" | "navigate" | "handoff";
   href?: string;
+  target?: "plan-day" | "brain-dump";
   question?: string | null;
   confirmationMessage?: string | null;
   message?: string;
@@ -126,13 +129,17 @@ export function CapturePanel({ open, onClose }: { open: boolean; onClose: () => 
         setTurns((prev) => [...prev, { role: "assistant", text: data.question!, tone: "question" }]);
       } else if (data.status === "handoff") {
         // More than one thing: Brain Dump processes it all and shows a review list.
+        const toPlanner = data.target === "plan-day";
         try {
-          sessionStorage.setItem(BRAIN_DUMP_HANDOFF_KEY, nextTurns.filter((t) => t.role === "user").map((t) => t.text).join(". "));
+          sessionStorage.setItem(
+            toPlanner ? PLAN_DAY_HANDOFF_KEY : BRAIN_DUMP_HANDOFF_KEY,
+            nextTurns.filter((t) => t.role === "user").map((t) => t.text).join(". ")
+          );
         } catch {
-          // Storage blocked: Brain Dump opens empty and the text can be pasted in.
+          // Storage blocked: the next page opens empty and the text can be pasted in.
         }
         closeAndReset();
-        router.push("/brain-dump");
+        router.push(toPlanner ? "/plan-day" : "/brain-dump");
         return;
       } else if (data.status === "navigate" && data.href) {
         // A request answered by its own page (e.g. "find a time for ...").
@@ -194,6 +201,16 @@ export function CapturePanel({ open, onClose }: { open: boolean; onClose: () => 
             {/* D-066: brain dump is a full-page flow (long transcript,
                 multi-item review), so it can't live inside this overlay --
                 this link is its main entry point. */}
+            <button
+              type="button"
+              onClick={() => {
+                closeAndReset();
+                router.push("/plan-day");
+              }}
+              className="font-sans text-metadata font-bold text-action hover:underline"
+            >
+              Plan my day →
+            </button>
             <button
               type="button"
               onClick={() => {

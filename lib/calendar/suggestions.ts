@@ -106,7 +106,12 @@ export function buildSuggestions(input: BuildSuggestionsInput): CalendarSuggesti
       );
 
       const key = suggestionKey("travel", event.id);
-      if (!input.skipKeys.has(key)) {
+      // A drive block that already ends when this event starts says the same thing.
+      const alreadyHasDriveBlock = input.events.some(
+        (other) =>
+          other.id !== event.id && other.eventType === "travel" && Math.abs(other.endsAt.getTime() - event.startsAt.getTime()) <= 10 * 60 * 1000
+      );
+      if (!input.skipKeys.has(key) && !alreadyHasDriveBlock) {
         out.push({
           key,
           kind: "travel",
