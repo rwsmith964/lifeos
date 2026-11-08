@@ -33,13 +33,17 @@ interface NominatimSearchResult {
 
 export async function geocodeAddress(
   address: string,
-  options: { fetchImpl?: typeof fetch } = {}
+  options: { fetchImpl?: typeof fetch; /** Prefer results near here (a place name like "Defy" means the one in your area). */ near?: { lat: number; lng: number } } = {}
 ): Promise<GeocodeOutcome> {
   const fetchImpl = options.fetchImpl ?? fetch;
   const trimmed = address.trim();
   if (!trimmed) return { status: "not_found" };
 
-  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(trimmed)}`;
+  // A soft bias (bounded=0): results inside the box rank first, others still allowed.
+  const bias = options.near
+    ? `&viewbox=${options.near.lng - 0.6},${options.near.lat + 0.6},${options.near.lng + 0.6},${options.near.lat - 0.6}&bounded=0`
+    : "";
+  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(trimmed)}${bias}`;
 
   try {
     const res = await fetchImpl(url, {
