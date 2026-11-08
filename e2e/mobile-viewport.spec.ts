@@ -22,16 +22,22 @@ test.describe("Mobile viewport", () => {
     // The desktop sidebar's nav must not also be visible at this width.
     await expect(page.locator("nav").first()).toBeHidden();
 
-    const destinations: Array<[string, string | RegExp]> = [
-      ["People", /\/people$/],
-      ["Gifts", /\/gifts$/],
-      ["Calendar", /\/calendar$/],
-      ["Activities", /\/activities$/],
-      ["Settings", /\/settings$/],
+    // The bottom bar deliberately holds only four destinations around the
+    // centred capture button (Today, Calendar, People, Plan -- see
+    // MOBILE_NAV_ITEMS in app/(app)/layout.tsx); Gifts/Household/Brain dump
+    // are reached from inside the app, and Settings from a header link
+    // rather than the bottom bar.
+    const destinations: Array<[string, string | RegExp, "bottom" | "header"]> = [
+      ["People", /\/people$/, "bottom"],
+      ["Calendar", /\/calendar$/, "bottom"],
+      ["Plan", /\/activities$/, "bottom"],
+      ["Today", /\/$/, "bottom"],
+      ["Settings", /\/settings$/, "header"],
     ];
 
-    for (const [label, urlPattern] of destinations) {
-      await bottomNav.getByRole("link", { name: label, exact: true }).click();
+    for (const [label, urlPattern, where] of destinations) {
+      const scope = where === "bottom" ? bottomNav : page.locator("header");
+      await scope.getByRole("link", { name: label, exact: true }).click();
       await page.waitForURL(urlPattern, { timeout: 10_000 });
 
       const overflowWidth = await page.evaluate(() => document.documentElement.scrollWidth);
@@ -45,8 +51,8 @@ test.describe("Mobile viewport", () => {
 
     // Quick capture panel must also fit the viewport without introducing
     // horizontal scroll.
-    await page.getByRole("button", { name: "Quick capture" }).click();
-    await expect(page.getByPlaceholder("Type or dictate a note…")).toBeVisible();
+    await page.getByRole("button", { name: "Add or dump a thought", exact: true }).click();
+    await expect(page.getByPlaceholder("Add or dump a thought…")).toBeVisible();
     const overflowWidth = await page.evaluate(() => document.documentElement.scrollWidth);
     const viewportWidth = await page.evaluate(() => window.innerWidth);
     expect(overflowWidth).toBeLessThanOrEqual(viewportWidth + 1);
