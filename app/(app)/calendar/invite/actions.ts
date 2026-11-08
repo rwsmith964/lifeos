@@ -13,6 +13,7 @@ import { peopleRepo, listPeopleForHousehold } from "@/lib/db/repositories/people
 import { calendarEventTypeSchema } from "@/lib/db/schemas";
 import { friendlyMutationError } from "@/lib/db/errors";
 import { floatingIso } from "@/lib/custody/materialize";
+import { coordinatesForLocation } from "@/lib/calendar/geocode-event";
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Choose a date.");
 const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
@@ -67,6 +68,7 @@ export async function createEventFromInviteAction(rawInput: InviteEventInput): P
     let endsIso = floatingIso(endsAt);
     if (new Date(endsIso) < new Date(startsIso)) endsIso = startsIso;
 
+    const coords = await coordinatesForLocation(input.location);
     const event = await calendarEventsRepo.create(supabase, {
       household_id: household.id,
       created_by_person_id: selfPerson.id,
@@ -76,6 +78,8 @@ export async function createEventFromInviteAction(rawInput: InviteEventInput): P
       ends_at: endsIso,
       all_day: input.allDay,
       location: input.location || null,
+      location_lat: coords?.lat ?? null,
+      location_lng: coords?.lng ?? null,
       event_type: input.eventType,
     });
 

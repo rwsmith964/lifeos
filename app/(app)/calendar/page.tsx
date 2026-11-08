@@ -62,6 +62,8 @@ import {
   toggleLayer,
 } from "@/lib/calendar/layers";
 import { cookies } from "next/headers";
+import { loadCalendarSuggestions } from "@/lib/calendar/suggestions-server";
+import { SuggestionsPanel, type SuggestionView } from "./suggestions-panel";
 import { LayersPersist } from "./layers-persist";
 import { buildMonthCellChips, buildMonthCellCustodyBars, type CustodyBlockLike } from "@/lib/calendar/month-cell";
 import { Card, CardContent } from "@/components/ui/card";
@@ -807,6 +809,7 @@ export default async function CalendarPage({
   // The same thing often arrives twice (typed in by hand and via an imported
   // feed); show it once, keeping the best details from each copy.
   const { events: reconciledEvents } = reconcileDuplicateEvents(events);
+  const myEventIds = new Set<string>();
   const eventItems: DayItem[] = reconciledEvents
     .filter((e) => {
       if (view === "custody") return true;
@@ -828,6 +831,7 @@ export default async function CalendarPage({
         childPersonIds,
         passesKidEventRule,
       });
+      if (layer === "mine") myEventIds.add(e.id);
       return layer === "mine" || layers.has("family");
     })
     .map((e) => ({
@@ -996,6 +1000,45 @@ export default async function CalendarPage({
       };
     })
   );
+
+  // Suggested drive-time and prep blocks for the viewer's own upcoming events
+  // (week/agenda: the whole week; day/month: just the selected day). A failure
+  // here only means no suggestions, never a broken calendar.
+  let suggestionViews: SuggestionView[] = [];
+  if (view === "all") {
+    try {
+      const viewerUserId = selfPerson.user_id;
+      const viewer = viewerUserId ? await usersRepo.getById(supabase, viewerUserId) : null;
+      const home = viewer?.home_lat != null && viewer?.home_lng != null ? { lat: viewer.home_lat, lng: viewer.home_lng } : null;
+      const wholeWindow = range === "week" || range === "agenda";
+      const selectedKey = format(selectedDay, DAY_PARAM_FORMAT);
+      const myEvents = reconciledEvents.filter(
+        (e) => myEventIds.has(e.id) && (wholeWindow || format(new Date(e.starts_at), DAY_PARAM_FORMAT) === selectedKey)
+      );
+      const suggestions = await loadCalendarSuggestions(supabase, {
+        selfPersonId: selfPerson.id,
+        allEvents: events,
+        myEvents,
+        home,
+        now,
+        travelOptions: { googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY, mapboxAccessToken: process.env.MAPBOX_ACCESS_TOKEN },
+      });
+      suggestionViews = suggestions.map((sg) => ({
+        key: sg.key,
+        kind: sg.kind,
+        eventId: sg.eventId,
+        title: sg.title,
+        detail: sg.detail,
+        startsAtISO: sg.startsAt.toISOString(),
+        endsAtISO: sg.endsAt.toISOString(),
+        dayLabel: format(sg.startsAt, "EEE, MMM d"),
+        timeLabel: `${format(sg.startsAt, "h:mm a")} – ${format(sg.endsAt, "h:mm a")}`,
+        tight: sg.tight,
+      }));
+    } catch (error) {
+      console.error("Calendar page: suggestions failed (non-fatal):", error);
+    }
+  }
 
   const items =
     view === "custody"
@@ -1451,6 +1494,8 @@ export default async function CalendarPage({
           </CardContent>
       </Card>
       )}
+
+      {view === "all" && <SuggestionsPanel suggestions={suggestionViews} showDay={range === "week" || range === "agenda"} />}
 
       <div id="selected-day" className="flex flex-col gap-2 scroll-mt-4">
         {range !== "day" && range !== "agenda" && (

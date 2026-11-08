@@ -31,6 +31,7 @@ export interface EventFormDefaults {
   startTime: string;
   endTime: string;
   location: string;
+  prepMinutes: string;
   eventType: string;
   visibility: string;
   attendeePersonIds: string[];
@@ -121,6 +122,21 @@ export function EventForm({ people, endpoint, method, submitLabel, pendingLabel,
       <div className="flex flex-col gap-2">
         <Label htmlFor="location">Location (optional)</Label>
         <Input id="location" name="location" defaultValue={defaults?.location} />
+        <p className="text-xs text-muted-foreground">With an address, you&apos;ll get a suggested leave-by time.</p>
+      </div>
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="prepMinutes">Prep time before (optional, minutes)</Label>
+        <Input
+          id="prepMinutes"
+          name="prepMinutes"
+          type="number"
+          inputMode="numeric"
+          min={0}
+          step={5}
+          className="sm:w-40"
+          defaultValue={defaults?.prepMinutes}
+        />
+        <p className="text-xs text-muted-foreground">Time to get ready or pack. You&apos;ll be offered a block for it.</p>
       </div>
       <div className="flex flex-col gap-2">
         <Label htmlFor="eventType">Type</Label>

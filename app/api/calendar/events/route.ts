@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { calendarEventsRepo, eventAttendeesRepo } from "@/lib/db/repositories/calendar";
 import { calendarEventInsertSchema } from "@/lib/db/schemas";
+import { coordinatesForLocation } from "@/lib/calendar/geocode-event";
 
 export async function POST(request: Request) {
   const { supabase, household, selfPerson } = await requireHouseholdContext();
@@ -14,6 +15,9 @@ export async function POST(request: Request) {
   const startTime = String(formData.get("startTime") ?? "09:00");
   const endTime = String(formData.get("endTime") ?? "10:00");
   const allDay = formData.get("allDay") === "on";
+  const location = String(formData.get("location") ?? "").trim() || null;
+  const prepRaw = Number.parseInt(String(formData.get("prepMinutes") ?? ""), 10);
+  const coords = await coordinatesForLocation(location);
 
   const startsAt = allDay ? `${date}T00:00:00` : `${date}T${startTime}:00`;
   const endsAt = allDay ? `${date}T23:59:59` : `${date}T${endTime}:00`;
@@ -25,7 +29,10 @@ export async function POST(request: Request) {
     starts_at: new Date(startsAt).toISOString(),
     ends_at: new Date(endsAt).toISOString(),
     all_day: allDay,
-    location: String(formData.get("location") ?? "").trim() || null,
+    location,
+    location_lat: coords?.lat ?? null,
+    location_lng: coords?.lng ?? null,
+    prep_time_before_minutes: Number.isFinite(prepRaw) && prepRaw > 0 ? prepRaw : null,
     event_type: String(formData.get("eventType") ?? "personal"),
     visibility: String(formData.get("visibility") ?? "private"),
   });
