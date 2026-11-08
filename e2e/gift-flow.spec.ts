@@ -66,7 +66,15 @@ async function generateFixtureSuggestions(page: import("@playwright/test").Page,
   const generateForm = page.locator("form").filter({ has: page.getByRole("button", { name: "Get gift ideas", exact: true }) });
   await generateForm.getByLabel("Occasion date").fill(occasionDatePlus15());
   await generateForm.getByRole("button", { name: "Get gift ideas", exact: true }).click();
-  await page.waitForURL(/\/gifts$/, { timeout: 20_000 });
+  try {
+    await page.waitForURL(/\/gifts$/, { timeout: 20_000 });
+  } catch (error) {
+    // Generation reports failure (or "no new ideas") inline on this form and
+    // stays on the page -- surface that text so a CI failure says WHY instead
+    // of just "timed out waiting for /gifts".
+    const formText = (await generateForm.innerText().catch(() => "(form not readable)")).replace(/\s+/g, " ").trim();
+    throw new Error(`Get gift ideas never navigated to /gifts. Form says: "${formText}". Original: ${String(error)}`);
+  }
 }
 
 test.describe("Gift suggestions", () => {
