@@ -72,8 +72,14 @@ async function generateFixtureSuggestions(page: import("@playwright/test").Page,
     // Generation reports failure (or "no new ideas") inline on this form and
     // stays on the page -- surface that text so a CI failure says WHY instead
     // of just "timed out waiting for /gifts".
-    const formText = (await generateForm.innerText().catch(() => "(form not readable)")).replace(/\s+/g, " ").trim();
-    throw new Error(`Get gift ideas never navigated to /gifts. Form says: "${formText}". Original: ${String(error)}`);
+    const formText = (await generateForm.innerText({ timeout: 2_000 }).catch(() => "(form not readable)")).replace(/\s+/g, " ").trim();
+    const bodyText = (await page.locator("body").innerText({ timeout: 2_000 }).catch(() => "(body not readable)"))
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 500);
+    throw new Error(
+      `Get gift ideas never navigated to /gifts. URL now: ${page.url()}. Form says: "${formText}". Page says: "${bodyText}". Original: ${String(error)}`
+    );
   }
 }
 
