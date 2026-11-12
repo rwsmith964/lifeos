@@ -23,7 +23,14 @@ export async function GET(request: Request) {
 
   if (code) {
     const supabase = await createSupabaseServerClient();
-    await supabase.auth.exchangeCodeForSession(code);
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    // The emailed link was opened somewhere other than where it was
+    // requested (typically the phone's browser instead of the iOS app, which
+    // keeps its own separate session), or it expired. Say so instead of
+    // landing on a page that can't work.
+    if (error && next === "/reset-password") {
+      return NextResponse.redirect(`${origin}/forgot-password?linkProblem=1`);
+    }
   }
 
   const response = NextResponse.redirect(`${origin}${next}`);

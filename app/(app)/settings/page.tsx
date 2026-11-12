@@ -1,5 +1,6 @@
 import { DepartureRemindersCard } from "./departure-reminders-card";
 import { AiConsentCard } from "./ai-consent-card";
+import { ChangePasswordCard } from "./change-password-card";
 import { ConnectedPeople, type ConnectionView, type PendingLinkInviteView } from "./connected-people";
 import { listLinkedAccounts, listPendingLinkInvites, listSharesForLinks } from "@/lib/db/repositories/links";
 import Link from "next/link";
@@ -130,6 +131,7 @@ export default async function SettingsPage() {
       />
       <ConnectedPeople connections={connectionViews} pending={pendingViews} invitablePeople={invitablePeople} canManage={canManage} />
       <DepartureRemindersCard />
+      <ChangePasswordCard />
       <AiConsentCard granted={aiConsent === "granted"} />
       <CalendarFeeds feeds={calendarFeeds} canManage={canManage} />
       <FeatureFlags states={featureFlagStates} canManage={canManage} />
