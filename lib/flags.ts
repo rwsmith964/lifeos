@@ -20,7 +20,7 @@ export const FEATURE_FLAGS = {
   leisure_planner_v2:
     "Score activity ideas against real conditions (weather, tides, river flow), with a gear checklist and outing log for each one.",
   universal_intake_v2:
-    "Forward an email, photo, or screenshot and let LifeOS draft the event, gift idea, or note for you to review.",
+    "Forward an email, photo, or screenshot and let Famwise draft the event, gift idea, or note for you to review.",
   scheduling_v2: "Two-way sync with an Apple or Outlook calendar, plus travel-time-aware conflict warnings.",
   ambient_display: "A read-only display for a tablet or spare screen -- today's schedule and custody, glanceable from across the room.",
   execution_draft_only:

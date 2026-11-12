@@ -11,7 +11,7 @@
 // request/second — both trivially satisfied by a single-household app
 // where this only fires on an explicit "Save settings" click.
 
-const NOMINATIM_USER_AGENT = process.env.NOMINATIM_USER_AGENT ?? "LifeOS/1.0 (personal use, self-hosted)";
+const NOMINATIM_USER_AGENT = process.env.NOMINATIM_USER_AGENT ?? "Famwise/1.0 (personal use, self-hosted)";
 
 export interface GeocodeResult {
   lat: number;

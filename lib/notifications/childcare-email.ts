@@ -3,7 +3,7 @@
 // with zero third-party keys configured), but is its own standalone
 // sender for the same reason invite-email.ts is: the recipient here is a
 // childcare provider like "my mom" who is very often not tracked as a
-// LifeOS person with a matching `people.email` on a household she's a
+// Famwise person with a matching `people.email` on a household she's a
 // member of — she's an arbitrary person row (possibly with no user
 // account at all), not something channels/email.ts's `send()` (which
 // looks up a person's email by person_id) is built to target.
@@ -65,7 +65,7 @@ export async function sendChildcareRequestEmail(params: {
 
   const childList = childNames.length > 0 ? childNames.join(" and ") : "the kids";
   // D-114: never show the raw ISO date / 24-hour time columns straight from
-  // Postgres to a person outside the app (this provider may have no LifeOS
+  // Postgres to a person outside the app (this provider may have no Famwise
   // account at all).
   const careDateLabel = formatCareDate(careDate);
   const careStartLabel = formatHandoverTime(careStartTime);
@@ -75,7 +75,7 @@ export async function sendChildcareRequestEmail(params: {
   const lines = [
     `Hi ${providerName},`,
     "",
-    `${requesterName} (${householdName} on LifeOS) is asking if you can provide childcare for ${childList} on ${careDateLabel}, from ${careStartLabel} to ${careEndLabel}.`,
+    `${requesterName} (${householdName} on Famwise) is asking if you can provide childcare for ${childList} on ${careDateLabel}, from ${careStartLabel} to ${careEndLabel}.`,
   ];
   if (eventTitle) lines.push(`Reason: ${eventTitle}`);
   if (customNote) lines.push(`Note from ${requesterName}: "${customNote}"`);

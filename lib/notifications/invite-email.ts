@@ -39,8 +39,8 @@ export async function sendHouseholdInviteEmail(params: {
   acceptUrl: string;
 }): Promise<HouseholdInviteEmailResult> {
   const { to, householdName, inviterName, acceptUrl } = params;
-  const subject = `${inviterName} invited you to join ${householdName} on LifeOS`;
-  const text = `${inviterName} has invited you to join their household "${householdName}" on LifeOS.\n\nAccept the invite: ${acceptUrl}\n\nThis link expires in 7 days. If you weren't expecting this, you can safely ignore it.`;
+  const subject = `${inviterName} invited you to join ${householdName} on Famwise`;
+  const text = `${inviterName} has invited you to join their household "${householdName}" on Famwise.\n\nAccept the invite: ${acceptUrl}\n\nThis link expires in 7 days. If you weren't expecting this, you can safely ignore it.`;
 
   const resend = getResendClient();
   if (!resend) {
@@ -75,12 +75,12 @@ export async function sendLinkInviteEmail(params: {
 }): Promise<HouseholdInviteEmailResult> {
   return sendPlainEmail({
     to: params.to,
-    subject: `${params.inviterName} wants to connect with you on LifeOS`,
-    text: `${params.inviterName} (${params.householdName}) invited you to connect on LifeOS, so you can find times that work for both of you. You choose what you share, and you can disconnect any time.\n\nAccept: ${params.acceptUrl}\n\nThis link expires in 14 days. If you weren't expecting this, you can safely ignore it.`,
+    subject: `${params.inviterName} wants to connect with you on Famwise`,
+    text: `${params.inviterName} (${params.householdName}) invited you to connect on Famwise, so you can find times that work for both of you. You choose what you share, and you can disconnect any time.\n\nAccept: ${params.acceptUrl}\n\nThis link expires in 14 days. If you weren't expecting this, you can safely ignore it.`,
   });
 }
 
-/** An event invitation: works with or without a LifeOS account (see app/rsvp/[token]). */
+/** An event invitation: works with or without a Famwise account (see app/rsvp/[token]). */
 export async function sendEventInvitationEmail(params: {
   to: string;
   hostName: string;

@@ -2,7 +2,7 @@
 //
 // The user's request, verbatim: "when [a] parent has custody of a child for
 // a certain day then they want that on their calendar, but they wouldn't
-// want it on their calendar when they don't have the kids." Since LifeOS is
+// want it on their calendar when they don't have the kids." Since Famwise is
 // a single shared household calendar (one user per household today — see
 // concepts/person-record-and-rls), this can't mean "hide the custody block
 // itself" (that block IS the answer to "who has the kids today" and stays

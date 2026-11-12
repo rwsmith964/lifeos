@@ -15,7 +15,7 @@ import { IntakeCaptureForm } from "./intake-capture-form";
 import { IntakeReviewQueue } from "./intake-review-queue";
 
 export const metadata = {
-  title: "Add anything — LifeOS",
+  title: "Add anything — Famwise",
 };
 
 export default async function IntakePage() {

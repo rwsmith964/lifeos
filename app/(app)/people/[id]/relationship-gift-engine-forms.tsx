@@ -299,7 +299,7 @@ export function AddRelationshipForm({
         {otherPeople.length > 0 && (
           <div className="flex flex-col gap-1">
             <Label htmlFor={`related-person-${personId}`} className="text-xs">
-              Already in LifeOS?
+              Already in Famwise?
             </Label>
             <select
               id={`related-person-${personId}`}

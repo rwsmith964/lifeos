@@ -193,7 +193,7 @@ export function ConnectedPeople({
       <div>
         <h2 className="font-sans text-body font-bold text-ink">Connected people</h2>
         <p className="font-sans text-metadata text-meta">
-          Connect with someone who has their own LifeOS (a brother-in-law, a partner, a co-parent) to find times that work for both of
+          Connect with someone who has their own Famwise (a brother-in-law, a partner, a co-parent) to find times that work for both of
           you and send each other event invitations. You choose exactly what you share.
         </p>
       </div>

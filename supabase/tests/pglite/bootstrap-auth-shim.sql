@@ -1,4 +1,4 @@
--- Minimal Supabase-compatible shim for running the REAL LifeOS migrations
+-- Minimal Supabase-compatible shim for running the REAL Famwise migrations
 -- and seed data against PGlite (an in-process WASM Postgres) with no
 -- Docker and no Supabase CLI required. Real Supabase provides all of this
 -- out of the box as platform infrastructure — it is replicated here only

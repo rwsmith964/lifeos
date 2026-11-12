@@ -1,6 +1,6 @@
 // Builds an RFC 5545 (iCalendar) document for a custody schedule so it
 // can be imported into any calendar app (Google Calendar, Apple
-// Calendar, Outlook, etc.) — e.g. by a co-parent who has no LifeOS
+// Calendar, Outlook, etc.) — e.g. by a co-parent who has no Famwise
 // account of their own. Pure and DB-free, like the rest of
 // lib/custody/* — callers project the schedule into days first (via
 // lib/custody/schedule.ts) and pass the result in here.

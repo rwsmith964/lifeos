@@ -30,10 +30,10 @@ export function AppLockGate({ children }: { children: React.ReactNode }) {
     setError(null);
     try {
       await BiometricAuth.authenticate({
-        reason: "Unlock LifeOS",
+        reason: "Unlock Famwise",
         cancelTitle: "Cancel",
         allowDeviceCredential: true,
-        androidTitle: "Unlock LifeOS",
+        androidTitle: "Unlock Famwise",
       });
       setLocked(false);
     } catch (e) {
@@ -81,7 +81,7 @@ export function AppLockGate({ children }: { children: React.ReactNode }) {
     <div className="flex min-h-dvh w-full flex-col items-center justify-center gap-4 bg-background p-6 text-center">
       <Fingerprint className="size-10 text-muted-foreground" />
       <div>
-        <p className="text-sm font-semibold">LifeOS is locked</p>
+        <p className="text-sm font-semibold">Famwise is locked</p>
         <p className="mt-1 text-xs text-muted-foreground">Use Face ID, Touch ID, or your device passcode to continue.</p>
       </div>
       {error && <p className="text-xs text-destructive">{error}</p>}

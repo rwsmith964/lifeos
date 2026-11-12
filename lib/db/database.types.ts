@@ -258,7 +258,7 @@ export interface PersonRow {
   relationship_label: string | null;
   // false = "we don't get gifts for this person": the gift engine skips them.
   gifts_enabled: boolean;
-  // This person IS that LifeOS account (someone with their own household).
+  // This person IS that Famwise account (someone with their own household).
   linked_user_id: string | null;
   created_at: string;
   updated_at: string;

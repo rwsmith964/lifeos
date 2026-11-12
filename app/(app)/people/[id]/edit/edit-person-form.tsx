@@ -148,7 +148,7 @@ export function EditPersonForm({ person }: { person: PersonRow }) {
             </label>
             <p className="text-xs text-muted-foreground">
               Tag someone like a grandparent or babysitter so you can request childcare from them — they
-              don&apos;t need a LifeOS account to accept or decline.
+              don&apos;t need a Famwise account to accept or decline.
             </p>
             <div className="flex flex-col gap-2">
               <Label htmlFor="address">Their address</Label>

@@ -6,7 +6,7 @@ import { Breadcrumb } from "@/components/nav/breadcrumb";
 import { PackingListForm } from "../packing-list-form";
 
 export const metadata = {
-  title: "New packing list — LifeOS",
+  title: "New packing list — Famwise",
 };
 
 export default async function NewPackingListPage() {

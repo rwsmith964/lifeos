@@ -28,7 +28,7 @@ export default function GlobalError({ retry }: { error: Error & { digest?: strin
         <div style={{ textAlign: "center", padding: 24, maxWidth: 320 }}>
           <p style={{ fontSize: 15, fontWeight: 600, margin: "0 0 8px" }}>Something went wrong.</p>
           <p style={{ fontSize: 13, color: "#666", margin: "0 0 16px" }}>
-            LifeOS hit an unexpected error. Try reloading.
+            Famwise hit an unexpected error. Try reloading.
           </p>
           <button
             onClick={() => retry()}

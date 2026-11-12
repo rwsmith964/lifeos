@@ -1,5 +1,5 @@
 // Sends the invitations for an event: in-app to connected accounts, by email
-// to people who aren't on LifeOS. People in the same household don't need one
+// to people who aren't on Famwise. People in the same household don't need one
 // (the event is already on their calendar).
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { format } from "date-fns";

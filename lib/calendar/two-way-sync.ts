@@ -2,7 +2,7 @@
 // Mirrors the shape of feed-sync.ts (fetch/parse/write, never throws,
 // records outcome on the owning row) but in both directions:
 //   pull:  remote CalDAV resources -> calendar_events rows (external_source-tagged, like an ICS feed import)
-//   push:  LifeOS-native calendar_events rows -> CalDAV resources (round-trip identity tracked on the event row)
+//   push:  Famwise-native calendar_events rows -> CalDAV resources (round-trip identity tracked on the event row)
 // Kept as its own module rather than folded into feed-sync.ts because the
 // two directions have genuinely different write targets and failure modes,
 // even though they share the underlying parse/format primitives.
@@ -39,7 +39,7 @@ function skippedResult(): SyncAccountResult {
 
 /**
  * Pull: list every remote resource, skip any that are actually events we
- * ourselves pushed there (identified by href against every LifeOS-native
+ * ourselves pushed there (identified by href against every Famwise-native
  * event already round-tripped to this account) to avoid re-importing our
  * own pushed events as a second, external-tagged duplicate, then
  * replace-write the rest as external_source-tagged calendar_events rows.
@@ -114,7 +114,7 @@ export async function pullFromSyncAccount(
 }
 
 /**
- * Push: LifeOS-native events not yet synced anywhere, plus (D-166 /
+ * Push: Famwise-native events not yet synced anywhere, plus (D-166 /
  * QUEUE-017) already-synced events edited since their last push.
  *
  * QUEUE-017 resolution: Richard chose blind last-write-wins -- an edited,

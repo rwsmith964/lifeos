@@ -2,7 +2,7 @@ import { Breadcrumb } from "@/components/nav/breadcrumb";
 import { PlanDayClient } from "./plan-day-client";
 
 export const metadata = {
-  title: "Plan my day — LifeOS",
+  title: "Plan my day — Famwise",
 };
 
 export default function PlanDayPage() {

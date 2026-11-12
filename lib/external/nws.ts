@@ -5,7 +5,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getOrFetchCached } from "./cache";
 
-const NWS_USER_AGENT = process.env.NWS_USER_AGENT ?? "LifeOS/1.0 (personal use, self-hosted)";
+const NWS_USER_AGENT = process.env.NWS_USER_AGENT ?? "Famwise/1.0 (personal use, self-hosted)";
 const CACHE_TTL_SECONDS = 60 * 60;
 
 export interface NwsForecastPeriod {

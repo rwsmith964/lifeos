@@ -30,7 +30,7 @@ export default function LoginPage() {
     // I2: "Style the sign-in screen as part of the app." This used to be
     // plain shadcn defaults (a bare `text-2xl` heading, the unstyled Card
     // primitive) -- the one screen in the whole app that didn't look like
-    // LifeOS. `bg-ground`/`font-serif text-headline` match the same
+    // Famwise. `bg-ground`/`font-serif text-headline` match the same
     // branded look Today's own header uses.
     <div className="flex min-h-dvh flex-col items-center justify-center gap-6 bg-ground p-6">
       <h1 className="font-serif text-headline text-ink">{APP_NAME}</h1>

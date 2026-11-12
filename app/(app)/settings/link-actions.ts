@@ -29,7 +29,7 @@ async function requireOwnerOrAdult() {
   return ctx;
 }
 
-/** Invite someone from People (say, Rusty) to connect their own LifeOS household to yours. */
+/** Invite someone from People (say, Rusty) to connect their own Famwise household to yours. */
 export async function sendLinkInviteAction(input: z.infer<typeof inviteSchema>): Promise<LinkActionResult> {
   const parsed = inviteSchema.safeParse(input);
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the details." };

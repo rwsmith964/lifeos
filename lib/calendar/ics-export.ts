@@ -1,7 +1,7 @@
 // Module 4 — the write-side counterpart of ics-import.ts's parser: renders
-// one LifeOS calendar_events row as a minimal single-VEVENT .ics document
+// one Famwise calendar_events row as a minimal single-VEVENT .ics document
 // for CalDAV PUT. Deliberately narrow (no RRULE, no VALARM, no attendees)
-// -- LifeOS-native events created through the app are single occurrences,
+// -- Famwise-native events created through the app are single occurrences,
 // so a push-side recurrence encoder isn't yet load-bearing; see QUEUE-017.
 import type { CalendarEventRow } from "../db/database.types";
 
@@ -46,7 +46,7 @@ export function buildIcsEventDocument(event: CalendarEventRow): string {
   const uid = `${event.id}@lifeos.app`;
   const dtstamp = formatIcsDateTimeUtc(new Date().toISOString());
 
-  const lines: string[] = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//LifeOS//Calendar Sync//EN", "CALSCALE:GREGORIAN", "BEGIN:VEVENT", `UID:${uid}`, `DTSTAMP:${dtstamp}`];
+  const lines: string[] = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Famwise//Calendar Sync//EN", "CALSCALE:GREGORIAN", "BEGIN:VEVENT", `UID:${uid}`, `DTSTAMP:${dtstamp}`];
 
   if (event.all_day) {
     lines.push(`DTSTART;VALUE=DATE:${formatIcsDateOnly(event.starts_at)}`);

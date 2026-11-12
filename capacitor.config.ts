@@ -1,6 +1,6 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
-// LifeOS ships as a *hosted* Capacitor app: the WebView loads the live
+// Famwise ships as a *hosted* Capacitor app: the WebView loads the live
 // Next.js production deployment directly (server.url) rather than a static
 // bundle. This is required because the app relies on Next.js Server Actions,
 // server-rendered routes, and Supabase auth cookies that only work when
@@ -9,7 +9,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 // for App Store review (Guideline 4.2) and how native plugins offset it.
 const config: CapacitorConfig = {
   appId: 'com.rwsmith.lifeos',
-  appName: 'LifeOS',
+  appName: 'Famwise',
   webDir: 'public',
   server: {
     url: 'https://lifeos-seven-rho.vercel.app',

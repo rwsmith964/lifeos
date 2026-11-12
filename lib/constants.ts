@@ -1,7 +1,7 @@
 // Product naming is undecided (Section 12.1 / QUESTIONS.md Q-001) — every
 // piece of UI copy references this constant instead of a hardcoded string,
 // so renaming the product is a one-line change.
-export const APP_NAME = "LifeOS";
+export const APP_NAME = "Famwise";
 
 // Short-lived marker cookie proving the current session was actually just
 // established via a clicked password-reset email link, not merely "any

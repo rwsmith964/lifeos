@@ -5,7 +5,7 @@ import { calendarEventsRepo } from "@/lib/db/repositories/calendar";
 import { NavigateButtons } from "./navigate-buttons";
 
 export const metadata = {
-  title: "Time to go — LifeOS",
+  title: "Time to go — Famwise",
 };
 
 // Opened from a departure reminder: one big Navigate button for the drive.

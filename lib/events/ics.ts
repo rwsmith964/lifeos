@@ -27,7 +27,7 @@ export function buildInvitationIcs(details: InvitationDetails, uid: string): str
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//LifeOS//Invitation//EN",
+    "PRODID:-//Famwise//Invitation//EN",
     "BEGIN:VEVENT",
     `UID:${uid}@lifeos`,
     details.allDay ? `DTSTART;VALUE=DATE:${stamp(details.startsAt, true)}` : `DTSTART:${stamp(details.startsAt, false)}`,

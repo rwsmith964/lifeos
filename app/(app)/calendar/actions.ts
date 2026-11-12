@@ -160,7 +160,7 @@ export async function generateWeekendPlanAction(): Promise<WeekendPlanActionStat
       if (result.noCandidatesReason === "viability_unmet") {
         // D-165 (QUEUE-006): activities and a home address both exist and
         // something is in season, but every candidate got excluded because
-        // you told LifeOS a condition (like river flow or tide data)
+        // you told Famwise a condition (like river flow or tide data)
         // matters for that activity type, and no location on file has
         // that data source set up.
         return {

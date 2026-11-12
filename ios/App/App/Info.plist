@@ -5,17 +5,17 @@
   <key>CAPACITOR_DEBUG</key>
 	<string>$(CAPACITOR_DEBUG)</string>
 	<key>NSFaceIDUsageDescription</key>
-	<string>LifeOS uses Face ID to unlock the app so only you can see your household's calendar and information.</string>
+	<string>Famwise uses Face ID to unlock the app so only you can see your household's calendar and information.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>LifeOS uses the camera when you take a photo of an invitation, flyer or other paper to add it to your calendar and lists.</string>
+	<string>Famwise uses the camera when you take a photo of an invitation, flyer or other paper to add it to your calendar and lists.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>LifeOS reads a photo you choose, such as an invitation or flyer, to add it to your calendar and lists.</string>
+	<string>Famwise reads a photo you choose, such as an invitation or flyer, to add it to your calendar and lists.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-        <string>LifeOS</string>
+        <string>Famwise</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>

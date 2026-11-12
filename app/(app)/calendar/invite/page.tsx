@@ -4,7 +4,7 @@ import { Breadcrumb } from "@/components/nav/breadcrumb";
 import { InviteFlow } from "./invite-flow";
 
 export const metadata = {
-  title: "Add from a photo — LifeOS",
+  title: "Add from a photo — Famwise",
 };
 
 export default async function InvitePhotoPage() {

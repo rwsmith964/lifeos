@@ -175,7 +175,7 @@ export async function listCustodyBlocksForHouseholdInRange(
 
 // Module 4 (D-120) two-way sync helpers ----------------------------------
 
-/** LifeOS-native events already round-tripped to a given sync account -- used by two-way-sync.ts to avoid re-importing an event we ourselves pushed (the classic "push echoes back on next pull" duplication bug). */
+/** Famwise-native events already round-tripped to a given sync account -- used by two-way-sync.ts to avoid re-importing an event we ourselves pushed (the classic "push echoes back on next pull" duplication bug). */
 export async function listEventsSyncedToAccount(
   client: SupabaseClient,
   syncAccountId: string
@@ -184,7 +184,7 @@ export async function listEventsSyncedToAccount(
 }
 
 /**
- * LifeOS-native events eligible for a first push to a two-way sync
+ * Famwise-native events eligible for a first push to a two-way sync
  * account: not already synced anywhere, not themselves imported from an
  * external source, and within the same forward-looking window feed-sync
  * already uses for imports (see IMPORT_WINDOW_DAYS in ics-import.ts) --
