@@ -60,8 +60,24 @@ jobs:
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
         run: |
           mkdir -p "$RUNNER_TEMP/keys"
-          printf '%s' "$ASC_KEY_P8" > "$RUNNER_TEMP/keys/AuthKey_${ASC_KEY_ID}.p8"
-          chmod 600 "$RUNNER_TEMP/keys/AuthKey_${ASC_KEY_ID}.p8"
+          KEY_FILE="$RUNNER_TEMP/keys/AuthKey_${ASC_KEY_ID}.p8"
+          # Rebuild a clean PEM file from whatever was pasted into the secret: a
+          # paste can lose its line breaks, gain Windows line endings or stray
+          # spaces, and Apple's parser rejects all of those. Only the base64 body
+          # is kept, re-wrapped at 64 characters between the standard header and footer.
+          BODY=$(printf '%s' "$ASC_KEY_P8" | sed -e 's/-----BEGIN [A-Z ]*-----//' -e 's/-----END [A-Z ]*-----//' | tr -d '[:space:]')
+          if [ -z "$BODY" ]; then echo "ASC_KEY_P8 is empty after cleaning: re-paste the whole key file into the secret."; exit 1; fi
+          {
+            echo "-----BEGIN PRIVATE KEY-----"
+            printf '%s' "$BODY" | fold -w 64
+            echo
+            echo "-----END PRIVATE KEY-----"
+          } > "$KEY_FILE"
+          chmod 600 "$KEY_FILE"
+          # Safe diagnostics only (no key material): size and the shape of the file.
+          echo "Key file lines: $(wc -l < "$KEY_FILE"), body characters: ${#BODY}"
+          head -1 "$KEY_FILE"
+          tail -1 "$KEY_FILE"
 
       - name: Archive
         env:
