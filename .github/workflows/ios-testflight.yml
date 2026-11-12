@@ -79,23 +79,23 @@ jobs:
           head -1 "$KEY_FILE"
           tail -1 "$KEY_FILE"
 
-      - name: Archive
-        env:
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      # Build WITHOUT signing. An unsigned archive needs no registered test devices;
+      # the export step below signs it with Apple's distribution certificate and
+      # an App Store provisioning profile that Xcode creates on its own through the
+      # API key. (Letting the archive step sign would ask for a development profile,
+      # which needs a registered iPhone.)
+      - name: Archive (unsigned)
         run: |
           xcodebuild archive \
             -project ios/App/App.xcodeproj \
             -scheme App \
             -configuration Release \
             -destination 'generic/platform=iOS' \
-            -archivePath "$RUNNER_TEMP/LifeOS.xcarchive" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$RUNNER_TEMP/keys/AuthKey_${ASC_KEY_ID}.p8" \
-            -authenticationKeyID "$ASC_KEY_ID" \
-            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            -archivePath "$RUNNER_TEMP/Famwise.xcarchive" \
             DEVELOPMENT_TEAM="$TEAM_ID" \
-            CODE_SIGN_STYLE=Automatic \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
             CURRENT_PROJECT_VERSION="${{ github.run_number }}"
 
       - name: Export and upload to App Store Connect
@@ -117,7 +117,7 @@ jobs:
           </plist>
           EOF
           xcodebuild -exportArchive \
-            -archivePath "$RUNNER_TEMP/LifeOS.xcarchive" \
+            -archivePath "$RUNNER_TEMP/Famwise.xcarchive" \
             -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
             -allowProvisioningUpdates \
             -authenticationKeyPath "$RUNNER_TEMP/keys/AuthKey_${ASC_KEY_ID}.p8" \
