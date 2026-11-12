@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { Suspense, useActionState, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { sendPasswordResetEmail, type AuthActionState } from "../actions";
 import { Button } from "@/components/ui/button";
@@ -10,6 +11,20 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { APP_NAME } from "@/lib/constants";
 
 const initialState: AuthActionState = { error: null };
+
+// Shown when /auth/callback couldn't use the emailed link (expired, or opened
+// somewhere other than where the reset was requested).
+function LinkProblemNotice() {
+  const params = useSearchParams();
+  if (!params.get("linkProblem")) return null;
+  return (
+    <p role="alert" className="mb-4 text-sm text-destructive">
+      That reset link didn&apos;t work. It may have expired, or it was opened somewhere other than where you asked for it.
+      Request a new one below and open it on the same device. If you&apos;re signed in to the app, you can change your
+      password in Settings instead.
+    </p>
+  );
+}
 
 export default function ForgotPasswordPage() {
   const [state, action, pending] = useActionState(sendPasswordResetEmail, initialState);
@@ -25,6 +40,9 @@ export default function ForgotPasswordPage() {
           <CardDescription>Enter your email and we&apos;ll send you a reset link.</CardDescription>
         </CardHeader>
         <CardContent>
+          <Suspense fallback={null}>
+            <LinkProblemNotice />
+          </Suspense>
           {submitted && !state.error ? (
             <p className="text-sm text-muted-foreground">
               If an account exists for that email, a reset link is on its way. Check your inbox.
