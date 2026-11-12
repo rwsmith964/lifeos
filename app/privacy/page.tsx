@@ -5,7 +5,7 @@ export const metadata = {
   title: `Privacy Policy — ${APP_NAME}`,
 };
 
-const LAST_UPDATED = "September 4, 2026";
+const LAST_UPDATED = "November 11, 2026";
 const CONTACT_EMAIL = "rwsmith964@gmail.com";
 
 export default function PrivacyPolicyPage() {
@@ -46,9 +46,34 @@ export default function PrivacyPolicyPage() {
         <li>
           <strong>Content you submit for AI features:</strong> notes and prompts you
           write (for example, a &ldquo;brain dump&rdquo;) that {APP_NAME} uses to generate a daily
-          brief, gift ideas, or activity suggestions.
+          brief, gift ideas, or activity suggestions, and photos you take or upload
+          (for example, a party invitation) so the app can read them.
+        </li>
+        <li>
+          <strong>Location and notifications:</strong> if you allow it, the app uses
+          your device&apos;s camera and photo library for the features above, and local
+          notifications for reminders such as &ldquo;time to leave.&rdquo; Addresses you
+          enter are used to estimate drive times.
+        </li>
+        <li>
+          <strong>Information shared between households:</strong> if you link your
+          household with another family&apos;s, you choose, category by category, what
+          to share (for example, busy times or custody schedules). Nothing is shared
+          unless you turn it on, and you can turn it off at any time.
         </li>
       </ul>
+
+      <h2 className="mb-2 mt-8 text-lg font-medium">AI features and your permission</h2>
+      <p className="mb-6">
+        Before any data is sent to an AI service, {APP_NAME} asks for your permission
+        on a screen that explains what is sent and to whom. What is sent is the text
+        and photos you give the assistant, plus the household details it needs to
+        answer (such as your calendar and the people and places in it). It goes to
+        Anthropic, which processes it to produce your answer and, under its API terms,
+        does not use it to train its models. If you decline, nothing is sent and the
+        rest of the app keeps working; you can change your choice at any time in
+        Settings.
+      </p>
 
       <h2 className="mb-2 mt-8 text-lg font-medium">How we use this information</h2>
       <p className="mb-6">
@@ -97,12 +122,13 @@ export default function PrivacyPolicyPage() {
 
       <h2 className="mb-2 mt-8 text-lg font-medium">Data retention and deletion</h2>
       <p className="mb-6">
-        Your data is retained for as long as your account is active. To request
-        deletion of your account and all associated household data, contact us at{" "}
+        Your data is retained for as long as your account is active. You can delete
+        your account and all associated household data yourself at any time in the
+        app under Settings &gt; Delete my account. You can also email us at{" "}
         <a href={`mailto:${CONTACT_EMAIL}`} className="underline">
           {CONTACT_EMAIL}
-        </a>
-        .
+        </a>{" "}
+        and we will do it for you.
       </p>
 
       <h2 className="mb-2 mt-8 text-lg font-medium">Security</h2>

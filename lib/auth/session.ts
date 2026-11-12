@@ -15,6 +15,7 @@ import {
 import { listPeopleForHousehold } from "../db/repositories/people";
 import type { HouseholdRow, PersonRow } from "../db/database.types";
 import { isSafeRedirectPath } from "../http/safe-redirect";
+import { readAiConsent, type AiConsentStatus } from "../ai/consent";
 
 export interface HouseholdContext {
   supabase: SupabaseClient;
@@ -35,6 +36,9 @@ export interface HouseholdContext {
   // Date()` reads as tomorrow's date for any user west of UTC once their
   // local evening has rolled past midnight UTC.
   timezone: string;
+  // Whether this person has agreed to share data with the AI provider
+  // (lib/ai/consent.ts). "unset" makes the app layout show the consent screen.
+  aiConsent: AiConsentStatus;
 }
 
 // Memoized per request (React's cache(), not a cross-request cache — see
@@ -92,5 +96,13 @@ export const requireHouseholdContext = cache(async (): Promise<HouseholdContext>
   // a second household).
   if (!selfPerson) redirect("/join");
 
-  return { supabase, userId: user.id, household, selfPerson, memberships, timezone };
+  return {
+    supabase,
+    userId: user.id,
+    household,
+    selfPerson,
+    memberships,
+    timezone,
+    aiConsent: readAiConsent(user.user_metadata),
+  };
 });

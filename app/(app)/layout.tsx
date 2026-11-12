@@ -14,6 +14,8 @@ import { DepartureReminders } from "@/components/native/departure-reminders";
 import { AppLockGate } from "@/components/native/app-lock-gate";
 import { HeaderThemeToggle } from "@/components/header-theme-toggle";
 import { SessionKeepAlive } from "@/components/session-keep-alive";
+import { AiConsentScreen } from "@/components/consent/ai-consent-screen";
+import { isAiTestFixtureModeEnabled } from "@/lib/ai/test-fixtures";
 import { SignOutButton } from "./sign-out-button";
 import { SidebarNav } from "./sidebar-nav";
 
@@ -52,7 +54,10 @@ const MOBILE_NAV_LEFT = MOBILE_NAV_ITEMS.slice(0, 2);
 const MOBILE_NAV_RIGHT = MOBILE_NAV_ITEMS.slice(2, 4);
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
-  const { supabase, household, selfPerson } = await requireHouseholdContext();
+  const { supabase, household, selfPerson, aiConsent } = await requireHouseholdContext();
+  // Ask before any data can go to the AI provider (App Store guideline
+  // 5.1.2(i)). E2E runs use deterministic fixtures and send nothing anywhere.
+  if (aiConsent === "unset" && !isAiTestFixtureModeEnabled()) return <AiConsentScreen />;
   // B-02: this runs on every page render (it's in the shared layout), and an
   // uncaught throw here escapes app/(app)/error.tsx entirely -- a layout's
   // own error boundary only catches errors from its children, never from the
