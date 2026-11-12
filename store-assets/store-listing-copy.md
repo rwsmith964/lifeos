@@ -2,7 +2,7 @@
 
 ## Google Play Console
 
-**App name** (30 char max): `LifeOS`
+**App name** (30 char max): `Famwise`
 
 **Short description** (80 char max, 62 chars used):
 ```
@@ -11,7 +11,7 @@ Your family's schedule, people, and plans — in one calm place.
 
 **Full description** (4000 char max, ~950 chars used):
 ```
-LifeOS is a personal assistant for you and your household — built to keep
+Famwise is a personal assistant for you and your household — built to keep
 everyone's schedule, people, and plans in one calm place.
 
 DAILY BRIEF
@@ -36,7 +36,7 @@ Your household's information is only visible to the people you invite into
 it. Secure sign-in, with optional fingerprint/biometric unlock for quick,
 private access.
 
-LifeOS is for anyone trying to keep a family, a household, or a shared life
+Famwise is for anyone trying to keep a family, a household, or a shared life
 running a little more smoothly.
 ```
 
@@ -50,7 +50,7 @@ running a little more smoothly.
 
 ## Apple App Store Connect
 
-**App name** (30 char max): `LifeOS`
+**App name** (30 char max): `Famwise`
 
 **Subtitle** (30 char max, 28 chars used):
 ```
@@ -66,7 +66,7 @@ calm place for you and your family.
 **Description** (4000 char max — same content as the Play full description above
 can be reused, Apple has no hard structural requirement):
 ```
-LifeOS is a personal assistant for you and your household — built to keep
+Famwise is a personal assistant for you and your household — built to keep
 everyone's schedule, people, and plans in one calm place.
 
 DAILY BRIEF
@@ -91,7 +91,7 @@ Your household's information is only visible to the people you invite into
 it. Secure sign-in, with optional Face ID / Touch ID unlock for quick, private
 access.
 
-LifeOS is for anyone trying to keep a family, a household, or a shared life
+Famwise is for anyone trying to keep a family, a household, or a shared life
 running a little more smoothly.
 ```
 

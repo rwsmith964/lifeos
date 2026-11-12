@@ -14,7 +14,7 @@ label accuracy, and this form also gates the content rating flow.
 **Yes, collects data.** No data is shared with anyone outside the four
 processors below (data "sharing" in Play's specific sense — transferring
 to a third party for their own purposes — does not apply here; Supabase,
-Anthropic, Resend, and Vercel are processors acting on LifeOS's behalf
+Anthropic, Resend, and Vercel are processors acting on Famwise's behalf
 only, which Play Console has a separate "service provider" carve-out for).
 
 ## Data types
@@ -46,7 +46,7 @@ follow-up, not yet built.
 
 ## Biometric app-lock (fingerprint / face unlock)
 
-Same note as the Apple draft: LifeOS's optional app-lock (D-100) uses
+Same note as the Apple draft: Famwise's optional app-lock (D-100) uses
 Android's `BiometricPrompt` API entirely on-device — the app receives
 only a pass/fail result, never raw biometric data, so this is not a
 collected data type under Play's taxonomy either. `USE_BIOMETRIC` (a
@@ -58,7 +58,7 @@ the androidx.biometric library's own manifest merge.
 
 Same note as the Apple draft: data about children is parent-entered, not
 collected from children directly, and there's no child-facing sign-in.
-LifeOS is a family-organizer tool for parents, not an app "designed for
+Famwise is a family-organizer tool for parents, not an app "designed for
 children" under Play's Families Policy — so it should be answered
 accordingly. If Richard's target-audience answer in the separate Play
 Console "Target audience" section includes children as a primary audience,
@@ -67,7 +67,7 @@ this section and the content rating below would need re-review.
 ## Content rating questionnaire (IARC) — recommendation, not filled in here
 
 Google requires the developer to complete IARC's questionnaire directly in
-Play Console (it can't be pre-filled from outside). Based on what LifeOS
+Play Console (it can't be pre-filled from outside). Based on what Famwise
 actually does — no violence, no user-generated public content visible to
 strangers, no gambling, no unmoderated chat with strangers, only
 household-private data entered by adults about their own family — the

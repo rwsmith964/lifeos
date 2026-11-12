@@ -4,7 +4,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { startOfDay } from "date-fns";
-import { householdsRepo } from "../db/repositories/households";
+import { householdsRepo, listMembersOfHousehold } from "../db/repositories/households";
+import { householdAiAllowed, readAiConsent } from "./consent";
 import { aiUsageLogRepo, sumAiSpendToday } from "../db/repositories/system";
 import { createSupabaseServiceRoleClient } from "../db/client-service-role";
 import { getZonedNow } from "../timezones";
@@ -15,6 +16,19 @@ export class AiUnavailableError extends Error {
   constructor(message = "ANTHROPIC_API_KEY is not configured") {
     super(message);
     this.name = "AiUnavailableError";
+  }
+}
+
+/**
+ * The person (or, for background jobs, the household) hasn't agreed to share
+ * data with the AI provider. Extends AiUnavailableError on purpose: every
+ * caller already degrades gracefully on that, so declining AI turns the AI
+ * features into their non-AI fallbacks instead of breaking anything.
+ */
+export class AiConsentRequiredError extends AiUnavailableError {
+  constructor(message = "AI data sharing has not been agreed to") {
+    super(message);
+    this.name = "AiConsentRequiredError";
   }
 }
 
@@ -36,6 +50,30 @@ function getAnthropicClient(): Anthropic | null {
 
 export function isAiConfigured(): boolean {
   return getAnthropicClient() !== null;
+}
+
+async function assertAiConsent(
+  dbClient: SupabaseClient,
+  serviceRoleClient: SupabaseClient,
+  householdId: string
+): Promise<void> {
+  // A signed-in request: that person's own answer decides.
+  const {
+    data: { user },
+  } = await dbClient.auth.getUser();
+  if (user) {
+    if (readAiConsent(user.user_metadata) !== "granted") throw new AiConsentRequiredError();
+    return;
+  }
+  // A background job (service role, no user): allowed once any member agreed.
+  const members = await listMembersOfHousehold(serviceRoleClient, householdId);
+  const statuses = await Promise.all(
+    members.map(async (member) => {
+      const { data } = await serviceRoleClient.auth.admin.getUserById(member.user_id);
+      return readAiConsent(data.user?.user_metadata);
+    })
+  );
+  if (!householdAiAllowed(statuses)) throw new AiConsentRequiredError();
 }
 
 export interface AiCallParams {
@@ -106,6 +144,10 @@ export async function callAi(dbClient: SupabaseClient, params: AiCallParams): Pr
   // lookup stays on the caller's client since members can read their own
   // household under normal RLS.
   const serviceRoleClient = createSupabaseServiceRoleClient();
+
+  // E2E specs run with deterministic fixtures and never send data anywhere,
+  // so they skip the consent lookup (their users never see the consent screen).
+  if (!isAiTestFixtureModeEnabled()) await assertAiConsent(dbClient, serviceRoleClient, params.householdId);
 
   const household = await householdsRepo.getById(dbClient, params.householdId);
   const ceilingCents = household?.ai_daily_spend_ceiling_cents ?? 50;

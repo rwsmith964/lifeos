@@ -1,4 +1,5 @@
 import { DepartureRemindersCard } from "./departure-reminders-card";
+import { AiConsentCard } from "./ai-consent-card";
 import { ConnectedPeople, type ConnectionView, type PendingLinkInviteView } from "./connected-people";
 import { listLinkedAccounts, listPendingLinkInvites, listSharesForLinks } from "@/lib/db/repositories/links";
 import Link from "next/link";
@@ -23,7 +24,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 
 export default async function SettingsPage() {
-  const { supabase, household, userId, memberships, timezone } = await requireHouseholdContext();
+  const { supabase, household, userId, memberships, timezone, aiConsent } = await requireHouseholdContext();
   const user = await usersRepo.getById(supabase, userId);
   const switcherItems: HouseholdSwitcherItem[] = memberships.map((m) => ({
     householdId: m.household.id,
@@ -129,6 +130,7 @@ export default async function SettingsPage() {
       />
       <ConnectedPeople connections={connectionViews} pending={pendingViews} invitablePeople={invitablePeople} canManage={canManage} />
       <DepartureRemindersCard />
+      <AiConsentCard granted={aiConsent === "granted"} />
       <CalendarFeeds feeds={calendarFeeds} canManage={canManage} />
       <FeatureFlags states={featureFlagStates} canManage={canManage} />
       <Card>

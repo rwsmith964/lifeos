@@ -52,6 +52,18 @@ export default function SignupPage() {
             </Button>
           </form>
 
+          <p className="mt-4 text-xs text-muted-foreground">
+            By creating an account you agree to our{" "}
+            <Link href="/terms" className="underline underline-offset-4">
+              Terms of Use
+            </Link>{" "}
+            and{" "}
+            <Link href="/privacy" className="underline underline-offset-4">
+              Privacy Policy
+            </Link>
+            .
+          </p>
+
           <p className="mt-4 text-sm text-muted-foreground">
             Already have an account?{" "}
             <Link href={next ? `/login?next=${encodeURIComponent(next)}` : "/login"} className="underline underline-offset-4">
