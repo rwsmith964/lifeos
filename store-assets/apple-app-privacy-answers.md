@@ -1,7 +1,7 @@
 # Apple App Privacy ("nutrition label") — draft answers
 
 Draft answers for the App Store Connect **App Privacy** questionnaire,
-derived directly from LifeOS's actual data practices (same source as the
+derived directly from Famwise's actual data practices (same source as the
 `/privacy` policy page, D-103). App Store Connect requires this
 questionnaire to be filled in before a listing can be submitted — it
 produces the public "App Privacy" label shown on the App Store listing
@@ -19,11 +19,12 @@ consequences if answered incorrectly.
 
 ## Data types collected
 
-| Apple data type | Collected? | What in LifeOS | Linked to identity? | Used for tracking? |
+| Apple data type | Collected? | What in Famwise | Linked to identity? | Used for tracking? |
 |---|---|---|---|---|
 | **Contact Info — Name** | Yes | Household member names (self, co-parent, children, extended family, friends) that a user enters | Yes | No |
-| **Contact Info — Email Address** | Yes | Account sign-in email; also collected transiently for childcare-request recipients who aren't LifeOS users | Yes | No |
+| **Contact Info — Email Address** | Yes | Account sign-in email; also collected transiently for childcare-request recipients who aren't Famwise users | Yes | No |
 | **User Content — Other User Content** | Yes | Calendar events, activities, gift ideas/notes, "brain dump" notes, custody schedule details | Yes | No |
+| **User Content — Photos or Videos** | Yes | Photos a user takes or uploads with the camera button (e.g. a party invitation) so the AI can read them. Sent to Anthropic only after the user agrees on the in-app AI consent screen; not kept as a media library | Yes | No |
 | **Identifiers — User ID** | Yes | Internal account/household IDs (Supabase auth `user_id`, `household_id`) | Yes | No |
 | **Usage Data** | No | No analytics/telemetry SDK is integrated (verify against `package.json` before submitting if this changes) | — | — |
 | **Diagnostics** | No | No crash-reporting SDK is integrated today | — | — |
@@ -39,9 +40,13 @@ user-triggered emails, keeping household data isolated). None of it is used
 for **Third-Party Advertising**, **Developer's Advertising or Marketing**,
 **Analytics**, or **Product Personalization** beyond the app's own features.
 
+## AI consent
+
+Before any data reaches the AI provider, the app shows a one-time consent screen (Guideline 5.1.2(i)) that says what is sent (text, photos, household details; children's names replaced with placeholders), who receives it (Anthropic) and that declining keeps the rest of the app working. The choice is stored per account and can be changed in Settings. Enforced server-side in `lib/ai/client.ts`.
+
 ## Tracking
 
-**No.** LifeOS does not track users across other companies' apps or
+**No.** Famwise does not track users across other companies' apps or
 websites for advertising purposes (no ad SDK, no cross-app identifiers
 shared with third parties). Answer "No" to Apple's tracking question and
 skip the AppTrackingTransparency (ATT) prompt requirement.
@@ -58,7 +63,7 @@ processors when the questionnaire asks who data is shared with:
 
 ## Biometric app-lock (Face ID / Touch ID)
 
-LifeOS optionally locks the app behind device Face ID/Touch ID on every
+Famwise optionally locks the app behind device Face ID/Touch ID on every
 open (D-100). This does **not** add a row to the data-collection table
 above: authentication happens entirely on-device via Apple's
 `LocalAuthentication` framework, and the app only receives a yes/no
@@ -72,7 +77,7 @@ ID silently fails and Apple review would reject the build).
 ## Children's data note
 
 Household data about children (custody schedules, activity locations) is
-entered by a parent/guardian, not collected directly from a child — LifeOS
+entered by a parent/guardian, not collected directly from a child — Famwise
 has no child-facing sign-in flow at all. This app is not "primarily directed
 to children" under Apple's Kids Category rules, so the Kids Category privacy
 requirements should not apply; if Richard intends to list under the Kids
