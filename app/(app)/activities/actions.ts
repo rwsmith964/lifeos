@@ -162,7 +162,7 @@ export interface SuggestNearbyLocationsResult {
 // lookup (no mutation, so plain SimpleFormState's revalidatePath pattern
 // doesn't apply) that biases the search around the signed-in user's own
 // home_lat/home_lng (Settings > home address, D-060) since that's the
-// only per-person location LifeOS already has, rather than adding a new
+// only per-person location Famwise already has, rather than adding a new
 // "search near ___" input on top of the query box.
 export async function suggestNearbyLocationsAction(
   activityId: string,
@@ -191,7 +191,7 @@ export async function suggestNearbyLocationsAction(
   if (!outcome.available) {
     if (outcome.reason === "not_configured") {
       return {
-        error: "Location suggestions aren't set up yet \u2014 ask whoever manages LifeOS to add a Google Places API key.",
+        error: "Location suggestions aren't set up yet \u2014 ask whoever manages Famwise to add a Google Places API key.",
         suggestions: [],
       };
     }

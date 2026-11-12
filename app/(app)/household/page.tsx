@@ -32,7 +32,7 @@ import { GroceryListsCard } from "./grocery-lists-card";
 import { ChoresCard } from "./chores-card";
 
 export const metadata = {
-  title: "Household — LifeOS",
+  title: "Household — Famwise",
 };
 
 export default async function HouseholdPage() {

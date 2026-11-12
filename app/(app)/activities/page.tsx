@@ -200,7 +200,7 @@ export default async function PlanPage() {
         {weekendPlan && !weekendPlan.accepted_at && weekendPlan.recommended_activity_id && weekendPlan.recommended_block_start && (
           <Card>
             <CardContent className="flex items-center justify-between gap-2">
-              <p className="font-sans text-body text-ink-2">LifeOS has a suggested plan for this weekend.</p>
+              <p className="font-sans text-body text-ink-2">Famwise has a suggested plan for this weekend.</p>
               <AcceptWeekendPlanButton />
             </CardContent>
           </Card>

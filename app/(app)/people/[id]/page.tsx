@@ -643,7 +643,7 @@ export default async function PersonDetailPage({ params }: PageProps<"/people/[i
             <CardContent className="flex flex-col gap-3">
               <p className="text-muted-foreground text-xs">
                 Other people in {person.full_name}&apos;s life -- family, friends, coworkers -- whether or not
-                they&apos;re a person record of their own in LifeOS.
+                they&apos;re a person record of their own in Famwise.
               </p>
               {relationships.length > 0 && (
                 <div className="flex flex-col gap-2">

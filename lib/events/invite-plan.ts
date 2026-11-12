@@ -7,9 +7,9 @@ import type { ItineraryItem } from "../db/database.types";
 export type InviteDelivery =
   /** Has an account in this household: the event is already on their calendar. */
   | "member"
-  /** Has their own LifeOS household, connected to ours: delivered in the app (and by email if known). */
+  /** Has their own Famwise household, connected to ours: delivered in the app (and by email if known). */
   | "linked"
-  /** Not on LifeOS: emailed an RSVP link. */
+  /** Not on Famwise: emailed an RSVP link. */
   | "email"
   /** No account and no email: can't be invited yet. */
   | "none";

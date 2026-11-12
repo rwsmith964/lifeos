@@ -36,7 +36,7 @@ export default function RootError({ error, retry }: { error: Error & { digest?: 
           <AlertTriangle className="size-8 text-destructive" />
           <p className="text-sm font-medium">Something went wrong.</p>
           <p className="text-xs text-muted-foreground">
-            LifeOS hit an unexpected error loading the app. Try again, or come back to this later.
+            Famwise hit an unexpected error loading the app. Try again, or come back to this later.
           </p>
           {error.digest && <p className="text-[10px] text-muted-foreground">Reference: {error.digest}</p>}
           <Button size="sm" onClick={() => retry()}>

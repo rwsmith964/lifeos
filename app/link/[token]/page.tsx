@@ -8,7 +8,7 @@ import { APP_NAME } from "@/lib/constants";
 import { AcceptLinkForm } from "./accept-link-form";
 
 export const metadata = {
-  title: "Connect on LifeOS",
+  title: "Connect on Famwise",
 };
 
 interface LinkPreview {

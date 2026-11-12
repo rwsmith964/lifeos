@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { TodosClient } from "./todos-client";
 
 export const metadata = {
-  title: "To-dos — LifeOS",
+  title: "To-dos — Famwise",
 };
 
 export default async function TodosPage({ searchParams }: { searchParams: Promise<{ list?: string }> }) {

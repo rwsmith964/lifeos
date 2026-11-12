@@ -4,7 +4,7 @@
 // (D-060). Deliberately does NOT check auth at all — see the
 // respond_to_childcare_request() RPC comment in
 // supabase/migrations/20260828000002_childcare_providers_and_requests.sql
-// for why: the provider is very often not a LifeOS account holder, so
+// for why: the provider is very often not a Famwise account holder, so
 // there's no session to check against in the first place. The 128-bit
 // token in the URL is the entire security boundary here, same trust model
 // as a "click to RSVP" link.

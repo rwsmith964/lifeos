@@ -1,4 +1,4 @@
-// Runs the REAL LifeOS migrations + seed data against PGlite (an in-process
+// Runs the REAL Famwise migrations + seed data against PGlite (an in-process
 // WASM Postgres — no Docker, no Supabase CLI, no external service). This
 // exists because this project's dev environment has neither Docker nor the
 // Supabase CLI available (see DECISIONS.md D-002) — it does NOT replace

@@ -74,7 +74,7 @@ export function ChildcareSection({
         <Card>
           <CardContent className="text-sm text-muted-foreground">
             {requests.length === 0
-              ? "No childcare requests yet. Tag someone as a childcare provider on their People page, then request a specific date and time here — they can accept or decline by email, no LifeOS account needed."
+              ? "No childcare requests yet. Tag someone as a childcare provider on their People page, then request a specific date and time here — they can accept or decline by email, no Famwise account needed."
               : "No upcoming childcare requests."}
           </CardContent>
         </Card>

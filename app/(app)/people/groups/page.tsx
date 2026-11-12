@@ -6,7 +6,7 @@ import { Breadcrumb } from "@/components/nav/breadcrumb";
 import { GroupsClient } from "./groups-client";
 
 export const metadata = {
-  title: "Groups — LifeOS",
+  title: "Groups — Famwise",
 };
 
 export default async function GroupsPage() {

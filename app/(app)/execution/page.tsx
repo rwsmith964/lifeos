@@ -33,7 +33,7 @@ import { NewDraftForm } from "./new-draft-form";
 import { DraftReviewQueue } from "./draft-review-queue";
 
 export const metadata = {
-  title: "Execution (draft-only) — LifeOS",
+  title: "Execution (draft-only) — Famwise",
 };
 
 export default async function ExecutionPage() {

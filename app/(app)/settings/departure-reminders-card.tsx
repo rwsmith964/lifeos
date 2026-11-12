@@ -30,7 +30,7 @@ export function DepartureRemindersCard() {
     setMessage(null);
     const granted = await requestDepartureReminderPermission();
     if (!granted) {
-      setMessage("Notifications are blocked for LifeOS. Turn them on in your phone's Settings, then try again.");
+      setMessage("Notifications are blocked for Famwise. Turn them on in your phone's Settings, then try again.");
       setBusy(false);
       return;
     }
@@ -77,7 +77,7 @@ export function DepartureRemindersCard() {
             )
           ) : null}
         </div>
-        {!available && <p className="font-sans text-metadata text-meta">Available in the LifeOS phone app.</p>}
+        {!available && <p className="font-sans text-metadata text-meta">Available in the Famwise phone app.</p>}
         {message && <p className="font-sans text-metadata text-ink-2">{message}</p>}
       </CardContent>
     </Card>

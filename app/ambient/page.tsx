@@ -33,7 +33,7 @@ import { buildAmbientView } from "@/lib/ambient/build-ambient-view";
 import { AmbientRefresh } from "./ambient-refresh";
 
 export const metadata = {
-  title: "Ambient Display — LifeOS",
+  title: "Ambient Display — Famwise",
 };
 
 function formatEventTime(startsAtISO: string, allDay: boolean): string {

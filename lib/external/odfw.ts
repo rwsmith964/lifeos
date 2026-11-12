@@ -11,7 +11,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getOrFetchCached } from "./cache";
 
 const ODFW_USER_AGENT =
-  process.env.ODFW_USER_AGENT ?? "LifeOS/1.0 (personal recreation planning app; self-hosted, single user)";
+  process.env.ODFW_USER_AGENT ?? "Famwise/1.0 (personal recreation planning app; self-hosted, single user)";
 const CACHE_TTL_SECONDS = 24 * 60 * 60; // "at most once daily"
 const MAX_REPORT_TEXT_LENGTH = 4000;
 

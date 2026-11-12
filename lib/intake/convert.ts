@@ -5,7 +5,7 @@
 // giftsRepo, peopleRepo, momentsRepo -- never a raw insert against those
 // tables. "task" and "ambiguous" drafts are never auto-converted; they
 // stay in the review queue for a human to act on manually (there is no
-// tasks table in LifeOS at all -- see QUESTIONS.md QUEUE-008).
+// tasks table in Famwise at all -- see QUESTIONS.md QUEUE-008).
 //
 // Every write here goes through withActionLog so the trust layer's action
 // log captures it (a no-op when universal_intake_v2 is off, per

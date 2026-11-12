@@ -1171,7 +1171,7 @@ export default async function CalendarPage({
   // childcare / suggested." Built from real, already-computed colours --
   // parentColors (custody-you/custody-mel-style bands), and the existing
   // work-shift/time-off dot colours -- rather than inventing new categories.
-  // "Suggested by LifeOS" is included for completeness per Part 2's list,
+  // "Suggested by Famwise" is included for completeness per Part 2's list,
   // but nothing currently produces a dashed suggestion block on this
   // calendar (see docs/redesign-log.md) -- shown as a swatch with no live
   // items behind it yet, not fabricated data.
@@ -1182,7 +1182,7 @@ export default async function CalendarPage({
     })),
     { label: "Work", swatch: <span className="size-2 rounded-full bg-slate-400" /> },
     { label: "Time off", swatch: <span className="size-2 rounded-full bg-amber-500" /> },
-    { label: "Suggested by LifeOS", swatch: <span className="size-2.5 rounded-full border-[1.5px] border-dashed border-action" /> },
+    { label: "Suggested by Famwise", swatch: <span className="size-2.5 rounded-full border-[1.5px] border-dashed border-action" /> },
   ];
 
   return (

@@ -15,7 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
 export const metadata = {
-  title: "Packing lists — LifeOS",
+  title: "Packing lists — Famwise",
 };
 
 export default async function PackingListsPage() {

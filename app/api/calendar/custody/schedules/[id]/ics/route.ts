@@ -1,7 +1,7 @@
 // GET /api/calendar/custody/schedules/[id]/ics — downloads a one-year
 // .ics snapshot of a custody schedule (respecting any saved exceptions)
 // so it can be imported into any calendar app, e.g. by a co-parent who
-// has no LifeOS account of their own. See lib/custody/ics.ts. Branches on
+// has no Famwise account of their own. See lib/custody/ics.ts. Branches on
 // recurrence_type: 'cycle' schedules export as all-day events (unchanged
 // from before); 'weekly_segments' schedules export as timed events since
 // a day can be split between two people at an exact handoff time (D-125).

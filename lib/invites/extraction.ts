@@ -70,7 +70,7 @@ export type InviteExtraction = z.infer<typeof inviteExtractionSchema>;
 
 export const INVITE_SYSTEM_PROMPT = `${BASE_SYSTEM_PROMPT}
 
-You are reading a photo or screenshot of an INVITATION (a wedding, shower, birthday party, graduation, dinner, etc.) for LifeOS. Extract exactly what is printed so the person can confirm it before anything is added to their calendar. You never add anything yourself.
+You are reading a photo or screenshot of an INVITATION (a wedding, shower, birthday party, graduation, dinner, etc.) for Famwise. Extract exactly what is printed so the person can confirm it before anything is added to their calendar. You never add anything yourself.
 
 Return ONLY a single JSON object with exactly this shape (no prose, no markdown fences):
 {

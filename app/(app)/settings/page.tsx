@@ -108,7 +108,7 @@ export default async function SettingsPage() {
           <div className="flex flex-col gap-2">
             <Label>Palette</Label>
             <PalettePicker />
-            <p className="font-sans text-metadata text-meta">Choose the colour system used across LifeOS.</p>
+            <p className="font-sans text-metadata text-meta">Choose the colour system used across Famwise.</p>
           </div>
         </CardContent>
       </Card>

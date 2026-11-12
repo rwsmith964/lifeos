@@ -11,7 +11,7 @@ import type {
 // (20260828000002_childcare_providers_and_requests.sql) for why the
 // respond/preview paths go through SECURITY DEFINER RPCs rather than
 // ordinary RLS-checked reads/writes — the provider (e.g. "my mom") is
-// very often not a LifeOS account holder and can't satisfy
+// very often not a Famwise account holder and can't satisfy
 // is_household_member().
 export const childcareRequestsRepo = createRepository<
   ChildcareRequestRow,
