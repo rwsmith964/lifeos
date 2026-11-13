@@ -517,6 +517,80 @@ function WeekTimelineView({
   );
 }
 
+// Phone week view: the 7-column hour grid is too narrow to read on a phone, so each
+// day gets a card listing what's on it, in time order. Tap a card to open that day.
+function WeekListView({
+  timeline,
+  selectedDay,
+  today,
+  viewQuery,
+  weatherByDay,
+}: {
+  timeline: WeekTimelineLayout;
+  selectedDay: Date;
+  today: Date;
+  viewQuery: string;
+  weatherByDay: Map<string, { tempF: number | null; shortForecast: string; rulesOutOutdoor: boolean }>;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      {timeline.days.map((d) => {
+        const key = format(d.date, DAY_PARAM_FORMAT);
+        const dayStart = startOfDay(d.date);
+        const selected = isSameDay(d.date, selectedDay);
+        const weather = weatherByDay.get(key);
+        const timed = [...d.positioned].sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
+        const empty = d.allDay.length === 0 && timed.length === 0;
+        return (
+          <Link
+            key={key}
+            href={`/calendar?month=${format(d.date, MONTH_PARAM_FORMAT)}&day=${key}${viewQuery}&range=day`}
+            className={cn(
+              "flex flex-col gap-1.5 rounded-xl border bg-surface px-3 py-2.5",
+              selected ? "border-action" : "border-line"
+            )}
+          >
+            <div className="flex items-baseline justify-between gap-2">
+              <span className={cn("font-sans text-body font-bold", isSameDay(d.date, today) ? "text-action" : "text-ink")}>
+                {format(d.date, "EEEE, MMM d")}
+                {isSameDay(d.date, today) && " · Today"}
+              </span>
+              {weather && (
+                <span className={cn("font-sans text-[11px]", weather.rulesOutOutdoor ? "text-slipping" : "text-meta")}>
+                  {Math.round(weather.tempF ?? 0)}° {weather.shortForecast}
+                </span>
+              )}
+            </div>
+            {empty && <span className="font-sans text-metadata text-meta">Nothing scheduled</span>}
+            {d.allDay.map((item) => (
+              <div key={`allday-${item.id}`} className="flex items-start gap-2 font-sans text-metadata">
+                <span className="w-[68px] shrink-0 text-meta">All day</span>
+                <span className={cn("min-w-0 rounded-sm px-1.5", CHIP_KIND_STYLES[item.kind] ?? "bg-muted text-foreground")}>{item.title}</span>
+              </div>
+            ))}
+            {timed.map((item) => (
+              <div key={item.id} className="flex items-start gap-2 font-sans text-metadata">
+                <span className="w-[68px] shrink-0 text-meta">
+                  {item.startsAt < dayStart ? "Continues" : format(item.startsAt, "h:mm a")}
+                </span>
+                <span
+                  className={cn(
+                    "min-w-0 rounded-sm px-1.5",
+                    BANDED_KINDS.has(item.kind) ? "text-meta" : (CHIP_KIND_STYLES[item.kind] ?? "bg-muted text-foreground")
+                  )}
+                >
+                  {item.title}
+                  {BANDED_KINDS.has(item.kind) && item.endsAt > item.startsAt ? ` · until ${format(item.endsAt, "h:mm a")}` : ""}
+                </span>
+              </div>
+            ))}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
 function humanizeChipLabel(raw: string): string {
   return (
     EVENT_TYPE_LABELS[raw] ??
@@ -1200,11 +1274,11 @@ export default async function CalendarPage({
             "Custody", the header read as three overlapping controls. Custody
             schedule management is still one tap away via "Manage schedules"
             inside the Custody filter view itself (below). */}
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="font-serif text-page-title text-ink">{headerTitle}</h1>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button asChild size="icon" variant="ghost" aria-label={`Previous ${range}`}>
               <Link href={prevMonthHref}>
                 <ChevronLeft className="size-4" />
@@ -1597,6 +1671,12 @@ export default async function CalendarPage({
         )}
         {dayTimeline && <DayTimelineView timeline={dayTimeline} day={selectedDay} />}
         {weekTimeline && (
+          <div className="md:hidden">
+            <WeekListView timeline={weekTimeline} selectedDay={selectedDay} today={today} viewQuery={viewQuery} weatherByDay={weekWeatherByDay} />
+          </div>
+        )}
+        {weekTimeline && (
+          <div className="hidden md:block">
           <WeekTimelineView
             timeline={weekTimeline}
             selectedDay={selectedDay}
@@ -1607,6 +1687,7 @@ export default async function CalendarPage({
             peopleById={peopleById}
             layerEntries={layerEntries}
           />
+          </div>
         )}
         {/* Redesign (Part 2): "Agenda" -- a flat chronological list across
             the same week window, grouped by day, rather than a grid.
