@@ -497,3 +497,13 @@ input[type="radio"] {
     text-wrap: pretty;
   }
 }
+
+/* iPhones zoom the whole page when a field with text smaller than 16px is tapped, and
+   stay zoomed (page looks shifted, buttons cut off). Keep phone fields at 16px. */
+@media (max-width: 767px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}

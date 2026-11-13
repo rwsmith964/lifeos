@@ -197,8 +197,9 @@ export function PlanDayClient() {
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
+      {/* pr-16 on phones keeps Send clear of the floating camera button. */}
       <form
-        className="flex items-center gap-2"
+        className="flex items-center gap-2 pr-16 md:pr-0"
         onSubmit={(e) => {
           e.preventDefault();
           void send(input, messages);
@@ -210,7 +211,7 @@ export function PlanDayClient() {
           placeholder={messages.length === 0 ? "e.g. Mermaid Cafe, then Defy, then Costco, then Dad's for dinner" : "Reply…"}
           disabled={pending}
           aria-label="Message"
-          className="h-10 flex-1 rounded-input border border-line bg-surface px-3 font-sans text-body text-ink outline-none placeholder:text-meta focus-visible:ring-2 focus-visible:ring-action/50 disabled:opacity-50"
+          className="h-10 min-w-0 flex-1 rounded-input border border-line bg-surface px-3 font-sans text-body text-ink outline-none placeholder:text-meta focus-visible:ring-2 focus-visible:ring-action/50 disabled:opacity-50"
         />
         <Button type="submit" size="icon" disabled={pending || !input.trim()} aria-label="Send">
           <Send className="size-4" />
