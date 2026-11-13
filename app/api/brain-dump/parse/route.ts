@@ -18,10 +18,10 @@ import { NextResponse } from "next/server";
 import { format } from "date-fns";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { getZonedNow } from "@/lib/timezones";
-import { AiBudgetExceededError, AiUnavailableError, callAi, isAiConfigured } from "@/lib/ai/client";
+import { AiBudgetExceededError, AiUnavailableError, isAiConfigured } from "@/lib/ai/client";
 import { buildChildTokenMap } from "@/lib/ai/context";
-import { parseAiJson } from "@/lib/ai/parse-json";
-import { buildBrainDumpUserPrompt, brainDumpResponseSchema, BRAIN_DUMP_SYSTEM_PROMPT } from "@/lib/ai/prompts/brain-dump";
+import { runBrainDumpAi } from "@/lib/ai/brain-dump-run";
+import { buildBrainDumpUserPrompt } from "@/lib/ai/prompts/brain-dump";
 import { listPeopleForHousehold } from "@/lib/db/repositories/people";
 import { brainDumpBatchesRepo } from "@/lib/db/repositories/brain-dump";
 import type { BrainDumpBatchRow, BrainDumpParseStatus } from "@/lib/db/database.types";
@@ -109,15 +109,13 @@ export async function POST(request: Request) {
     redactedTranscript
   );
 
-  let aiResult;
+  let read;
   try {
-    aiResult = await callAi(supabase, {
+    read = await runBrainDumpAi(supabase, {
       householdId: household.id,
       timezone,
       feature: "brain_dump",
-      systemPrompt: BRAIN_DUMP_SYSTEM_PROMPT,
       userPrompt,
-      maxTokens: 8192, // a big dump can yield dozens of items; 4096 truncated the JSON
     });
   } catch (error) {
     if (error instanceof AiUnavailableError) {
@@ -130,12 +128,7 @@ export async function POST(request: Request) {
     throw error;
   }
 
-  const parsed = parseAiJson(aiResult.text);
-  if (!parsed.success) {
-    return finish("error", "Couldn't understand that — try rephrasing.");
-  }
-  const validated = brainDumpResponseSchema.safeParse(parsed.data);
-  if (!validated.success) {
+  if (!read.ok) {
     return finish("error", "Couldn't understand that — try rephrasing.");
   }
 
@@ -144,7 +137,7 @@ export async function POST(request: Request) {
   // person we actually handed the model — the review UI will just show
   // that item with no person preselected instead.
   const knownIds = new Set(people.map((p) => p.id));
-  const items = validated.data.items.map((item) => {
+  const items = read.items.map((item) => {
     const restore = (text: string | null) => (text ? tokenMap.restoreRealNames(text) : text);
     return {
       ...item,
