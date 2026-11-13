@@ -31,6 +31,10 @@ interface BrainDumpParseRequestBody {
   batchId?: string;
 }
 
+// A long note can take the AI a while to answer (and one retry if the first
+// reply is unreadable); don't let the host cut the request off early.
+export const maxDuration = 60;
+
 export async function POST(request: Request) {
   const { supabase, household, selfPerson, timezone } = await requireHouseholdContext();
 
