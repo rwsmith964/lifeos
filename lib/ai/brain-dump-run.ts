@@ -31,6 +31,7 @@ const NULL_DEFAULTS: Omit<BrainDumpItem, "type" | "summary"> = {
   eventAllDay: null,
   eventDateApproximate: null,
   eventType: null,
+  eventLocation: null,
   noteText: null,
   budgetOccasionType: null,
   budgetMinDollars: null,

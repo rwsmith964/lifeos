@@ -48,7 +48,7 @@ interface CaptureApiResponse {
   message?: string;
   /** For status "confirm": the full parsed item (sent back on Add) and what to show. */
   item?: unknown;
-  preview?: { title: string; startsAtISO: string; endsAtISO: string | null; allDay: boolean; withName: string | null };
+  preview?: { title: string; startsAtISO: string; endsAtISO: string | null; allDay: boolean; withName: string | null; location?: string | null };
 }
 
 /** An event Quick Capture understood, shown for a last look before it is saved. */
@@ -61,6 +61,7 @@ interface PendingEvent {
   endTime: string;
   allDay: boolean;
   notes: string;
+  location: string;
   withName: string | null;
 }
 
@@ -72,7 +73,7 @@ function pendingEventFrom(data: CaptureApiResponse): PendingEvent | null {
   const startTime = p.allDay ? "" : p.startsAtISO.slice(11, 16);
   const endDate = p.endsAtISO ? p.endsAtISO.slice(0, 10) : startDate;
   const endTime = p.allDay || !p.endsAtISO ? "" : p.endsAtISO.slice(11, 16);
-  return { item: data.item, title: p.title, startDate, startTime, endDate, endTime, allDay: p.allDay, notes: "", withName: p.withName };
+  return { item: data.item, title: p.title, startDate, startTime, endDate, endTime, allDay: p.allDay, notes: "", location: p.location ?? "", withName: p.withName };
 }
 
 export function CapturePanel({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -234,6 +235,7 @@ export function CapturePanel({ open, onClose }: { open: boolean; onClose: () => 
             eventEndsAtISO: endAt,
             eventAllDay: e.allDay,
             eventNotes: e.notes.trim() || null,
+            eventLocation: e.location.trim() || null,
           },
         }),
       });
@@ -376,6 +378,13 @@ export function CapturePanel({ open, onClose }: { open: boolean; onClose: () => 
                 All day
               </label>
               {pendingEvent.withName && <p className="font-sans text-metadata text-meta">With {pendingEvent.withName}</p>}
+              <input
+                aria-label="Where"
+                placeholder="Where? (address or place, optional)"
+                value={pendingEvent.location}
+                onChange={(ev) => setPendingEvent({ ...pendingEvent, location: ev.target.value })}
+                className="h-9 rounded-input border border-line bg-surface px-3 font-sans text-body text-ink outline-none placeholder:text-meta focus-visible:ring-2 focus-visible:ring-action/50"
+              />
               <input
                 aria-label="Notes"
                 placeholder="Add a note (optional)"

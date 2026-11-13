@@ -134,6 +134,9 @@ interface EditableItem {
   giftCostDollars: string;
   eventTitle: string;
   eventDate: string;
+  /** Last day of the event (same as eventDate for a one-day event). */
+  eventEndDate: string;
+  eventLocation: string;
   eventStartTime: string;
   eventEndTime: string;
   eventAllDay: boolean;
@@ -177,6 +180,7 @@ interface ParsedApiItem {
   eventAllDay: boolean | null;
   eventDateApproximate: boolean | null;
   eventType: "personal" | "work" | "family" | "kid_activity" | "travel" | null;
+  eventLocation?: string | null;
   noteText: string | null;
   budgetOccasionType: "birthday" | "christmas" | "anniversary" | "graduation" | "just_because" | "default" | null;
   budgetMinDollars: number | null;
@@ -215,6 +219,12 @@ function addOneHour(time: string): string {
   return `${String(next).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
+function daysBetweenLabel(startDate: string, endDate: string): string {
+  const days = Math.round((new Date(`${endDate}T12:00:00`).getTime() - new Date(`${startDate}T12:00:00`).getTime()) / 86400000);
+  if (!Number.isFinite(days) || days < 1) return "";
+  return days === 1 ? "overnight (into the next day)" : `over ${days} nights`;
+}
+
 function fromApiItem(item: ParsedApiItem): EditableItem {
   const allDay = item.eventAllDay ?? false;
   const start = isoToDateAndTime(item.eventStartsAtISO);
@@ -234,6 +244,8 @@ function fromApiItem(item: ParsedApiItem): EditableItem {
     giftCostDollars: item.giftCostDollars != null ? String(item.giftCostDollars) : "",
     eventTitle: item.eventTitle ?? "",
     eventDate: start.date,
+    eventEndDate: end.date && end.date > start.date ? end.date : start.date,
+    eventLocation: item.eventLocation ?? "",
     // P0-4: only default to a clock time when the model actually gave one
     // and it isn't an all-day event — never invent 9am/10am out of thin
     // air, which used to happen for every event with no stated time.
@@ -327,6 +339,7 @@ function toExecutePayload(item: EditableItem): Record<string, unknown> {
     eventAllDay: null as boolean | null,
     eventDateApproximate: null as boolean | null,
     eventType: null as string | null,
+    eventLocation: null as string | null,
     noteText: null as string | null,
     budgetOccasionType: null as string | null,
     budgetMinDollars: null as number | null,
@@ -370,20 +383,32 @@ function toExecutePayload(item: EditableItem): Record<string, unknown> {
     case "create_calendar_event": {
       // P0-4: all-day events are stored midnight-to-midnight; timed events
       // use the times the user actually entered (never a silent default).
-      const startsAt = item.eventAllDay
-        ? new Date(`${item.eventDate}T00:00:00`).toISOString()
-        : new Date(`${item.eventDate}T${item.eventStartTime}:00`).toISOString();
-      const endsAt = item.eventAllDay
-        ? new Date(`${item.eventDate}T23:59:59`).toISOString()
-        : new Date(`${item.eventDate}T${item.eventEndTime || addOneHour(item.eventStartTime)}:00`).toISOString();
+      // An event can run over several days (a stay, a trip): the end date is
+      // the last day, and an end clock time earlier than the start on the
+      // same day means it runs past midnight.
+      const lastDate = item.eventEndDate && item.eventEndDate > item.eventDate ? item.eventEndDate : item.eventDate;
+      const startsAtDate = item.eventAllDay
+        ? new Date(`${item.eventDate}T00:00:00`)
+        : new Date(`${item.eventDate}T${item.eventStartTime}:00`);
+      let endsAtDate: Date | null = null;
+      if (item.eventAllDay) {
+        // A single all-day event has no explicit end; a multi-day one ends on its last day.
+        endsAtDate = lastDate > item.eventDate ? new Date(`${lastDate}T00:00:00`) : null;
+      } else {
+        endsAtDate = new Date(`${lastDate}T${item.eventEndTime || addOneHour(item.eventStartTime)}:00`);
+        if (endsAtDate.getTime() <= startsAtDate.getTime() && lastDate === item.eventDate) {
+          endsAtDate = new Date(endsAtDate.getTime() + 24 * 60 * 60 * 1000);
+        }
+      }
       return {
         ...base,
         eventTitle: item.eventTitle.trim(),
-        eventStartsAtISO: startsAt,
-        eventEndsAtISO: endsAt,
+        eventStartsAtISO: startsAtDate.toISOString(),
+        eventEndsAtISO: endsAtDate ? endsAtDate.toISOString() : null,
         eventAllDay: item.eventAllDay,
         eventDateApproximate: item.eventDateApproximate,
         eventType: item.eventType,
+        eventLocation: item.eventLocation.trim() || null,
       };
     }
     case "add_time_off":
@@ -1124,7 +1149,19 @@ function BrainDumpItemCard({
                   </Badge>
                 )}
               </div>
-              <Input type="date" value={item.eventDate} disabled={disabled} onChange={(e) => onChange({ eventDate: e.target.value })} />
+              <Input
+                type="date"
+                value={item.eventDate}
+                disabled={disabled}
+                onChange={(e) =>
+                  onChange({
+                    eventDate: e.target.value,
+                    // A one-day event moves as a whole; a multi-day one keeps its end unless that now falls before the start.
+                    eventEndDate:
+                      item.eventEndDate === item.eventDate || item.eventEndDate < e.target.value ? e.target.value : item.eventEndDate,
+                  })
+                }
+              />
             </div>
             <label className="flex items-center gap-2 text-sm">
               <input
@@ -1158,6 +1195,33 @@ function BrainDumpItemCard({
                 </div>
               </div>
             )}
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-2">
+                <Label>Ends on</Label>
+                {item.eventEndDate > item.eventDate && (
+                  <span className="text-xs text-muted-foreground">runs {daysBetweenLabel(item.eventDate, item.eventEndDate)}</span>
+                )}
+              </div>
+              <Input
+                type="date"
+                value={item.eventEndDate}
+                min={item.eventDate || undefined}
+                disabled={disabled}
+                onChange={(e) => onChange({ eventEndDate: e.target.value })}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-2">
+                <Label>Where</Label>
+                {!item.eventLocation.trim() && <span className="text-xs text-muted-foreground">not stated — add it for a leave-by time</span>}
+              </div>
+              <Input
+                value={item.eventLocation}
+                placeholder="Address or place (optional)"
+                disabled={disabled}
+                onChange={(e) => onChange({ eventLocation: e.target.value })}
+              />
+            </div>
             <div className="flex flex-col gap-1">
               <Label>Type</Label>
               <select

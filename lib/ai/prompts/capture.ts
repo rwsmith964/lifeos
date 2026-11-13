@@ -110,6 +110,7 @@ export const captureActionSchema = z.object({
       // ever stated" instead of the model or executor fabricating a time.
       eventAllDay: z.boolean().nullable(),
       eventType: z.enum(["personal", "work", "family", "kid_activity", "travel"]).nullable(),
+      eventLocation: z.string().nullable().optional(),
       noteText: z.string().nullable(),
       budgetOccasionType: occasionTypeSchema.nullable(),
       budgetMinDollars: z.number().nullable(),
