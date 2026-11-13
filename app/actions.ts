@@ -2,7 +2,9 @@
 
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
+import { createClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/db/client-server";
+import { getSupabaseAnonKey, getSupabaseUrl } from "@/lib/db/env";
 import { createSupabaseServiceRoleClient } from "@/lib/db/client-service-role";
 import { RESET_FLOW_COOKIE } from "@/lib/constants";
 import { getSiteOrigin } from "@/lib/http/site-origin";
@@ -160,9 +162,17 @@ export async function sendPasswordResetEmail(
   const email = String(formData.get("email") ?? "");
   const origin = await getSiteOrigin();
 
-  const supabase = await createSupabaseServerClient();
+  // Implicit flow on purpose: the default (PKCE) flow stores a secret in the
+  // browser that asked for the reset, so the emailed link only works in that
+  // same browser. People request a reset from the iOS app or a computer and
+  // open the email on their phone's Safari, which made every link fail. The
+  // implicit link carries its tokens in the URL fragment instead and works from
+  // any device (see /reset-password and /api/auth/recovery-session).
+  const supabase = createClient(getSupabaseUrl(), getSupabaseAnonKey(), {
+    auth: { flowType: "implicit", persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${origin}/auth/callback?next=/reset-password`,
+    redirectTo: `${origin}/reset-password`,
   });
   // Supabase's own rate limiting on this endpoint surfaces as an error
   // here too (e.g. requesting twice in quick succession) — that's a real
