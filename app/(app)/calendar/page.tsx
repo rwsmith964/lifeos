@@ -291,7 +291,6 @@ function WeekTimelineView({
   timeline,
   selectedDay,
   today,
-  monthLabel,
   viewQuery,
   custodyBands,
   weatherByDay,
@@ -301,7 +300,6 @@ function WeekTimelineView({
   timeline: WeekTimelineLayout;
   selectedDay: Date;
   today: Date;
-  monthLabel: string;
   viewQuery: string;
   custodyBands: WeekCustodyBand[];
   weatherByDay: Map<string, { tempF: number | null; shortForecast: string; rulesOutOutdoor: boolean }>;
@@ -387,7 +385,7 @@ function WeekTimelineView({
               return (
                 <Link
                   key={key}
-                  href={`/calendar?month=${monthLabel}&day=${key}${viewQuery}&range=week#selected-day`}
+                  href={`/calendar?month=${format(d.date, MONTH_PARAM_FORMAT)}&day=${key}${viewQuery}&range=day`}
                   className={cn(
                     "flex flex-1 flex-col items-center gap-0.5 rounded-control py-1 font-sans text-[11px]",
                     selected ? "bg-action text-on-action" : isWeekend ? "bg-surface-2" : "",
@@ -397,6 +395,12 @@ function WeekTimelineView({
                 >
                   <span>{format(d.date, "EEE")}</span>
                   <span className="text-sm font-medium">{format(d.date, "d")}</span>
+                  <span className={cn("text-[10px]", selected ? "text-on-action/80" : "text-meta")}>
+                    {(() => {
+                      const count = d.allDay.length + d.positioned.filter((item) => !BANDED_KINDS.has(item.kind)).length;
+                      return count > 0 ? `${count} ${count === 1 ? "event" : "events"}` : "—";
+                    })()}
+                  </span>
                 </Link>
               );
             })}
@@ -1057,6 +1061,10 @@ export default async function CalendarPage({
         startsAtISO: sg.startsAt.toISOString(),
         endsAtISO: sg.endsAt.toISOString(),
         dayLabel: format(sg.startsAt, "EEE, MMM d"),
+        startDate: format(sg.startsAt, "yyyy-MM-dd"),
+        startTime: format(sg.startsAt, "HH:mm"),
+        endDate: format(sg.endsAt, "yyyy-MM-dd"),
+        endTime: format(sg.endsAt, "HH:mm"),
         timeLabel: `${format(sg.startsAt, "h:mm a")} – ${format(sg.endsAt, "h:mm a")}`,
         tight: sg.tight,
       }));
@@ -1525,12 +1533,67 @@ export default async function CalendarPage({
       </Card>
       )}
 
-      {view === "all" && <InvitationsCard invitations={invitationViews} />}
-      {view === "all" && <SuggestionsPanel suggestions={suggestionViews} showDay={range === "week" || range === "agenda"} />}
+      {range === "day" && (
+        <div className="flex flex-col gap-2">
+          <div className="flex gap-1">
+            {eachDayOfInterval({ start: startOfWeek(selectedDay), end: endOfWeek(selectedDay) }).map((d) => {
+              const key = format(d, DAY_PARAM_FORMAT);
+              const selected = isSameDay(d, selectedDay);
+              return (
+                <Link
+                  key={key}
+                  href={`/calendar?month=${format(d, MONTH_PARAM_FORMAT)}&day=${key}${viewQuery}&range=day`}
+                  aria-label={format(d, "EEEE, MMMM d")}
+                  aria-current={selected ? "date" : undefined}
+                  className={cn(
+                    "flex flex-1 flex-col items-center rounded-control py-1.5 font-sans text-[11px]",
+                    selected ? "bg-action text-on-action" : "bg-surface-2 text-ink-2",
+                    !selected && isSameDay(d, today) && "font-bold text-action"
+                  )}
+                >
+                  <span>{format(d, "EEE")}</span>
+                  <span className="text-sm font-medium">{format(d, "d")}</span>
+                </Link>
+              );
+            })}
+          </div>
+          <form action="/calendar" method="get" className="flex items-center gap-2">
+            <input type="hidden" name="range" value="day" />
+            {view === "custody" && <input type="hidden" name="view" value="custody" />}
+            {layersParam && <input type="hidden" name="layers" value={serializeLayers(layers)} />}
+            <label htmlFor="jump-to-day" className="font-sans text-metadata text-meta">
+              Jump to
+            </label>
+            <input
+              id="jump-to-day"
+              type="date"
+              name="day"
+              defaultValue={selectedDayKey}
+              className="h-9 rounded-control border border-line bg-surface px-2 font-sans text-sm text-ink"
+            />
+            <Button type="submit" size="sm" variant="outline">
+              Go
+            </Button>
+          </form>
+        </div>
+      )}
+
+      {range !== "month" && view === "all" && <InvitationsCard invitations={invitationViews} />}
+      {range !== "month" && view === "all" && (
+        <SuggestionsPanel suggestions={suggestionViews} showDay={range === "week" || range === "agenda"} />
+      )}
 
       <div id="selected-day" className="flex flex-col gap-2 scroll-mt-4">
         {range !== "day" && range !== "agenda" && (
-          <p className="font-sans text-body font-bold text-ink">{format(selectedDay, "EEEE, MMMM d")}</p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="font-sans text-body font-bold text-ink">{format(selectedDay, "EEEE, MMMM d")}</p>
+            <Link
+              href={`/calendar?month=${monthLabel}&day=${selectedDayKey}${viewQuery}&range=day`}
+              className="font-sans text-metadata font-bold text-action underline underline-offset-2"
+            >
+              Open full day
+            </Link>
+          </div>
         )}
         {dayTimeline && <DayTimelineView timeline={dayTimeline} day={selectedDay} />}
         {weekTimeline && (
@@ -1538,7 +1601,6 @@ export default async function CalendarPage({
             timeline={weekTimeline}
             selectedDay={selectedDay}
             today={today}
-            monthLabel={monthLabel}
             viewQuery={viewQuery}
             custodyBands={weekCustodyBands}
             weatherByDay={weekWeatherByDay}
@@ -1650,6 +1712,8 @@ export default async function CalendarPage({
           ))
         ))}
       </div>
+      {range === "month" && view === "all" && <InvitationsCard invitations={invitationViews} />}
+      {range === "month" && view === "all" && <SuggestionsPanel suggestions={suggestionViews} showDay={false} />}
       </div>
     </div>
   );
