@@ -25,7 +25,7 @@ import {
   listAttendeeNamesForEvents,
   listAttendeesForEvents,
   listCustodyBlocksForHouseholdInRange,
-  listEventsInRange,
+  listEventsOverlappingRange,
 } from "@/lib/db/repositories/calendar";
 import { isKidLinkedEventVisibleForViewer } from "@/lib/custody/visibility";
 import { listPeopleForHousehold, peopleRepo } from "@/lib/db/repositories/people";
@@ -645,7 +645,7 @@ export default async function CalendarPage({
   const gridDays = eachDayOfInterval({ start: gridStart, end: gridEnd });
 
   const [events, custodyBlocks, people] = await Promise.all([
-    listEventsInRange(supabase, household.id, gridStart.toISOString(), gridEnd.toISOString()),
+    listEventsOverlappingRange(supabase, household.id, gridStart.toISOString(), gridEnd.toISOString()),
     listCustodyBlocksForHouseholdInRange(supabase, household.id, gridStart.toISOString(), gridEnd.toISOString()),
     listPeopleForHousehold(supabase, household.id),
   ]);
