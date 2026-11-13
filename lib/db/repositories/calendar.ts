@@ -54,6 +54,26 @@ export async function listEventsInRange(
   );
 }
 
+/**
+ * Events that overlap the window, not just ones that start inside it -- so an
+ * overnight or multi-day event (a sleepover that began Saturday) still shows on
+ * the Sunday it runs into. Events with no end only count if they start in the window.
+ */
+export async function listEventsOverlappingRange(
+  client: SupabaseClient,
+  householdId: string,
+  startsAtISO: string,
+  endsAtISO: string
+): Promise<CalendarEventRow[]> {
+  return calendarEventsRepo.list(client, (q) =>
+    q
+      .eq("household_id", householdId)
+      .lt("starts_at", endsAtISO)
+      .or(`starts_at.gte.${startsAtISO},ends_at.gt.${startsAtISO}`)
+      .order("starts_at", { ascending: true })
+  );
+}
+
 export async function listAttendeesForEvent(
   client: SupabaseClient,
   calendarEventId: string
