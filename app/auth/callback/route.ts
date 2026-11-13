@@ -18,30 +18,8 @@ const ALLOWED_NEXT_PATHS = new Set(["/onboarding", "/reset-password"]);
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  const tokenHash = searchParams.get("token_hash");
-  const type = searchParams.get("type");
   const requestedNext = searchParams.get("next");
   const next = requestedNext && ALLOWED_NEXT_PATHS.has(requestedNext) ? requestedNext : "/onboarding";
-
-  // Password-reset emails link here with a token_hash (see the "Reset
-  // Password" email template in Supabase). Unlike the PKCE `code` flow below,
-  // verifying a token hash needs nothing stored in the browser that asked for
-  // the reset, so the link works from any device or browser, including the
-  // phone's Safari when the reset was requested on a computer or in the app.
-  if (tokenHash && type === "recovery") {
-    const supabase = await createSupabaseServerClient();
-    const { error } = await supabase.auth.verifyOtp({ type: "recovery", token_hash: tokenHash });
-    if (error) return NextResponse.redirect(`${origin}/forgot-password?linkProblem=1`);
-    const response = NextResponse.redirect(`${origin}/reset-password`);
-    response.cookies.set(RESET_FLOW_COOKIE, "1", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: RESET_FLOW_COOKIE_MAX_AGE_SECONDS,
-      path: "/",
-    });
-    return response;
-  }
 
   if (code) {
     const supabase = await createSupabaseServerClient();
