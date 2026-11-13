@@ -33,6 +33,8 @@ export default async function EditCalendarEventPage({ params }: { params: Promis
   const defaults: EventFormDefaults = {
     title: event.title,
     date: toDateStr(startsAt),
+    // Only filled for multi-day events, so moving a one-day event never leaves a stale end date.
+    endDate: toDateStr(endsAt) !== toDateStr(startsAt) ? toDateStr(endsAt) : "",
     allDay: event.all_day ?? false,
     startTime: toTimeStr(startsAt),
     endTime: toTimeStr(endsAt),

@@ -29,6 +29,8 @@ function isTimeRangeError(message: string): boolean {
 export interface EventFormDefaults {
   title: string;
   date: string;
+  /** Last day, only when the event runs past its first day; empty = same day. */
+  endDate: string;
   allDay: boolean;
   startTime: string;
   endTime: string;
@@ -140,6 +142,13 @@ export function EventForm({ people, groups = [], endpoint, method, submitLabel, 
           </div>
         </div>
       )}
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="endDate">Ends on (optional)</Label>
+        <Input id="endDate" name="endDate" type="date" defaultValue={defaults?.endDate} />
+        <p className="text-xs text-muted-foreground">
+          Leave empty for a same-day event. Set it for a stay, a trip or anything that runs past midnight.
+        </p>
+      </div>
       <div className="flex flex-col gap-2">
         <Label htmlFor="location">Location (optional)</Label>
         <Input id="location" name="location" defaultValue={defaults?.location} />

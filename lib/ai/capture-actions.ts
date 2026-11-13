@@ -16,6 +16,7 @@ import { userActivitiesRepo } from "@/lib/db/repositories/activities";
 import { giftsRepo } from "@/lib/db/repositories/gifts";
 import { interactionsRepo, recordContactForCadence } from "@/lib/db/repositories/contact";
 import { calendarEventsRepo, eventAttendeesRepo } from "@/lib/db/repositories/calendar";
+import { coordinatesForLocation } from "@/lib/calendar/geocode-event";
 import { listWorkSchedulesForPerson, timeOffEntriesRepo, workSchedulesRepo } from "@/lib/db/repositories/work-schedule";
 import { planWorkScheduleUpdate } from "@/lib/work/schedule-update";
 import type { PersonRow } from "@/lib/db/database.types";
@@ -135,13 +136,19 @@ export async function executeAction(
       let endsAtISO: string;
       if (allDay) {
         const datePart = format(startsAt, "yyyy-MM-dd");
+        // An all-day stay can run over several days (a trip, a weekend away):
+        // the last day comes from the end date when one later than the start was given.
+        const lastDay = action.eventEndsAtISO ? format(new Date(action.eventEndsAtISO), "yyyy-MM-dd") : datePart;
+        const endDatePart = lastDay > datePart ? lastDay : datePart;
         startsAtISO = new Date(`${datePart}T00:00:00`).toISOString();
-        endsAtISO = new Date(`${datePart}T23:59:59`).toISOString();
+        endsAtISO = new Date(`${endDatePart}T23:59:59`).toISOString();
       } else {
         const endsAt = action.eventEndsAtISO ? new Date(action.eventEndsAtISO) : new Date(startsAt.getTime() + 60 * 60 * 1000);
         startsAtISO = startsAt.toISOString();
         endsAtISO = endsAt.toISOString();
       }
+      const location = action.eventLocation?.trim() || null;
+      const coords = await coordinatesForLocation(location);
       const event = await calendarEventsRepo.create(supabase, {
         household_id: household.id,
         created_by_person_id: selfPerson.id,
@@ -150,6 +157,10 @@ export async function executeAction(
         ends_at: endsAtISO,
         all_day: allDay,
         event_type: action.eventType ?? "personal",
+        // Where it happens (map coordinates are looked up so leave-by times can work).
+        location,
+        location_lat: coords?.lat ?? null,
+        location_lng: coords?.lng ?? null,
         // Notes typed on the confirmation card before saving (Quick Capture).
         description: (action as { eventNotes?: string | null }).eventNotes?.trim() || null,
       });

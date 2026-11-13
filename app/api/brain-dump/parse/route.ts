@@ -107,9 +107,16 @@ export async function POST(request: Request) {
   const redactedTranscript = tokenMap.redactMentions(transcript);
   // M-01 follow-up: was a bare `new Date()` -- see the identical fix/
   // comment in app/api/capture/route.ts, which shares this exact prompt.
+  // The AI also sees how people are labelled ("Mom", "Girlfriend") and where they live, so
+  // "drop the kids at Mom's" can resolve to a person and her address. Children's addresses are never sent.
+  const promptPeople = dumpPeople.map((p, i) => ({
+    ...p,
+    relationshipLabel: people[i].relationship_label,
+    address: people[i].relationship_type === "child" ? null : people[i].address,
+  }));
   const userPrompt = buildBrainDumpUserPrompt(
     format(getZonedNow(timezone), "EEEE, MMMM d, yyyy"),
-    dumpPeople,
+    promptPeople,
     redactedTranscript
   );
 
@@ -150,6 +157,7 @@ export async function POST(request: Request) {
       interactionNotes: restore(item.interactionNotes),
       giftDescription: restore(item.giftDescription),
       eventTitle: restore(item.eventTitle),
+      eventLocation: restore(item.eventLocation ?? null),
       noteText: restore(item.noteText),
       timeOffReason: restore(item.timeOffReason),
       timeOffDestination: restore(item.timeOffDestination),

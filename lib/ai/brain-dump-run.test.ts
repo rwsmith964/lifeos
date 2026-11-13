@@ -30,6 +30,20 @@ describe("readBrainDumpReply", () => {
     expect(withProse.ok).toBe(true);
   });
 
+  it("keeps a location and a multi-day end, and treats a missing location as none", () => {
+    const stay = event("Brittney stays over", {
+      eventStartsAtISO: "2026-11-14T16:30:00",
+      eventEndsAtISO: "2026-11-15T09:30:00",
+      eventLocation: "12 Oak Lane",
+    });
+    const result = readBrainDumpReply(JSON.stringify({ items: [stay, event("Plain")] }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.items[0].eventLocation).toBe("12 Oak Lane");
+    expect(result.items[0].eventEndsAtISO).toBe("2026-11-15T09:30:00");
+    expect(result.items[1].eventLocation).toBeNull();
+  });
+
   it("turns an unrecognised label into null instead of dropping the whole item", () => {
     const result = readBrainDumpReply(JSON.stringify({ items: [event("Party", { eventType: "social_gathering" })] }));
     expect(result.ok).toBe(true);

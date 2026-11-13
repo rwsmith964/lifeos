@@ -8,7 +8,13 @@
 // tests pin down the WRITES each action type performs -- the part that
 // must never change -- while the return-value assertions below document
 // the new (additive) descriptor Module 3 adds on top.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// No network in tests: pretend every address resolves to the same spot.
+vi.mock("@/lib/calendar/geocode-event", () => ({
+  coordinatesForLocation: async (location: string | null | undefined) => (location ? { lat: 1.5, lng: 2.5 } : null),
+}));
+
 import { executeAction, isKnownPersonId } from "./capture-actions";
 import { createFakeSupabaseClient } from "../test-support/fake-supabase";
 import type { HouseholdRow, PersonRow } from "../db/database.types";
@@ -65,6 +71,80 @@ describe("executeAction", () => {
     // Additive: the descriptor Module 3 adds. Pre-existing callers ignore
     // this return value entirely, so adding it changes nothing for them.
     expect(result).toEqual({ table: "calendar_events", id: "event-1" });
+  });
+
+  const eventAction = (over: Record<string, unknown>) =>
+    ({
+      type: "create_calendar_event",
+      personId: null,
+      personName: null,
+      personRelationshipTypeGuess: null,
+      personNotes: null,
+      activityType: null,
+      activityNotes: null,
+      interest: null,
+      interestStrength: null,
+      interactionType: null,
+      interactionNotes: null,
+      giftDescription: null,
+      giftOccasionType: null,
+      giftOccasionDate: null,
+      giftCostDollars: null,
+      eventTitle: "Brittney stays over",
+      eventStartsAtISO: "2026-11-14T16:30:00.000Z",
+      eventEndsAtISO: "2026-11-15T09:30:00.000Z",
+      eventAllDay: false,
+      eventType: "personal",
+      noteText: null,
+      budgetOccasionType: null,
+      budgetMinDollars: null,
+      budgetMaxDollars: null,
+      timeOffStartDate: null,
+      timeOffEndDate: null,
+      timeOffReason: null,
+      timeOffDestination: null,
+      ...over,
+    }) as never;
+
+  it("create_calendar_event keeps a stay that runs into the next day as ONE event, and saves its location", async () => {
+    const { client, calls } = createFakeSupabaseClient({
+      calendar_events: { onInsert: (v) => ({ id: "event-2", ...v }) },
+    });
+    await executeAction(client as never, household, selfPerson, eventAction({ eventLocation: "  12 Oak Lane, Springfield " }));
+    const rows = calls.filter((c) => c.table === "calendar_events" && c.op === "insert");
+    expect(rows).toHaveLength(1);
+    const row = rows[0].values as Record<string, unknown>;
+    expect(row.starts_at).toBe("2026-11-14T16:30:00.000Z");
+    expect(row.ends_at).toBe("2026-11-15T09:30:00.000Z");
+    expect(row.location).toBe("12 Oak Lane, Springfield");
+    expect(row.location_lat).toBe(1.5);
+    expect(row.location_lng).toBe(2.5);
+  });
+
+  it("create_calendar_event leaves location empty when none was given", async () => {
+    const { client, calls } = createFakeSupabaseClient({
+      calendar_events: { onInsert: (v) => ({ id: "event-3", ...v }) },
+    });
+    await executeAction(client as never, household, selfPerson, eventAction({}));
+    const row = calls.find((c) => c.table === "calendar_events" && c.op === "insert")!.values as Record<string, unknown>;
+    expect(row.location).toBeNull();
+    expect(row.location_lat).toBeNull();
+  });
+
+  it("an all-day event can span several days", async () => {
+    const { client, calls } = createFakeSupabaseClient({
+      calendar_events: { onInsert: (v) => ({ id: "event-4", ...v }) },
+    });
+    await executeAction(
+      client as never,
+      household,
+      selfPerson,
+      eventAction({ eventTitle: "Lake trip", eventAllDay: true, eventStartsAtISO: "2026-11-13T12:00:00", eventEndsAtISO: "2026-11-15T12:00:00" })
+    );
+    const row = calls.find((c) => c.table === "calendar_events" && c.op === "insert")!.values as Record<string, unknown>;
+    expect(row.starts_at).toBe(new Date("2026-11-13T00:00:00").toISOString());
+    expect(row.ends_at).toBe(new Date("2026-11-15T23:59:59").toISOString());
+    expect(row.all_day).toBe(true);
   });
 
   it("record_gift writes a gifts row with status 'idea'", async () => {

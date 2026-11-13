@@ -30,6 +30,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const startTime = String(formData.get("startTime") ?? "09:00");
   const endTime = String(formData.get("endTime") ?? "10:00");
   const allDay = formData.get("allDay") === "on";
+  // A stay or trip can end on a later day; empty (or earlier than the start) means same day.
+  const endDateRaw = String(formData.get("endDate") ?? "");
+  const endDate = endDateRaw && endDateRaw > date ? endDateRaw : date;
   const location = String(formData.get("location") ?? "").trim() || null;
   const prepRaw = Number.parseInt(String(formData.get("prepMinutes") ?? ""), 10);
   // Only look the address up again when it actually changed.
@@ -37,7 +40,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const coords = locationChanged ? await coordinatesForLocation(location) : null;
 
   const startsAt = allDay ? `${date}T00:00:00` : `${date}T${startTime}:00`;
-  const endsAt = allDay ? `${date}T23:59:59` : `${date}T${endTime}:00`;
+  const endsAt = allDay ? `${endDate}T23:59:59` : `${endDate}T${endTime}:00`;
 
   const parsed = calendarEventUpdateSchema.safeParse({
     title: String(formData.get("title") ?? "").trim(),

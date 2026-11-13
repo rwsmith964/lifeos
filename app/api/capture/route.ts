@@ -41,6 +41,7 @@ const confirmedEventSchema = z.object({
   eventEndsAtISO: z.string().max(40).nullable(),
   eventAllDay: z.boolean(),
   eventNotes: z.string().max(1000).nullable(),
+  eventLocation: z.string().max(300).nullable().optional(),
 });
 import { parseFindTimeIntent } from "@/lib/scheduling/find-time";
 import { looksLikeDayPlan } from "@/lib/planning/detect";
@@ -59,6 +60,7 @@ interface CaptureRequestBody {
     eventEndsAtISO: string | null;
     eventAllDay: boolean;
     eventNotes: string | null;
+    eventLocation?: string | null;
   };
 }
 
@@ -146,6 +148,7 @@ export async function POST(request: Request) {
           eventEndsAtISO: edits.data.eventEndsAtISO,
           eventAllDay: edits.data.eventAllDay,
           eventNotes: edits.data.eventNotes,
+          eventLocation: edits.data.eventLocation?.trim() || null,
         } as typeof base.data,
         timezone
       );
@@ -204,6 +207,9 @@ export async function POST(request: Request) {
     id: p.id,
     label: tokenMap.labelFor(p),
     relationshipType: p.relationship_type,
+    relationshipLabel: p.relationship_label,
+    // Children's addresses are never sent to the AI.
+    address: p.relationship_type === "child" ? null : p.address,
   }));
 
   // Same fix as Brain Dump (P0-2): rewrite child nickname/full name/first
@@ -337,12 +343,13 @@ export async function POST(request: Request) {
     const personLabel = personId ? people.find((p) => p.id === personId) : null;
     return NextResponse.json({
       status: "confirm",
-      item: { ...action, eventTitle: restore(action.eventTitle), summary: restore(action.summary) ?? action.summary },
+      item: { ...action, eventTitle: restore(action.eventTitle), eventLocation: restore(action.eventLocation ?? null), summary: restore(action.summary) ?? action.summary },
       preview: {
         title: restore(action.eventTitle),
         startsAtISO: action.eventStartsAtISO,
         endsAtISO: action.eventEndsAtISO,
         allDay: action.eventAllDay ?? false,
+        location: restore(action.eventLocation ?? null),
         withName: personLabel ? personLabel.nickname || personLabel.full_name : null,
       },
     });
