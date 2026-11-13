@@ -212,6 +212,12 @@ function isoToDateAndTime(iso: string | null): { date: string; time: string } {
   return { date: format(parsed, "yyyy-MM-dd"), time: format(parsed, "HH:mm") };
 }
 
+function nextDateKey(dateKey: string): string {
+  const d = new Date(`${dateKey}T12:00:00`);
+  d.setDate(d.getDate() + 1);
+  return format(d, "yyyy-MM-dd");
+}
+
 function addOneHour(time: string): string {
   const [h, m] = time.split(":").map(Number);
   if (Number.isNaN(h) || Number.isNaN(m)) return "";
@@ -387,24 +393,26 @@ function toExecutePayload(item: EditableItem): Record<string, unknown> {
       // the last day, and an end clock time earlier than the start on the
       // same day means it runs past midnight.
       const lastDate = item.eventEndDate && item.eventEndDate > item.eventDate ? item.eventEndDate : item.eventDate;
-      const startsAtDate = item.eventAllDay
-        ? new Date(`${item.eventDate}T00:00:00`)
-        : new Date(`${item.eventDate}T${item.eventStartTime}:00`);
-      let endsAtDate: Date | null = null;
+      // Calendar times are wall-clock ("4:30 PM" means 4:30 PM wherever you are), so send
+      // the clock time as typed. Converting to a UTC instant here made every Brain Dump
+      // event land hours late on the calendar.
+      const startWall = item.eventAllDay ? `${item.eventDate}T00:00:00` : `${item.eventDate}T${item.eventStartTime}:00`;
+      let endWall: string | null;
       if (item.eventAllDay) {
         // A single all-day event has no explicit end; a multi-day one ends on its last day.
-        endsAtDate = lastDate > item.eventDate ? new Date(`${lastDate}T00:00:00`) : null;
+        endWall = lastDate > item.eventDate ? `${lastDate}T00:00:00` : null;
       } else {
-        endsAtDate = new Date(`${lastDate}T${item.eventEndTime || addOneHour(item.eventStartTime)}:00`);
-        if (endsAtDate.getTime() <= startsAtDate.getTime() && lastDate === item.eventDate) {
-          endsAtDate = new Date(endsAtDate.getTime() + 24 * 60 * 60 * 1000);
+        const endTime = item.eventEndTime || addOneHour(item.eventStartTime);
+        endWall = `${lastDate}T${endTime}:00`;
+        if (endWall <= startWall && lastDate === item.eventDate) {
+          endWall = `${nextDateKey(lastDate)}T${endTime}:00`;
         }
       }
       return {
         ...base,
         eventTitle: item.eventTitle.trim(),
-        eventStartsAtISO: startsAtDate.toISOString(),
-        eventEndsAtISO: endsAtDate ? endsAtDate.toISOString() : null,
+        eventStartsAtISO: startWall,
+        eventEndsAtISO: endWall,
         eventAllDay: item.eventAllDay,
         eventDateApproximate: item.eventDateApproximate,
         eventType: item.eventType,

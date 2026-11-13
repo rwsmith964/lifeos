@@ -4,8 +4,11 @@
 // Dismiss. Times arrive pre-formatted from the server: calendar times are
 // stored as floating wall-clock values, so formatting them in the browser's
 // own timezone here would shift them.
-import { Car, ClipboardList, ShoppingBasket, TriangleAlert } from "lucide-react";
+import { useState } from "react";
+import { Car, ClipboardList, Pencil, ShoppingBasket, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useAsyncToastAction } from "@/lib/hooks/use-async-toast-action";
 import { acceptSuggestionAction, dismissSuggestionAction } from "./suggestion-actions";
 import { syncDepartureReminders } from "@/components/native/departure-reminders";
@@ -21,21 +24,44 @@ export interface SuggestionView {
   endsAtISO: string;
   /** e.g. "Mon, Nov 9" -- shown only when the list spans several days. */
   dayLabel: string;
+  /** Wall-clock parts for the edit form: yyyy-MM-dd and HH:mm. */
+  startDate: string;
+  startTime: string;
+  endDate: string;
+  endTime: string;
   timeLabel: string;
   tight: boolean;
 }
 
+function nextDay(dateKey: string): string {
+  const d = new Date(`${dateKey}T12:00:00`);
+  d.setDate(d.getDate() + 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 function SuggestionRow({ s, showDay }: { s: SuggestionView; showDay: boolean }) {
+  // Change the title or time before adding -- a suggested time is a starting point.
+  const [editing, setEditing] = useState(false);
+  const [title, setTitle] = useState(s.title);
+  const [date, setDate] = useState(s.startDate);
+  const [startTime, setStartTime] = useState(s.startTime);
+  const [endTime, setEndTime] = useState(s.endTime);
+  const changed = title.trim() !== s.title || date !== s.startDate || startTime !== s.startTime || endTime !== s.endTime;
+
   const accept = useAsyncToastAction(
     async () => {
+      const endDate = changed ? (endTime > startTime ? date : nextDay(date)) : s.endDate;
       const res = await acceptSuggestionAction({
         kind: s.kind,
         eventId: s.eventId,
         suffix: s.suffix,
-        title: s.title,
+        title: changed && title.trim() ? title.trim() : s.title,
         detail: s.detail,
         startsAtISO: s.startsAtISO,
         endsAtISO: s.endsAtISO,
+        ...(changed && date && startTime && endTime
+          ? { startsAtLocal: `${date}T${startTime}`, endsAtLocal: `${endDate}T${endTime}` }
+          : {}),
       });
       if (res.error) throw new Error(res.error);
       // In the phone app, a new drive gets its leave-soon reminders right away.
@@ -70,10 +96,33 @@ function SuggestionRow({ s, showDay }: { s: SuggestionView; showDay: boolean }) 
         <Button size="sm" disabled={busy} onClick={accept.run}>
           Add
         </Button>
+        <Button size="sm" variant="outline" disabled={busy} onClick={() => setEditing((v) => !v)} aria-expanded={editing}>
+          <Pencil className="size-3.5" aria-hidden /> Edit
+        </Button>
         <Button size="sm" variant="outline" disabled={busy} onClick={dismiss.run}>
           Dismiss
         </Button>
       </div>
+      {editing && (
+        <div className="grid w-full grid-cols-3 gap-2">
+          <div className="col-span-3 flex flex-col gap-1">
+            <Label>What</Label>
+            <Input value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)} />
+          </div>
+          <div className="col-span-3 flex flex-col gap-1 sm:col-span-1">
+            <Label>Day</Label>
+            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label>From</Label>
+            <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label>To</Label>
+            <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+          </div>
+        </div>
+      )}
     </li>
   );
 }

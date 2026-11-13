@@ -20,6 +20,9 @@ const inputSchema = z.object({
   detail: z.string().max(500),
   startsAtISO: z.string().datetime(),
   endsAtISO: z.string().datetime(),
+  // The person changed the time on the card: wall-clock values, same convention as the Add event form.
+  startsAtLocal: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/).optional(),
+  endsAtLocal: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/).optional(),
 });
 export type AcceptSuggestionInput = z.infer<typeof inputSchema>;
 
@@ -31,6 +34,13 @@ export async function acceptSuggestionAction(raw: AcceptSuggestionInput): Promis
   const parsed = inputSchema.safeParse(raw);
   if (!parsed.success) return { error: "That suggestion looks out of date — refresh and try again." };
   const input = parsed.data;
+  if (input.startsAtLocal && input.endsAtLocal) {
+    input.startsAtISO = new Date(input.startsAtLocal).toISOString();
+    input.endsAtISO = new Date(input.endsAtLocal).toISOString();
+  }
+  if (Number.isNaN(new Date(input.startsAtISO).getTime()) || Number.isNaN(new Date(input.endsAtISO).getTime())) {
+    return { error: "That time doesn't look right — check it and try again." };
+  }
   if (new Date(input.endsAtISO) <= new Date(input.startsAtISO)) {
     return { error: "That suggestion looks out of date — refresh and try again." };
   }
