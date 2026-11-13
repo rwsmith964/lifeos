@@ -20,13 +20,11 @@ import { NextResponse } from "next/server";
 import { format } from "date-fns";
 import { requireHouseholdContext } from "@/lib/auth/session";
 import { getZonedNow } from "@/lib/timezones";
-import { AiBudgetExceededError, AiUnavailableError, callAi, isAiConfigured } from "@/lib/ai/client";
+import { AiBudgetExceededError, AiUnavailableError, isAiConfigured } from "@/lib/ai/client";
+import { runBrainDumpAi } from "@/lib/ai/brain-dump-run";
 import { buildChildTokenMap } from "@/lib/ai/context";
-import { parseAiJson } from "@/lib/ai/parse-json";
 import {
   buildBrainDumpUserPrompt,
-  brainDumpResponseSchema,
-  BRAIN_DUMP_SYSTEM_PROMPT,
   type BrainDumpItem,
 } from "@/lib/ai/prompts/brain-dump";
 import type { CaptureTurn } from "@/lib/ai/prompts/capture";
@@ -110,6 +108,10 @@ function unreadableAnswerResponse(transcript: string) {
   }
   return NextResponse.json({ status: "error", message: "Couldn't understand that — try rephrasing." });
 }
+
+// A long note can take the AI a while to answer (and one retry if the first
+// reply is unreadable); don't let the host cut the request off early.
+export const maxDuration = 60;
 
 export async function POST(request: Request) {
   const { supabase, household, selfPerson, timezone } = await requireHouseholdContext();
@@ -234,18 +236,13 @@ export async function POST(request: Request) {
     combinedTranscript
   );
 
-  let aiResult;
+  let read;
   try {
-    aiResult = await callAi(supabase, {
+    read = await runBrainDumpAi(supabase, {
       householdId: household.id,
       timezone,
       feature: "quick_capture",
-      systemPrompt: BRAIN_DUMP_SYSTEM_PROMPT,
       userPrompt,
-      // A weekend story can yield many events, each a sizeable JSON object;
-      // 1024 cut the answer off mid-way and it then failed to parse. Brain Dump
-      // uses the same prompt with this limit.
-      maxTokens: 8192,
     });
   } catch (error) {
     if (error instanceof AiUnavailableError) {
@@ -261,16 +258,9 @@ export async function POST(request: Request) {
     throw error;
   }
 
-  const parsed = parseAiJson(aiResult.text);
-  if (!parsed.success) {
-    return unreadableAnswerResponse(combinedTranscript);
-  }
-  const validated = brainDumpResponseSchema.safeParse(parsed.data);
-  if (!validated.success) {
-    return unreadableAnswerResponse(combinedTranscript);
-  }
+  if (!read.ok) return unreadableAnswerResponse(combinedTranscript);
 
-  const items = validated.data.items;
+  const items = read.items;
 
   if (items.length === 0) {
     // D-01: Quick Capture is a write-only parser -- it has no read/query
