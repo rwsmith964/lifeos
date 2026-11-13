@@ -97,6 +97,20 @@ function clarifyingQuestionFor(type: BrainDumpItem["type"]): string {
   }
 }
 
+// When the AI's answer can't be read, a long message is almost certainly a
+// big story (several events) rather than a typo, so hand it to Brain Dump,
+// which is built for that, instead of telling the person to rephrase.
+function unreadableAnswerResponse(transcript: string) {
+  if (transcript.trim().length > 150) {
+    return NextResponse.json({
+      status: "handoff",
+      target: "brain-dump",
+      confirmationMessage: "That's a lot to sort out, so I'm sending it to Brain Dump to go through it properly.",
+    });
+  }
+  return NextResponse.json({ status: "error", message: "Couldn't understand that — try rephrasing." });
+}
+
 export async function POST(request: Request) {
   const { supabase, household, selfPerson, timezone } = await requireHouseholdContext();
 
@@ -228,7 +242,10 @@ export async function POST(request: Request) {
       feature: "quick_capture",
       systemPrompt: BRAIN_DUMP_SYSTEM_PROMPT,
       userPrompt,
-      maxTokens: 1024,
+      // A weekend story can yield many events, each a sizeable JSON object;
+      // 1024 cut the answer off mid-way and it then failed to parse. Brain Dump
+      // uses the same prompt with this limit.
+      maxTokens: 8192,
     });
   } catch (error) {
     if (error instanceof AiUnavailableError) {
@@ -246,11 +263,11 @@ export async function POST(request: Request) {
 
   const parsed = parseAiJson(aiResult.text);
   if (!parsed.success) {
-    return NextResponse.json({ status: "error", message: "Couldn't understand that — try rephrasing." });
+    return unreadableAnswerResponse(combinedTranscript);
   }
   const validated = brainDumpResponseSchema.safeParse(parsed.data);
   if (!validated.success) {
-    return NextResponse.json({ status: "error", message: "Couldn't understand that — try rephrasing." });
+    return unreadableAnswerResponse(combinedTranscript);
   }
 
   const items = validated.data.items;

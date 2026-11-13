@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Mic, MicOff, Send, X } from "lucide-react";
 import { useAiHealth } from "@/lib/hooks/use-ai-health";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
 // Redesign: this is the pre-existing components/capture/capture-button.tsx
@@ -84,7 +85,7 @@ export function CapturePanel({ open, onClose }: { open: boolean; onClose: () => 
   const [savingEvent, setSavingEvent] = useState(false);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const { aiAvailable } = useAiHealth();
 
   useEffect(() => {
@@ -408,19 +409,21 @@ export function CapturePanel({ open, onClose }: { open: boolean; onClose: () => 
               {listening ? <MicOff className="size-4" /> : <Mic className="size-4" />}
             </button>
           )}
-          <input
+          <Textarea
             ref={inputRef}
             value={input}
+            rows={1}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") {
+              // Enter sends; Shift+Enter starts a new line for longer notes.
+              if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 void send();
               }
             }}
             placeholder={listening ? "Listening…" : "Add or dump a thought…"}
             disabled={aiAvailable === false}
-            className="h-9 flex-1 rounded-input border border-line bg-surface px-3 font-sans text-body text-ink outline-none placeholder:text-meta focus-visible:ring-2 focus-visible:ring-action/50 disabled:opacity-50"
+            className="min-h-9 max-h-40 flex-1 py-1.5"
           />
           <Button
             size="icon"
