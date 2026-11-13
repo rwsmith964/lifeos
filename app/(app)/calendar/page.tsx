@@ -64,6 +64,7 @@ import {
 import { cookies } from "next/headers";
 import { loadCalendarSuggestions } from "@/lib/calendar/suggestions-server";
 import { SuggestionsPanel, type SuggestionView } from "./suggestions-panel";
+import { DayStrip } from "./day-strip";
 import { InvitationsCard, type InvitationView } from "./invitations-card";
 import { getInvitationDetails, listPendingInvitationsForUser } from "@/lib/db/repositories/event-invitations";
 import { LayersPersist } from "./layers-persist";
@@ -1609,28 +1610,21 @@ export default async function CalendarPage({
 
       {range === "day" && (
         <div className="flex flex-col gap-2">
-          <div className="flex gap-1">
-            {eachDayOfInterval({ start: startOfWeek(selectedDay), end: endOfWeek(selectedDay) }).map((d) => {
+          <DayStrip
+            selectedKey={selectedDayKey}
+            days={eachDayOfInterval({ start: subDays(selectedDay, 21), end: addDays(selectedDay, 42) }).map((d, i) => {
               const key = format(d, DAY_PARAM_FORMAT);
-              const selected = isSameDay(d, selectedDay);
-              return (
-                <Link
-                  key={key}
-                  href={`/calendar?month=${format(d, MONTH_PARAM_FORMAT)}&day=${key}${viewQuery}&range=day`}
-                  aria-label={format(d, "EEEE, MMMM d")}
-                  aria-current={selected ? "date" : undefined}
-                  className={cn(
-                    "flex flex-1 flex-col items-center rounded-control py-1.5 font-sans text-[11px]",
-                    selected ? "bg-action text-on-action" : "bg-surface-2 text-ink-2",
-                    !selected && isSameDay(d, today) && "font-bold text-action"
-                  )}
-                >
-                  <span>{format(d, "EEE")}</span>
-                  <span className="text-sm font-medium">{format(d, "d")}</span>
-                </Link>
-              );
+              return {
+                key,
+                href: `/calendar?month=${format(d, MONTH_PARAM_FORMAT)}&day=${key}${viewQuery}&range=day`,
+                dow: format(d, "EEE"),
+                dom: format(d, "d"),
+                month: i === 0 || d.getDate() === 1 ? format(d, "MMM") : null,
+                label: format(d, "EEEE, MMMM d"),
+                isToday: isSameDay(d, today),
+              };
             })}
-          </div>
+          />
           <form action="/calendar" method="get" className="flex items-center gap-2">
             <input type="hidden" name="range" value="day" />
             {view === "custody" && <input type="hidden" name="view" value="custody" />}
